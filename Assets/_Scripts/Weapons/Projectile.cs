@@ -11,7 +11,7 @@ namespace YourGameNamespace.Player.Weapons
     public class Projectile : NetworkBehaviour
     {
         [SerializeField] private float lifetime = 5f;
-        [Tooltip("Percentage (0-1) of the shooter’s horizontal velocity to inherit. " +
+        [Tooltip("Percentage (0-1) of the shooterï¿½s horizontal velocity to inherit. " +
                  "For example, 0.5 = 50%, 0.75 = 75%.")]
         [Range(0f, 1f)]
         [SerializeField] private float horizontalInheritancePercent = 0.5f;
@@ -76,12 +76,11 @@ namespace YourGameNamespace.Player.Weapons
             }
 
             // Set the final calculated velocity.
-            if (_rb != null)
-            {
-                _rb.linearVelocity = finalVelocity;
-                Debug.Log($"Projectile: Final initialized velocity = {finalVelocity}.");
-                Debug.Log($"Projectile: Raw speed (magnitude) = {finalVelocity.magnitude}.");
-            }
+
+            _rb.linearVelocity = finalVelocity;
+            Debug.Log($"Projectile: Final initialized velocity = {finalVelocity}.");
+            Debug.Log($"Projectile: Raw speed (magnitude) = {finalVelocity.magnitude}.");
+            
 
             // Ignore collision with shooter.
             Collider projCollider = GetComponent<Collider>();

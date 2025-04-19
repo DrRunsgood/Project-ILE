@@ -26,7 +26,7 @@ Transform:
   m_GameObject: {fileID: 986300032067039995}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.25, z: 1.2}
+  m_LocalPosition: {x: 0, y: -0.25, z: 1}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -241,9 +241,10 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   fireRate: 5
+  projectilePrefab: {fileID: 1938724514370874692, guid: ba1d67b41de5f4b44866609e302c997b, type: 3}
+  projectileSpeed: 75
+  velocityInheritanceFactor: 0.5
   firePoint: {fileID: 4870011674081178777}
-  projectileSpeed: 25
-  projectilePrefab: {fileID: 3714007479374960785, guid: 049cfcb6e145706448be44ffbe7c90ba, type: 3}
 --- !u!114 &5696733791902104502
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -259,7 +260,7 @@ MonoBehaviour:
   _componentIndexCache: 3
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
-  projectilePrefab: {fileID: 2616167252523381780, guid: b09da5ca7753440408b7b6663fd6c269, type: 3}
+  projectilePrefab: {fileID: 2616167252523381780, guid: bd12bc151b4e69743a2702865b546397, type: 3}
   firePoint: {fileID: 4870011674081178777}
   projectileLifetime: 15
 --- !u!114 &8501514172621720761
@@ -279,16 +280,17 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 6832439599154668905}
   orientation: {fileID: 9128714729413085702}
   cameraTransform: {fileID: 3615969320255055753}
+  firePoint: {fileID: 4870011674081178777}
   yawSensitivity: 2
   pitchSensitivity: 2
   minPitch: -90
   maxPitch: 90
-  walkSpeed: 6
-  sprintSpeed: 10
+  walkSpeed: 8
+  sprintSpeed: 12
   crouchSpeed: 4
-  groundDrag: 5
-  airDrag: 0.02
-  blendFactor: 0.005
+  groundDrag: 2.5
+  airDrag: 0.005
+  blendFactor: 0.003
   jumpForce: 12
   jumpCooldown: 0.5
   crouchYScale: 0.5
@@ -304,15 +306,15 @@ MonoBehaviour:
   whatIsWall:
     serializedVersion: 2
     m_Bits: 2048
-  wallJumpUpForce: 8
-  wallJumpSideForce: 8
+  wallJumpUpForce: 10
+  wallJumpSideForce: 6
   wallRunForce: 200
   targetWallRunSpeedSlow: 15
   slowWallRunThreshold: 25
   targetWallRunSpeedMid: 25
   midWallRunThreshold: 40
   targetWallRunSpeedFast: 40
-  maxWallRunTime: 4
+  maxWallRunTime: 400
   wallCheckDistance: 2
   minJumpHeight: 1.2
   exitWallTime: 0.2
@@ -320,7 +322,7 @@ MonoBehaviour:
   gravityCounterForce: 30
   wallRunGraceTime: 0.2
   wallRunLerpSpeed: 0.5
-  jetpackForce: 34
+  jetpackForce: 0.75
   jetpackFuelBurnRate: 15
   maxJetpackFuel: 100
   jetpackFuelRegenRate: 15
@@ -329,7 +331,7 @@ MonoBehaviour:
   maxAdditionalForwardSpeed: 30
   maxAdditionalLateralSpeed: 40
   skiControl: 0.15
-  skiDrag: 0.01
+  skiDrag: 0.025
   _state: 0
 --- !u!1 &3636291417253298622
 GameObject:
@@ -398,7 +400,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 1000
+  far clip plane: 2000
   field of view: 60
   orthographic: 0
   orthographic size: 5
@@ -448,7 +450,7 @@ MonoBehaviour:
     m_Bits: 1
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 0
+  m_RenderPostProcessing: 1
   m_Antialiasing: 0
   m_AntialiasingQuality: 2
   m_StopNaN: 0

@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 8211081498668126176}
   - component: {fileID: 3800833566956115329}
   - component: {fileID: 4407524204614220259}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: Sphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -101,7 +101,7 @@ GameObject:
   - component: {fileID: 8935443540562542520}
   - component: {fileID: -6522965463337381358}
   - component: {fileID: -2380335607805412195}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: PP
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -220,7 +220,7 @@ MonoBehaviour:
   _componentIndexCache: 0
   _addedNetworkObject: {fileID: 3916937285148698973}
   _networkObjectCache: {fileID: 3916937285148698973}
-  moveRate: 40
+  moveRate: 70
 --- !u!135 &8935443540562542520
 SphereCollider:
   m_ObjectHideFlags: 0

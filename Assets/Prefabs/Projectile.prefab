@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 7931686672623391243}
   - component: {fileID: -2314753965482644843}
   - component: {fileID: -1140040415118051540}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: Projectile
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -81,7 +81,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 3
+  <PrefabId>k__BackingField: 5
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 6849529654753075593
   <SceneId>k__BackingField: 0
@@ -106,7 +106,7 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 3714007479374960785}
   _networkObjectCache: {fileID: 3714007479374960785}
   lifetime: 15
-  horizontalInheritancePercent: 0.5
+  horizontalInheritancePercent: 0.75
 --- !u!54 &7931686672623391243
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -133,7 +133,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 1
   m_Constraints: 112
-  m_CollisionDetection: 2
+  m_CollisionDetection: 1
 --- !u!114 &-2314753965482644843
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -167,7 +167,7 @@ MonoBehaviour:
     X: 1
     Y: 1
     Z: 1
-  _synchronizeRotation: 1
+  _synchronizeRotation: 0
   _rotationSnapping:
     X: 0
     Y: 0
@@ -209,7 +209,7 @@ GameObject:
   - component: {fileID: 5538871903923401809}
   - component: {fileID: 6283213199907426825}
   - component: {fileID: 3481526645519198254}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: Sphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}

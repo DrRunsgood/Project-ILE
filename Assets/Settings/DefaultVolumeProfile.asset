@@ -252,6 +252,46 @@ MonoBehaviour:
   m_Name: VolumeComponentSupportedEverywhere
   m_EditorClassIdentifier: Unity.RenderPipelines.Core.Editor.Tests:UnityEngine.Rendering.Tests:VolumeComponentEditorSupportedOnTests/VolumeComponentSupportedEverywhere
   active: 1
+--- !u!114 &-5160160422234783314
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 15c6a8fbdafb9144eaf42ff8d7782d23, type: 3}
+  m_Name: FogVolume
+  m_EditorClassIdentifier: 
+  active: 1
+  enabled:
+    m_OverrideState: 1
+    m_Value: 0
+  fogColorHorizon:
+    m_OverrideState: 1
+    m_Value: {r: 0.7, g: 0.75, b: 0.8, a: 1}
+  fogDensity:
+    m_OverrideState: 1
+    m_Value: 0.1
+  fogOffset:
+    m_OverrideState: 1
+    m_Value: 0
+  heightFogMode:
+    m_OverrideState: 1
+    m_Value: 2
+  heightFogAmount:
+    m_OverrideState: 1
+    m_Value: 0.85
+  heightFogFalloff:
+    m_OverrideState: 1
+    m_Value: 2.5
+  fogColorZenith:
+    m_OverrideState: 1
+    m_Value: {r: 0.4, g: 0.5, b: 0.7, a: 1}
+  gradientHeightFactor:
+    m_OverrideState: 1
+    m_Value: 1
 --- !u!114 &-5139089513906902183
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -299,6 +339,24 @@ MonoBehaviour:
   cropToFit:
     m_OverrideState: 1
     m_Value: 1
+--- !u!114 &-2031035894436060793
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: SimpleEffectVolume
+  m_EditorClassIdentifier: 
+  active: 1
+  <displayName>k__BackingField: 
+  enabled:
+    <debugId>k__BackingField: enabled
+    m_OverrideState: 1
+    m_Value: 0
 --- !u!114 &-1410297666881709256
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -342,6 +400,9 @@ MonoBehaviour:
   skyOcclusionIntensityMultiplier:
     m_OverrideState: 1
     m_Value: 1
+  worldOffset:
+    m_OverrideState: 1
+    m_Value: {x: 0, y: 0, z: 0}
 --- !u!114 &-1216621516061285780
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -462,8 +523,7 @@ MonoBehaviour:
   - {fileID: -6288072647309666549}
   - {fileID: 7518938298396184218}
   - {fileID: -1410297666881709256}
-  - {fileID: -7750755424749557576}
-  - {fileID: -5139089513906902183}
+  - {fileID: -5160160422234783314}
 --- !u!114 &853819529557874667
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -921,6 +981,46 @@ MonoBehaviour:
   scale:
     m_OverrideState: 1
     m_Value: 1
+--- !u!114 &8014967402908199082
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9c5d8041cfa5544692adb2a3e34080c, type: 3}
+  m_Name: FogVolume
+  m_EditorClassIdentifier: 
+  active: 1
+  enabled:
+    m_OverrideState: 1
+    m_Value: 0
+  fogColorHorizon:
+    m_OverrideState: 1
+    m_Value: {r: 0.7, g: 0.8, b: 0.9, a: 1}
+  fogColorZenith:
+    m_OverrideState: 1
+    m_Value: {r: 0.5, g: 0.6, b: 0.8, a: 1}
+  fogDensity:
+    m_OverrideState: 1
+    m_Value: 0.1
+  fogOffset:
+    m_OverrideState: 1
+    m_Value: 0
+  heightFogMode:
+    m_OverrideState: 1
+    m_Value: 2
+  heightFogAmount:
+    m_OverrideState: 1
+    m_Value: 0.8
+  heightFogFalloff:
+    m_OverrideState: 1
+    m_Value: 3
+  gradientHeightFactor:
+    m_OverrideState: 1
+    m_Value: 0.5
 --- !u!114 &9001657382290151224
 MonoBehaviour:
   m_ObjectHideFlags: 3
