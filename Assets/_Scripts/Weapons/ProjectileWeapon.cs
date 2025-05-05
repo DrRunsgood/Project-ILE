@@ -10,63 +10,76 @@ namespace YourGameNamespace.Weapons
         [Header("Projectile Settings")]
         [SerializeField] private NetworkObject projectilePrefab;
         [SerializeField] private float projectileSpeed = 50f;
-        [SerializeField, Range(0f,2f)]
+        [SerializeField, Range(0f,1f)]
         private float velocityInheritanceFactor = 0.5f;
         [SerializeField] private Transform firePoint;
 
-        // cached refs
         private InputHandler  _input;
         private NetworkObject _netObj;
 
         public override void OnStartClient()
         {
             base.OnStartClient();
-            if (IsOwner)
-                _input = GetComponent<InputHandler>();
+            if (IsOwner) _input = GetComponent<InputHandler>();
         }
-
         public override void OnStartServer()
         {
             base.OnStartServer();
             _netObj = GetComponent<NetworkObject>();
         }
-
         void Update()
         {
-            if (!IsOwner || _input == null) return;
+            if (!IsOwner || _input == null)
+                return;
+
             if (_input.FireInput && Time.time >= nextFireTime)
             {
                 nextFireTime = Time.time + 1f / fireRate;
-                var dir = firePoint.forward.normalized;
-                var pos = firePoint.position;
-                Cmd_RequestSpawn(dir, pos, TimeManager.Tick - 2u);
+                Vector3 dir  = firePoint.forward.normalized;
+
+                /* one‑way latency (ms → s) */
+                double halfRTTms   = TimeManager.HalfRoundTripTime;   // long → double
+                double oneWaySec   = halfRTTms * 0.001;               // ms → seconds
+
+                /* convert seconds to whole ticks (always round‑up) */
+                double tickLen     = TimeManager.TickDelta;           // seconds per tick
+                uint   lagTicks    = (uint)Mathf.CeilToInt((float)(oneWaySec / tickLen));
+                
+                /* tiny safety cushion so we never overshoot */
+                const uint safety  = 0u;
+
+                /* rewind, clamped so it never goes negative */
+                uint rewind        = lagTicks + safety;
+                Debug.Log($"Rewind:" + rewind);
+                uint bufferedTick  = (rewind > TimeManager.Tick) ? 0u : TimeManager.Tick - rewind;
+
+                Cmd_RequestSpawn(dir, bufferedTick);
             }
         }
-
+        
         [ServerRpc]
-        private void Cmd_RequestSpawn(Vector3 dir, Vector3 pos, uint clientTick)
+        private void Cmd_RequestSpawn(Vector3 clientDir, uint clientTick)
         {
             if (projectilePrefab == null || _netObj == null) return;
             if (!LagCompensationManager.Instance.TryGetSnapshot(_netObj, clientTick, out var snap))
                 return;
 
-            dir.Normalize();
-            if (dir == Vector3.zero) return;
+            clientDir.Normalize();
+            if (clientDir == Vector3.zero) return;
 
-            var finalVel = dir * projectileSpeed
-                         + snap.Velocity * velocityInheritanceFactor;
+            Vector3 finalVel = clientDir * projectileSpeed + snap.Velocity * velocityInheritanceFactor;
 
-            var nob = InstanceFinder.NetworkManager
-                             .GetPooledInstantiated(projectilePrefab, true);
+            var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(projectilePrefab, true);
             if (nob == null) return;
 
             if (nob.TryGetComponent(out BaseProjectile proj))
             {
-                // pass shooter so projectile can ignore self‑hits
-                proj.Init(pos, finalVel, TimeManager.Tick, _netObj);
+                // use lag-compensated muzzle pos
+                proj.Init(snap.Position, finalVel, TimeManager.Tick, _netObj);
                 ServerManager.Spawn(nob);
             }
-            else ServerManager.Despawn(nob, DespawnType.Pool);
+            else
+                ServerManager.Despawn(nob, DespawnType.Pool);
         }
 
         public override void Fire() { }

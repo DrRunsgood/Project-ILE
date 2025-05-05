@@ -1,4 +1,5 @@
-﻿using FishNet.Component.Transforming;
+﻿using System;
+using FishNet.Component.Transforming;
 using FishNet.Managing.Timing;
 using FishNet.Utility.Template;
 using GameKit.Dependencies.Utilities.Types;
@@ -60,8 +61,14 @@ namespace FishNet.Demo.Benchmarks.NetworkTransforms
             _nextForceTick = tick + base.TimeManager.TimeToTicks(_interval.RandomInclusive(), TickRounding.RoundUp);
 
             Vector3 force = Random.insideUnitSphere * _force;
-            if (force.y < 0f)
-                force.y = -force.y;
+
+            //Always ensure vertical movement, and movement away from center.
+            if (Math.Sign(force.x) == Math.Sign(transform.position.x))
+                force.x *= -1f;
+            force.y = _force;
+            if (Math.Sign(force.z) == Math.Sign(transform.position.z))
+                force.z *= -1f;
+
             _rigidbody.AddForce(force, ForceMode.Impulse);
         }
     }

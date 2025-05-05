@@ -48,6 +48,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   <IsNested>k__BackingField: 0
+  WasActiveDuringEdit: 1
+  WasActiveDuringEdit_Set: 1
   <ComponentIndex>k__BackingField: 0
   <PredictedSpawn>k__BackingField: {fileID: 0}
   <PredictedOwner>k__BackingField: {fileID: 0}
@@ -64,7 +66,6 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedValusSet: 1
   NetworkObserver: {fileID: 0}
   _enablePrediction: 0
   _predictionType: 0
@@ -79,7 +80,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 30
+  <PrefabId>k__BackingField: 15
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 1135307130674619079
   <SceneId>k__BackingField: 0
@@ -105,8 +106,12 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 4512293259955182956}
   _tickCallbacks: 10
   _isActive: 1
+  _is2d: 0
   _axes: 3
+  _chancePerAxes: 0.8
   _rotationChance: 0.33
+  _randomMovement: 1
+  _goalDatas: []
   _moveInUpdate: 0
   _moveRate: 3
   _rotateRate: 30
@@ -149,7 +154,7 @@ MonoBehaviour:
     X: 0
     Y: 0
     Z: 0
-  _synchronizeScale: 1
+  _synchronizeScale: 0
   _scaleSnapping:
     X: 0
     Y: 0

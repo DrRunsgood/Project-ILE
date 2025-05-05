@@ -106,6 +106,10 @@ namespace FishNet.Managing.Timing
         /// RoundTripTime in milliseconds. This value includes latency from the tick rate.
         /// </summary>
         public long RoundTripTime { get; private set; }
+        /// <summary>
+        /// Returns half value of RoundTripTime rounded to nearest whole.
+        /// </summary>
+        public long HalfRoundTripTime => (long)Math.Round((double)RoundTripTime / 2d);
 
         /// <summary>
         /// True if the number of frames per second are less than the number of expected ticks per second.
@@ -454,7 +458,7 @@ namespace FishNet.Managing.Timing
         private void ServerManager_OnServerConnectionState(ServerConnectionStateArgs obj)
         {
             //If no servers are running.
-            if (!NetworkManager.ServerManager.AnyServerStarted())
+            if (!NetworkManager.ServerManager.IsAnyServerStarted())
             {
                 LastPacketTick.ResetTicks();
                 ServerUptime = 0f;
@@ -704,7 +708,7 @@ namespace FishNet.Managing.Timing
                     NetworkManager.PredictionManager.ReconcileToStates();
                     OnTick?.Invoke();
 
-                    if (PhysicsMode == PhysicsMode.TimeManager)
+                    if (PhysicsMode == PhysicsMode.TimeManager && tickDelta > 0f)
                     {
                         OnPrePhysicsSimulation?.Invoke(tickDelta);
                         Physics.Simulate(tickDelta);
@@ -910,8 +914,8 @@ namespace FishNet.Managing.Timing
         public double TimePassed(PreciseTick preciseTick, bool allowNegative = false)
         {
             PreciseTick currentPt = GetPreciseTick(TickType.Tick);
-
-            long tickDifference = (currentPt.Tick - preciseTick.Tick);
+            
+            long tickDifference = ((long)currentPt.Tick - (long)preciseTick.Tick);
             double percentDifference = (currentPt.PercentAsDouble - preciseTick.PercentAsDouble);
 
             /* If tickDifference is less than 0 or tickDifference and percentDifference are 0 or less
@@ -960,7 +964,7 @@ namespace FishNet.Managing.Timing
         /// <summary>
         /// Converts time to ticks.
         /// </summary>
-        /// <param name="time">Time to convert.</param>
+        /// <param name="time">Time to convert as decimal.</param>
         /// <returns></returns>
         
         public uint TimeToTicks(double time, TickRounding rounding = TickRounding.RoundNearest)
@@ -974,22 +978,26 @@ namespace FishNet.Managing.Timing
             else
                 return (uint)Math.Ceiling(result);
         }
+
+        /// <summary>
+        /// Converts time to ticks.
+        /// </summary>
+        /// <param name="time">Time to convert as whole (milliseconds)</param>
+        /// <returns></returns>
+        
+        public uint TimeToTicks(long time, TickRounding rounding = TickRounding.RoundNearest)
+        {
+            double dTime = ((double)time / 1000d);
+            return TimeToTicks(dTime, rounding);
+        }
+
         
         /// <summary>
         /// Converts time to a PreciseTick.
         /// </summary>
         /// <param name="time">Time to convert.</param>
         /// <returns></returns>
-        public PreciseTick TimeToPreciseTick(double time)
-        {
-            double delta = TickDelta;
-            
-            uint ticks = (uint)Math.Floor(time / delta);
-            double percent = (time % delta);
-
-            return new PreciseTick(ticks, percent);
-        }
-
+        public PreciseTick TimeToPreciseTick(double time) => time.AsPreciseTick(TickDelta);
         
         /// <summary>
         /// Estimatedly converts a synchronized tick to what it would be for the local tick.
@@ -1046,20 +1054,21 @@ namespace FishNet.Managing.Timing
                  * be new data going out each tick, since
                  * movement is often based off the tick system.
                  * Because of this don't iterate incoming if
-                 * it's the same frame but the outgoing
-                 * may iterate multiple times per frame. */
+                 * it's the same frame, but the outgoing
+                 * may iterate multiple times per frame due to
+                 * there possibly being multiple ticks per frame. */
                 int frameCount = Time.frameCount;
                 if (frameCount == _lastIncomingIterationFrame)
                     return;
                 _lastIncomingIterationFrame = frameCount;
 
-                NetworkManager.TransportManager.IterateIncoming(true);
-                NetworkManager.TransportManager.IterateIncoming(false);
+                NetworkManager.TransportManager.IterateIncoming(asServer: true);
+                NetworkManager.TransportManager.IterateIncoming(asServer: false);
             }
             else
             {
-                NetworkManager.TransportManager.IterateOutgoing(true);
-                NetworkManager.TransportManager.IterateOutgoing(false);
+                NetworkManager.TransportManager.IterateOutgoing(asServer: true);
+                NetworkManager.TransportManager.IterateOutgoing(asServer: false);
             }
         }
 
@@ -1129,7 +1138,9 @@ namespace FishNet.Managing.Timing
             uint lastPacketTick = LastPacketTick.RemoteTick;
             //Set Tick based on difference between localTick and clientTick, added onto lastPacketTick.
             uint prevTick = Tick;
-            uint nextTick = (LocalTick - clientTick) + lastPacketTick;
+            //Added ticks for delay in reading packet.
+            const uint socketReadDelay = 1;
+            uint nextTick = ((LocalTick - clientTick) / 2) + lastPacketTick + socketReadDelay;
             long difference = ((long)nextTick - (long)prevTick);
             Tick = nextTick;
 

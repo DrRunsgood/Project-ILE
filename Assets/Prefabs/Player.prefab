@@ -26,7 +26,7 @@ Transform:
   m_GameObject: {fileID: 986300032067039995}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.25, z: 1}
+  m_LocalPosition: {x: 0, y: -0.1, z: 1.25}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -100,6 +100,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   <IsNested>k__BackingField: 0
+  WasActiveDuringEdit: 1
+  WasActiveDuringEdit_Set: 1
   <ComponentIndex>k__BackingField: 0
   <PredictedSpawn>k__BackingField: {fileID: 0}
   <PredictedOwner>k__BackingField: {fileID: 0}
@@ -119,7 +121,6 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedValusSet: 1
   NetworkObserver: {fileID: 0}
   _enablePrediction: 1
   _predictionType: 1
@@ -133,8 +134,8 @@ MonoBehaviour:
   _spectatorSmoothedProperties: 255
   _spectatorInterpolation: 2
   _enableTeleport: 1
-  _teleportThreshold: 1
-  <PrefabId>k__BackingField: 7
+  _teleportThreshold: 3
+  <PrefabId>k__BackingField: 11
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 7807759643866311769
   <SceneId>k__BackingField: 0
@@ -150,10 +151,10 @@ Rigidbody:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1246683354149957449}
-  serializedVersion: 4
+  serializedVersion: 5
   m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 5
+  m_LinearDamping: 0
+  m_AngularDamping: 5
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -242,7 +243,7 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 6832439599154668905}
   fireRate: 5
   projectilePrefab: {fileID: 1938724514370874692, guid: ba1d67b41de5f4b44866609e302c997b, type: 3}
-  projectileSpeed: 75
+  projectileSpeed: 100
   velocityInheritanceFactor: 0.5
   firePoint: {fileID: 4870011674081178777}
 --- !u!114 &5696733791902104502
@@ -289,7 +290,7 @@ MonoBehaviour:
   sprintSpeed: 12
   crouchSpeed: 4
   groundDrag: 2.5
-  airDrag: 0.005
+  airDrag: 0.001
   blendFactor: 0.003
   jumpForce: 12
   jumpCooldown: 0.5

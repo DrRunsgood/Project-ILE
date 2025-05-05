@@ -365,6 +365,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   <IsNested>k__BackingField: 0
+  WasActiveDuringEdit: 1
+  WasActiveDuringEdit_Set: 1
   <ComponentIndex>k__BackingField: 0
   <PredictedSpawn>k__BackingField: {fileID: 0}
   <PredictedOwner>k__BackingField: {fileID: 0}
@@ -384,7 +386,6 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedValusSet: 1
   NetworkObserver: {fileID: 0}
   _enablePrediction: 1
   _predictionType: 1
@@ -392,14 +393,14 @@ MonoBehaviour:
   _detachGraphicalObject: 0
   _enableStateForwarding: 1
   _networkTransform: {fileID: 0}
-  _ownerInterpolation: 1
+  _ownerInterpolation: 2
   _ownerSmoothedProperties: 4294967295
   _adaptiveInterpolation: 3
   _spectatorSmoothedProperties: 255
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 3
+  <PrefabId>k__BackingField: 1
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 4766532481090865533
   <SceneId>k__BackingField: 0
@@ -415,10 +416,10 @@ Rigidbody:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5479234450192693299}
-  serializedVersion: 4
+  serializedVersion: 5
   m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 0.05
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -539,9 +540,10 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: -4662259310628129667}
   _networkObjectCache: {fileID: -4662259310628129667}
   fireRate: 5
-  firePoint: {fileID: 451009194112020285}
-  projectileSpeed: 25
   projectilePrefab: {fileID: 3714007479374960785, guid: 049cfcb6e145706448be44ffbe7c90ba, type: 3}
+  projectileSpeed: 25
+  velocityInheritanceFactor: 0.5
+  firePoint: {fileID: 451009194112020285}
 --- !u!114 &-54170842898538213
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using FishNet.Object;
 using FishNet.Object.Prediction;
@@ -169,8 +168,12 @@ namespace _Scripts.Player
         private bool _isJetpacking;
         private float _currentJetpackFuel;
         
-        const string LOCAL_LAYER   = "LocalPlayer";
-        const string REMOTE_LAYER  = "RemotePlayer";
+        // Knockback
+        private Vector3? _pendingKnockback;
+        private float? _pendingTempDrag;
+
+        private const string LOCAL_LAYER   = "LocalPlayer";
+        private const string REMOTE_LAYER  = "RemotePlayer";
 
         #endregion
 
@@ -247,8 +250,8 @@ namespace _Scripts.Player
         #endregion
 
         #region Network Events
-        
-        static void SetLayerRecursively(GameObject go, int layer)
+
+        private static void SetLayerRecursively(GameObject go, int layer)
         {
             go.layer = layer;
             foreach (Transform t in go.transform)
@@ -274,7 +277,6 @@ namespace _Scripts.Player
         public override void OnStartClient()
         {
             base.OnStartClient();
-            
             int local  = LayerMask.NameToLayer(LOCAL_LAYER);
             int remote = LayerMask.NameToLayer(REMOTE_LAYER);
 
@@ -384,6 +386,14 @@ namespace _Scripts.Player
         [Replicate]
         private void Replicate(MovementData data, ReplicateState state = ReplicateState.Invalid, Channel channel = Channel.Unreliable)
         {
+            // Check for incoming Knockback
+            if (_pendingKnockback.HasValue)
+            {
+                ApplyKnockback();
+                _predictionRb.Simulate();
+                return; 
+            }
+            
             // Ground check
             _isGrounded = IsGrounded();
 
@@ -433,9 +443,8 @@ namespace _Scripts.Player
             
             _predictionRb.Simulate();
         }
-
         #endregion
-
+        
         #region Rotation
 
         private void ApplyRotation(float yawInput, float pitchInput)
@@ -452,7 +461,6 @@ namespace _Scripts.Player
 
             cameraTransform.localEulerAngles = new Vector3(_currentPitch, 0f, 0f);
         }
-
         #endregion
 
         #region Jump
@@ -462,8 +470,6 @@ namespace _Scripts.Player
             Physics.gravity = new Vector3(0, -30f, 0); // Can't determine a better place to put this - protective measure
             _predictionRb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         }
-        
-        
 
         private void ResetJump()
         {
@@ -595,7 +601,7 @@ namespace _Scripts.Player
         
         private void ControlEnv(MovementData data)
         {
-            float drag; // Default drag
+            float drag;
 
             switch (data.State)
             {
@@ -710,18 +716,6 @@ namespace _Scripts.Player
             else if (speed < midWallRunThreshold) _targetWallRunSpeed = targetWallRunSpeedMid;
             else                                   _targetWallRunSpeed = targetWallRunSpeedFast;
             
-            /*
-            Vector3 intendedWallRunDir;
-            if (speed > 0.1f)
-            {
-                intendedWallRunDir = Vector3.ProjectOnPlane(playerVelocity.normalized, _storedWallNormal).normalized;
-            }
-            else
-            {
-                intendedWallRunDir = Vector3.ProjectOnPlane(orientation.forward, _storedWallNormal).normalized;
-            }
-            */
-            
             // Use orientation.forward as the base direction, projected onto the wall plane
             Vector3 intendedWallRunDir = Vector3.ProjectOnPlane(orientation.forward, _storedWallNormal).normalized;
             
@@ -731,17 +725,6 @@ namespace _Scripts.Player
                 // Player velocity opposite intended direction, flip direction
                 intendedWallRunDir = -intendedWallRunDir;
             }
-
-            /* Adjust the direction based on the player's velocity to ensure it matches the intended movement
-            if (speed > 0.1f)
-            {
-                float velocityAlignment = Vector3.Dot(playerVelocity.normalized, intendedWallRunDir);
-                if (velocityAlignment < 0)
-                {
-                    intendedWallRunDir = -intendedWallRunDir; // Flip the direction if velocity opposes the intended direction
-                }
-            }
-            */
 
             _wallRunDirection = intendedWallRunDir;
         }
@@ -833,24 +816,6 @@ namespace _Scripts.Player
             // Apply the velocity using _currentWallRunSpeed
             Vector3 desiredVel = _wallRunDirection * _currentWallRunSpeed;
             _predictionRb.Velocity(new Vector3(desiredVel.x, 0f, desiredVel.z));
-            
-            // Store the last velocity for use on exit
-            new Vector3(desiredVel.x, _rb.linearVelocity.y, desiredVel.z);
-            
-            /* Original working code, more simplistic implementation
-            
-            // Update movement direction based on continuously updated wall normal
-            Vector3 dynamicWallRunDirection = Vector3.ProjectOnPlane(orientation.forward, _storedWallNormal).normalized;
-            
-            float currentSpeed = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z).magnitude;
-            float newSpeed = Mathf.Lerp(currentSpeed, _targetWallRunSpeed, wallRunLerpSpeed * (float)TimeManager.TickDelta);
-
-            Vector3 desiredVel = _wallRunDirection  * newSpeed; //_wallRunDirection
-            
-            _predictionRb.Velocity(new Vector3(desiredVel.x, 0f, desiredVel.z));
-            
-            */
-            
         }
         
         private bool IsStillOnWall(out Vector3 currentWallNormal)
@@ -863,12 +828,7 @@ namespace _Scripts.Player
             }
             return false;
         }
-        /*
-        private bool IsStillOnWall()
-        {
-            return Physics.Raycast(transform.position, -_storedWallNormal, wallCheckDistance, whatIsWall);
-        }
-        */
+
         private void StopWallRun()
         {
             _exitingWall   = false;
@@ -891,7 +851,6 @@ namespace _Scripts.Player
             
             Vector3 forceToApply = (Vector3.up * wallJumpUpForce) + (_storedWallNormal * wallJumpSideForce);
             
-            //_predictionRb.Velocity(new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z)); // DG - we may not even need this
             StopWallRun();
             _predictionRb.AddForce(forceToApply, ForceMode.Impulse);
         }
@@ -917,13 +876,13 @@ namespace _Scripts.Player
             Vector3 horizontalDirection = rawInput.sqrMagnitude > 0.01f?orientation.TransformDirection(rawInput).normalized:Vector3.zero;
             
             // Apply vertical lift
-            Vector3 finalImpulse = Vector3.up * (jetpackForce * 0.75f); 
+            Vector3 finalImpulse = Vector3.up * (jetpackForce * 0.7f); 
             
             Vector3 currentHorizVel = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
           
             // Apply horizontal thrust **only if below speed limits**
             if (currentHorizVel.magnitude <= maxAdditionalForwardSpeed)
-                finalImpulse += horizontalDirection * (jetpackForce * 0.25f);
+                finalImpulse += horizontalDirection * (jetpackForce * 0.3f);
             
             // Apply force without normalization to preserve intended thrust balance
             _predictionRb.AddForce(finalImpulse, ForceMode.Impulse);
@@ -955,31 +914,40 @@ namespace _Scripts.Player
         }
 
         #endregion
-
-        /*
-        #region Gizmos
-
-        private void OnDrawGizmos()
+        
+        #region Knock‑back
+        // Called from BaseProjectile via RPC on every client *and* the server.
+        public void ReceiveKnockback(Vector3 impulse, float tempDrag = -1f)
         {
-            // If grounded, draw sphere at the hit point; otherwise draw it at the fallback (down from player)
-            Vector3 sphereCenter = _isGrounded ? _groundHit.point
-                : (transform.position + Vector3.down * groundCheckDistance);
-            Gizmos.DrawWireSphere(sphereCenter, groundCheckRadius);
-
-            // --- CheckSphere Visualization (New) ---
-            Gizmos.color = new Color(1f, 0.92f, 0.016f, 1f); // "Gold" to differentiate from SphereCast
-            Vector3 checkSphereCenter = transform.position + feetOffset; // Match the exact position from your ground check logic
-            Gizmos.DrawWireSphere(checkSphereCenter, feetRadius); // Match radius exactly
-
-            // --- Wall Run Detection (existing code) ---
-            Gizmos.color = Color.cyan;
-            Vector3 rayOrigin = transform.position;
-            Vector3 rayDirection = orientation.forward * wallCheckDistance;
-            Gizmos.DrawLine(rayOrigin, rayOrigin + rayDirection);
+            if (_state == MovementState.WallRunning)
+                StopWallRun();
+            
+            if (IsServer)
+            {
+                _pendingKnockback = impulse;
+                if (tempDrag >= 0f) _pendingTempDrag = tempDrag;   // new helper field
+            }
+            else
+            {
+                if (tempDrag >= 0f) _rb.linearDamping = tempDrag;
+                _predictionRb.AddForce(impulse, ForceMode.Impulse);
+            }
         }
 
+        private void ApplyKnockback()
+        {
+            float oldDrag = _rb.linearDamping;
+            if (_pendingTempDrag.HasValue)
+                _rb.linearDamping = _pendingTempDrag.Value;
+
+            _predictionRb.AddForce(_pendingKnockback.Value, ForceMode.Impulse);
+
+            _rb.linearDamping  = oldDrag;          // restore
+            _pendingKnockback  = null;
+            _pendingTempDrag   = null;
+                
+            _state = MovementState.Airborne;
+        }
         #endregion
-        */
     }
-    
 }

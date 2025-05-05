@@ -1,4 +1,13 @@
-﻿using FishNet.Connection;
+﻿#if UNITY_EDITOR || DEVELOPMENT_BUILD
+#define DEVELOPMENT
+#endif
+
+#if UNITY_EDITOR
+using FishNet.Editing.PrefabCollectionGenerator;
+using UnityEditor;
+#endif
+
+using FishNet.Connection;
 using FishNet.Managing.Client;
 using FishNet.Managing.Server;
 using FishNet.Managing.Timing;
@@ -24,10 +33,7 @@ using FishNet.Managing.Predicting;
 using System.Runtime.CompilerServices;
 using GameKit.Dependencies.Utilities;
 
-#if UNITY_EDITOR
-using FishNet.Editing.PrefabCollectionGenerator;
-using UnityEditor;
-#endif
+
 
 namespace FishNet.Managing
 {
@@ -40,15 +46,6 @@ namespace FishNet.Managing
     public sealed partial class NetworkManager : MonoBehaviour
     {
         #region Types.
-        /// <summary>
-        /// Which socket to iterate data on first when as host.
-        /// </summary>
-        public enum HostIterationOrder
-        {
-            ServerFirst,
-            ClientFirst
-        }
-
         /// <summary>
         /// How to persist with multiple NetworkManagers.
         /// </summary>
@@ -161,6 +158,12 @@ namespace FishNet.Managing
         /// Starting index for RpcLinks.
         /// </summary>
         internal static ushort StartingRpcLinkIndex;
+#if DEVELOPMENT
+        /// <summary>
+        /// Logs data about parser to help debug.
+        /// </summary>
+        internal PacketIdHistory PacketIdHistory = new();
+#endif
         #endregion
 
         #region Serialized.
@@ -212,7 +215,7 @@ namespace FishNet.Managing
         /// <summary>
         /// Version of this release.
         /// </summary>
-        public const string FISHNET_VERSION = "4.5.6";
+        public const string FISHNET_VERSION = "4.6.7hf0";
         /// <summary>
         /// Maximum framerate allowed.
         /// </summary>
@@ -386,7 +389,7 @@ namespace FishNet.Managing
             if (_persistence == PersistenceType.DestroyNewest)
             {
                 InternalLog($"NetworkManager on object {gameObject.name} is being destroyed due to persistence type {_persistence}. A NetworkManager instance already exist on {firstInstance.name}.");
-                Destroy(gameObject);
+                DestroyImmediate(gameObject);
                 //This one is being destroyed because its the newest.
                 return false;
             }
@@ -394,7 +397,7 @@ namespace FishNet.Managing
             else if (_persistence == PersistenceType.DestroyOldest)
             {
                 InternalLog($"NetworkManager on object {firstInstance.name} is being destroyed due to persistence type {_persistence}. A NetworkManager instance has been created on {gameObject.name}.");
-                Destroy(firstInstance.gameObject);
+                DestroyImmediate(firstInstance.gameObject);
                 //This being the new one will persist, allow initialization.
                 return true;
             }

@@ -4,6 +4,56 @@ using UnityEngine;
 
 namespace FishNet.Object
 {
+
+    public static class TransformPropertiesExtensions 
+    {
+        /// <summary>
+        /// Creates direction between two TransformProperties.
+        /// </summary>
+        /// <param name="divisor">Value to divide results by.</param>
+        /// <returns></returns>
+        public static TransformProperties CreateDirections(this TransformProperties prevProperties, TransformProperties nextProperties, uint divisor = 1)
+        {
+            //PROSTART
+            Vector3 position = (nextProperties.Position - prevProperties.Position) / divisor;
+
+            Quaternion rotation = nextProperties.Rotation.Subtract(prevProperties.Rotation);
+            //If more than 1 tick span then get a portion of the rotation.
+            if (divisor > 1)
+            {
+                float percent = (1f / (float)divisor);
+                rotation = Quaternion.Lerp(Quaternion.identity, nextProperties.Rotation, percent);
+            }
+
+            Vector3 scale = (nextProperties.Scale - prevProperties.Scale) / divisor;
+
+            return new(position, rotation, scale);
+        }
+
+        /// <summary>
+        /// Sets values of TransformPropertiesCls to a transforms world properties.
+        /// </summary>
+        public static void SetWorldProperties(this TransformPropertiesCls tp, Transform t)
+        {
+            tp.Position = t.position;
+            tp.Rotation = t.rotation;
+            tp.LocalScale = t.localScale;
+        }
+        
+        /// <summary>
+        /// Sets values of TransformPropertiesCls to a transforms world properties.
+        /// </summary>
+        public static void SetWorldProperties(this TransformProperties tp, Transform t)
+        {
+            tp.Position = t.position;
+            tp.Rotation = t.rotation;
+            tp.Scale = t.localScale;
+        }
+
+
+
+    }
+
     [System.Serializable]
     public class TransformPropertiesCls : IResettable
     {
@@ -78,7 +128,7 @@ namespace FishNet.Object
     {
         public Vector3 Position;
         public Quaternion Rotation;
-        [Obsolete("Use Scale.")]
+        [Obsolete("Use Scale.")] //Remove V5
         public Vector3 LocalScale => Scale;
         public Vector3 Scale;
         /// <summary>
@@ -92,6 +142,16 @@ namespace FishNet.Object
             Rotation = rotation;
             Scale = localScale;
             IsValid = true;
+        }
+
+        /// <summary>
+        /// Creates a TransformProperties with default position and rotation, with Vector3.one scale. 
+        /// </summary>
+        public static TransformProperties GetTransformDefault() => new(Vector3.zero, Quaternion.identity, Vector3.one);
+        
+        public override string ToString()
+        {
+            return $"Position: {Position.ToString()}, Rotation {Rotation.ToString()}, Scale {Scale.ToString()}";
         }
 
         public TransformProperties(Transform t) : this(t.position, t.rotation, t.localScale) { }
