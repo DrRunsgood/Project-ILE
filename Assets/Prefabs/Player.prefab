@@ -26,9 +26,9 @@ Transform:
   m_GameObject: {fileID: 986300032067039995}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.1, z: 1.25}
+  m_LocalPosition: {x: 0, y: 0, z: 1.25}
   m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 3615969320255055753}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -79,7 +79,7 @@ Transform:
   m_GameObject: {fileID: 1246683354149957449}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: 0}
+  m_LocalPosition: {x: 0, y: 2, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -111,6 +111,7 @@ MonoBehaviour:
   - {fileID: 1460291459209920297}
   - {fileID: 5696733791902104502}
   - {fileID: 8501514172621720761}
+  - {fileID: 3481518338235280362}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
   RuntimeParentNetworkBehaviour: {fileID: 0}
@@ -124,23 +125,23 @@ MonoBehaviour:
   NetworkObserver: {fileID: 0}
   _enablePrediction: 1
   _predictionType: 1
-  _graphicalObject: {fileID: 3808739038604411282}
+  _graphicalObject: {fileID: 0}
   _detachGraphicalObject: 0
   _enableStateForwarding: 1
   _networkTransform: {fileID: 0}
-  _ownerInterpolation: 1
+  _ownerInterpolation: 2
   _ownerSmoothedProperties: 4294967295
   _adaptiveInterpolation: 3
   _spectatorSmoothedProperties: 255
   _spectatorInterpolation: 2
-  _enableTeleport: 1
-  _teleportThreshold: 3
+  _enableTeleport: 0
+  _teleportThreshold: 1
   <PrefabId>k__BackingField: 11
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 7807759643866311769
   <SceneId>k__BackingField: 0
   SerializedTransformProperties:
-    Position: {x: 0, y: 1, z: 0}
+    Position: {x: 0, y: 2, z: 0}
     Rotation: {x: 0, y: 0, z: 0, w: 1}
     Scale: {x: 1, y: 1, z: 1}
     IsValid: 1
@@ -169,7 +170,7 @@ Rigidbody:
   m_UseGravity: 1
   m_IsKinematic: 0
   m_Interpolate: 0
-  m_Constraints: 112
+  m_Constraints: 80
   m_CollisionDetection: 2
 --- !u!136 &5029882488096950468
 CapsuleCollider:
@@ -190,8 +191,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 2
+  m_Radius: 1
+  m_Height: 4
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &845123985453176268
@@ -209,7 +210,6 @@ MonoBehaviour:
   _componentIndexCache: 0
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
-  mouseSensitivity: 100
   playerCamera: {fileID: 3615969320255055753}
 --- !u!114 &2929346116547752253
 MonoBehaviour:
@@ -244,7 +244,7 @@ MonoBehaviour:
   fireRate: 5
   projectilePrefab: {fileID: 1938724514370874692, guid: ba1d67b41de5f4b44866609e302c997b, type: 3}
   projectileSpeed: 100
-  velocityInheritanceFactor: 0.5
+  velocityInheritanceFactor: 0.7
   firePoint: {fileID: 4870011674081178777}
 --- !u!114 &5696733791902104502
 MonoBehaviour:
@@ -296,14 +296,14 @@ MonoBehaviour:
   jumpCooldown: 0.5
   crouchYScale: 0.5
   maxSlopeAngle: 45
-  groundCheckRadius: 0.51
-  groundCheckDistance: 0.6
-  slopeCheckDistance: 1.2
+  groundCheckRadius: 0.3
+  groundCheckDistance: 0.4
+  slopeCheckDistance: 2.4
   groundMask:
     serializedVersion: 2
     m_Bits: 1024
-  feetOffset: {x: 0, y: -0.6, z: 0}
-  feetRadius: 0.51
+  feetOffset: {x: 0, y: -1.1, z: 0}
+  feetRadius: 1
   whatIsWall:
     serializedVersion: 2
     m_Bits: 2048
@@ -364,7 +364,7 @@ Transform:
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.39999998, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 4870011674081178777}
   m_Father: {fileID: 3808739038604411282}
@@ -427,7 +427,7 @@ AudioListener:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3636291417253298622}
-  m_Enabled: 0
+  m_Enabled: 1
 --- !u!114 &3650042617887922976
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -600,6 +600,7 @@ GameObject:
   - component: {fileID: 3808739038604411282}
   - component: {fileID: 8012112908243625123}
   - component: {fileID: 1928804306502622935}
+  - component: {fileID: 3481518338235280362}
   m_Layer: 0
   m_Name: Capsule
   m_TagString: Untagged
@@ -615,10 +616,10 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 9181107508806418986}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_LocalScale: {x: 2, y: 2, z: 2}
+  m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 3615969320255055753}
   - {fileID: 8854438168527651508}
@@ -655,7 +656,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: c2e40fa84d53ccd428f640eac126b1fb, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -677,3 +678,36 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &3481518338235280362
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9181107508806418986}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _componentIndexCache: 5
+  _addedNetworkObject: {fileID: 6832439599154668905}
+  _networkObjectCache: {fileID: 6832439599154668905}
+  _initializationSettings:
+    TargetTransform: {fileID: 5541322204877821614}
+    DetachOnStart: 0
+    AttachOnStop: 0
+  _controllerMovementSettings:
+    EnableTeleport: 0
+    TeleportThreshold: 1
+    AdaptiveInterpolationValue: 0
+    InterpolationValue: 2
+    SmoothedProperties: 4294967295
+    SnapNonSmoothedProperties: 0
+  _spectatorMovementSettings:
+    EnableTeleport: 0
+    TeleportThreshold: 1
+    AdaptiveInterpolationValue: 0
+    InterpolationValue: 2
+    SmoothedProperties: 4294967295
+    SnapNonSmoothedProperties: 0

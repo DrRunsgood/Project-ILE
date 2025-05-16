@@ -46,7 +46,7 @@ namespace YourGameNamespace.Weapons
                 uint   lagTicks    = (uint)Mathf.CeilToInt((float)(oneWaySec / tickLen));
                 
                 /* tiny safety cushion so we never overshoot */
-                const uint safety  = 0u;
+                const uint safety  = 1u;
 
                 /* rewind, clamped so it never goes negative */
                 uint rewind        = lagTicks + safety;

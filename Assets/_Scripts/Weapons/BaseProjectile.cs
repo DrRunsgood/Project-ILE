@@ -12,6 +12,7 @@ public sealed class BaseProjectile : NetworkBehaviour
     [SerializeField] float     radius     = 0.20f;            // physics body radius
     [SerializeField] LayerMask hitMask;
     [SerializeField] LayerMask playerMask;
+    public ParticleSystem projectileTrail;
 
     [Header("Explosion / Knock‑back")]
     [SerializeField] float  blastRadius        = 6f;
@@ -20,6 +21,7 @@ public sealed class BaseProjectile : NetworkBehaviour
     float knockbackExponent   = 1.5f;
     [SerializeField, Tooltip("Treat centre hits as straight‑up impulse below this distance")]
     float minDirectionThreshold = 0.01f;
+    public GameObject projectileExplosion;
 
     /* ───────── Synced spawn state ───────── */
     readonly SyncVar<Vector3> _initPos   = new();
@@ -31,6 +33,10 @@ public sealed class BaseProjectile : NetworkBehaviour
     bool        _despawning;
     Transform   _shooterRoot;
     Vector3     _currentVelocity;
+    
+    // ROCKET STUFF
+    
+    
 
     /* interpolation */
     Vector3 _prev, _next;
@@ -74,29 +80,39 @@ public sealed class BaseProjectile : NetworkBehaviour
         {
             TimeManager.OnTick += ClientTick;
             _prev = _next = transform.position;
-            _tickDt = (float)(TimeManager?.TickDelta ?? (1f/60f));
+            _tickDt = (float)(TimeManager?.TickDelta ?? (1f / 60f));
+        }
+        
+        // Play projectile trail
+        if (projectileTrail != null)
+        {
+            projectileTrail.Clear(); // Good for pooled objects
+            projectileTrail.Play();  // Start emission
         }
     }
     public override void OnStopClient()
     {
         if (!IsServer) TimeManager.OnTick -= ClientTick;
+        
+        if (projectileTrail != null && projectileTrail.transform.parent == this.transform)
+        {
+            projectileTrail.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
     }
-
-    /* ---------------- Server simulation ---------------- */
+    
     void ServerTick()
     {
         if (_despawning) return;
 
         double dt = TimeManager.TickDelta;
-        if ((TimeManager.Tick - _spawnTick.Value) * dt >= lifeTime)
-        { DespawnSelf(); return; }
+        if ((TimeManager.Tick - _spawnTick.Value) * dt >= lifeTime) { DespawnSelf(); return; }
 
         Vector3 disp   = _currentVelocity * (float)dt;
         Vector3 origin = transform.position;
         Vector3 target = origin + disp;
         Vector3 dir    = _currentVelocity.normalized;
 
-        /* 1) overlap right at the start (spawns inside wall) */
+        // overlap right at the start (spawns inside wall)
         int cnt = Physics.OverlapSphereNonAlloc(origin, radius, _overlapBuf, hitMask, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < cnt; i++)
         {
@@ -107,7 +123,7 @@ public sealed class BaseProjectile : NetworkBehaviour
             return;
         }
 
-        /* 2) sphere‑cast forward */
+        // sphere‑cast forward
         if (disp.sqrMagnitude > 0.0001f && Physics.SphereCast(origin, radius, dir, out RaycastHit hit, disp.magnitude,
                                hitMask, QueryTriggerInteraction.Ignore))
         {
@@ -119,7 +135,7 @@ public sealed class BaseProjectile : NetworkBehaviour
             }
         }
 
-        /* 3) nothing hit → move */
+        // 3) nothing hit → move
         transform.position = target;
     }
 
@@ -162,9 +178,8 @@ public sealed class BaseProjectile : NetworkBehaviour
             ctrl.ReceiveKnockback(impulse);
             RpcApplyKnockback(ctrl.NetworkObject, impulse);
         }
-
-        /* clear buffer */
-        for (int i = 0; i < hits; i++) _overlapBuf[i] = null;
+        
+        for (int i = 0; i < hits; i++) _overlapBuf[i] = null;  // clear buffer
     }
 
 
@@ -196,10 +211,16 @@ public sealed class BaseProjectile : NetworkBehaviour
         transform.position = Vector3.Lerp(_prev, _next, Mathf.Clamp01(_timer / _tickDt));
     }
 
-    /* ---------------- VFX & despawn ---------------- */
-    [ObserversRpc(BufferLast = true)]
-    void PlayImpactObservers(Vector3 pos, Vector3 normal) { /* TODO VFX */ }
-
+    // --------------- VFX --------------- 
+    [ObserversRpc(BufferLast = false)]
+    void PlayImpactObservers(Vector3 pos, Vector3 normal)
+    {
+        projectileTrail.Stop();
+        
+        if (projectileExplosion != null)
+            Instantiate(projectileExplosion, pos, projectileExplosion.transform.rotation, null);
+    }
+    
     [Server] void DespawnSelf()
     {
         if (_despawning) return;

@@ -7,14 +7,10 @@ namespace _Scripts.Player
 {
     public class CameraController : NetworkBehaviour
     {
-        [Header("Camera Settings")]
-        [SerializeField] private float mouseSensitivity = 100f;
-
         [Tooltip("Reference to the player camera transform.")]
         public Transform playerCamera; // Assign via Inspector
 
         // Internal State
-        private float _xRotation;
         private Camera _cam;
         private InputHandler _inputHandler;
 
@@ -69,18 +65,6 @@ namespace _Scripts.Player
         void Update()
         {
             if (!IsOwner || _inputHandler == null) return;
-
-            HandleCameraPitch();
-        }
-
-        private void HandleCameraPitch()
-        {
-            float mouseY = _inputHandler.LookInput.y * mouseSensitivity * Time.deltaTime;
-
-            _xRotation -= mouseY;
-            _xRotation = Mathf.Clamp(_xRotation, -90f, 90f); // Prevent over-rotation
-
-            if (playerCamera != null) playerCamera.localRotation = Quaternion.Euler(_xRotation, 0f, 0f);
         }
 
         public override void OnStopClient()

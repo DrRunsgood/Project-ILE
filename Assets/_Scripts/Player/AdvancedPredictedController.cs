@@ -61,8 +61,6 @@ namespace _Scripts.Player
         
         [Header("Slope Handling")]
         [SerializeField] private float maxSlopeAngle = 45f;
-        [SerializeField] private float groundCheckRadius = 0.3f;
-        [SerializeField] private float groundCheckDistance = 0.4f;
         [SerializeField] private float slopeCheckDistance = 1.2f;
         [SerializeField] private LayerMask groundMask;
         
@@ -84,8 +82,6 @@ namespace _Scripts.Player
         [SerializeField] private float wallCheckDistance = 0.6f;
         [SerializeField] private float minJumpHeight = 1.2f;
         [SerializeField] private float exitWallTime = 0.2f;
-        [SerializeField] private bool useGravity = true;
-        [SerializeField] private float gravityCounterForce = 20f;
         [SerializeField] private float wallRunGraceTime = 0.2f;
         [SerializeField] private float wallRunLerpSpeed = 5f;
 
@@ -163,6 +159,11 @@ namespace _Scripts.Player
         private float _wallRunGraceTimer;
         //testing
         private float _currentWallRunSpeed; // Current speed for wall-running (maintained separately)
+        // new wall run force implements
+        [Header("Wall Running (Forces)")]
+        [SerializeField] private float wallStickForce = 50f;         // Force pulling player towards the wall
+        [SerializeField] private float wallRunAcceleration = 20f;  // How quickly player reaches target wall run speed
+        [SerializeField] private float wallRunVerticalDampFactor = 10f; // How strongly to suppress vertical movement
 
         // Jetpack
         private bool _isJetpacking;
@@ -467,7 +468,6 @@ namespace _Scripts.Player
 
         private void Jump()
         {
-            Physics.gravity = new Vector3(0, -30f, 0); // Can't determine a better place to put this - protective measure
             _predictionRb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         }
 
@@ -485,6 +485,7 @@ namespace _Scripts.Player
             Vector3 checkPos = _rb.position + feetOffset;
             return Physics.CheckSphere(checkPos, feetRadius, groundMask);
         }
+    
         private void UpdateMovementState(MovementData data)
         {
             // Always check Jetpacking first (highest priority)
@@ -606,20 +607,15 @@ namespace _Scripts.Player
             switch (data.State)
             {
                 case MovementState.Airborne or MovementState.Jetpacking:
-                    Physics.gravity = new Vector3(0, -30f, 0);  //reset grav from wallrun
                     drag = airDrag;
                     break;
                 case MovementState.Skiing:
                     drag = skiDrag;
                     break;
                 case MovementState.WallRunning:
-                    Physics.gravity = -_storedWallNormal * 200f; // Alter gravity to follow the wallrun normal to stick player to surface
                     drag = airDrag;
                     break;
                 default:  // ground state
-                    Physics.gravity = new Vector3(0, -30f, 0);
-                    if (_onSlope)
-                        Physics.gravity = -_slopeHit.normal * 45f;
                     drag = groundDrag;
                     break;
             }
@@ -809,14 +805,41 @@ namespace _Scripts.Player
                 // Still on the current wall; reset grace timer
                 _wallRunGraceTimer = wallRunGraceTime;
             }
+            
+            // 1. STICKING FORCE: Pulls player towards the wall, _storedWallNormal is the normal of the wall we are currently running on.
+            if (_storedWallNormal != Vector3.zero)
+            {
+                _predictionRb.AddForce(-_storedWallNormal * wallStickForce, ForceMode.Force);
+            }
 
-            // Lerp _currentWallRunSpeed toward _targetWallRunSpeed
-            _currentWallRunSpeed = Mathf.Lerp(_currentWallRunSpeed, _targetWallRunSpeed, wallRunLerpSpeed * (float)TimeManager.TickDelta);
+            // 2. COUNTERACT GLOBAL GRAVITY
+            _predictionRb.AddForce(-Physics.gravity, ForceMode.Acceleration);
 
-            // Apply the velocity using _currentWallRunSpeed
-            Vector3 desiredVel = _wallRunDirection * _currentWallRunSpeed;
-            _predictionRb.Velocity(new Vector3(desiredVel.x, 0f, desiredVel.z));
-        }
+            // 3. MOVEMENT FORCE ALONG THE WALL (Horizontally), _wallRunDirection is already calculated in StartWallRun to be along the wall's surface.
+            if (_wallRunDirection != Vector3.zero)
+            {
+                Vector3 horizontalWallRunDir = _wallRunDirection;
+                horizontalWallRunDir.y = 0f; // Ensure the target movement direction is purely horizontal
+
+                if (horizontalWallRunDir.sqrMagnitude > 0.001f) // Avoid normalizing a zero vector
+                {
+                    horizontalWallRunDir.Normalize();
+
+                    // Calculate current speed in the desired horizontal wall run direction
+                    float currentSpeedInDir = Vector3.Dot(_rb.linearVelocity, horizontalWallRunDir);
+
+                    // Calculate force to accelerate/decelerate to _targetWallRunSpeed
+                    float speedError = _targetWallRunSpeed - currentSpeedInDir;
+                    Vector3 movementForce = horizontalWallRunDir * (speedError * wallRunAcceleration);
+
+                    _predictionRb.AddForce(movementForce, ForceMode.Acceleration); // Mass independent
+                }
+            }
+            // 4. VERTICAL STABILIZATION FORCE: Keep player from moving up/down - This actively dampens any existing vertical velocity.
+            float currentVerticalVelocity = _rb.linearVelocity.y;
+            Vector3 verticalDampingForce = Vector3.down * (currentVerticalVelocity * wallRunVerticalDampFactor);
+            _predictionRb.AddForce(verticalDampingForce, ForceMode.Acceleration); 
+            }
         
         private bool IsStillOnWall(out Vector3 currentWallNormal)
         {
