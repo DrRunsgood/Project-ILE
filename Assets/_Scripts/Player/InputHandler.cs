@@ -1,67 +1,48 @@
-// Scripts/Player/InputHandler.cs
+// Player/InputHandler.cs
 using UnityEngine;
 using FishNet.Object;
 
 namespace _Scripts.Player
 {
+    /// Captures Unity-input every rendered frame and writes an InputCmd
+    /// into the local ring-buffer for prediction and reconciliation.
     public class InputHandler : NetworkBehaviour
     {
-        // Movement Inputs
-        public Vector2 MovementInput { get; private set; }
-        public bool SprintInput { get; private set; }
-        public bool CrouchInput { get; private set; }
-        public bool JumpInput { get; private set; }
-
-        // Ability Inputs
-        public bool JetpackInput { get; private set; }
-        public bool SkiInput { get; private set; }
-        public bool WallRunInput { get; private set; }
-
-        // Firing Input
-        public bool FireInput { get; private set; }
-        public bool PFireInput { get; private set; }
-
-        // Look Inputs
-        public Vector2 LookInput { get; private set; }
+        /* Public so AdvancedPredictedController can read it.                   */
+        public InputCmdRing CmdRing { get; } = new InputCmdRing();
 
         void Update()
         {
-            if (!IsOwner) return;
+            if (!IsOwner)
+                return;
 
-            CaptureMovementInput();
-            CaptureAbilityInput();
-            CaptureFiringInput();
-            CaptureLookInput();
-        }
+            uint tick = TimeManager.Tick;     // Fish-Net’s current tick
 
-        private void CaptureMovementInput()
-        {
-            float moveX = Input.GetAxisRaw("Horizontal");
-            float moveZ = Input.GetAxisRaw("Vertical");
-            MovementInput = new Vector2(moveX, moveZ).normalized;
-            SprintInput = Input.GetKey(KeyCode.LeftShift);
-            JumpInput = Input.GetKey(KeyCode.LeftAlt);
-            CrouchInput = Input.GetKey(KeyCode.X);
-        }
+            // ----- 1.  scalar / vector inputs --------------------------------
+            Vector2 move = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).normalized;
 
-        private void CaptureAbilityInput()
-        {
-            JetpackInput = Input.GetMouseButton(1); // Right Mouse Button for Jetpack
-            SkiInput = Input.GetKey(KeyCode.Space);
-            WallRunInput = Input.GetKey(KeyCode.E);
-        }
+            Vector2 look = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
 
-        private void CaptureFiringInput()
-        {
-            FireInput = Input.GetButton("Fire1"); // Left Mouse Button for Firing
-            PFireInput = Input.GetKey(KeyCode.Alpha1);
-        }
+            // ----- 2.  buttons -----------------------------------------------
+            InputButtons btn = InputButtons.None;
+            if (Input.GetKey(KeyCode.LeftAlt))     btn |= InputButtons.Jump;
+            if (Input.GetKey(KeyCode.LeftShift))   btn |= InputButtons.Sprint;
+            if (Input.GetKey(KeyCode.X))           btn |= InputButtons.Crouch;
+            if (Input.GetMouseButton(1))           btn |= InputButtons.Jetpack;
+            if (Input.GetKey(KeyCode.Space))       btn |= InputButtons.Ski;
+            if (Input.GetKey(KeyCode.E))           btn |= InputButtons.WallRun;
+            if (Input.GetButton("Fire1"))          btn |= InputButtons.Fire;
 
-        private void CaptureLookInput()
-        {
-            float mouseX = Input.GetAxisRaw("Mouse X");
-            float mouseY = Input.GetAxisRaw("Mouse Y");
-            LookInput = new Vector2(mouseX, mouseY);
+            // ----- 3.  assemble & store --------------------------------------
+            InputCmd cmd = new InputCmd
+            {
+                tick    = tick,
+                move    = move,
+                look    = look,
+                buttons = btn
+            };
+
+            CmdRing.Push(cmd);
         }
     }
 }

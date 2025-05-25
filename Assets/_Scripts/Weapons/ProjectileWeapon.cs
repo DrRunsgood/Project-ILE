@@ -31,8 +31,11 @@ namespace YourGameNamespace.Weapons
         {
             if (!IsOwner || _input == null)
                 return;
+            
+            var  cmd   = _input.CmdRing.Get(TimeManager.Tick);
+            bool fire  = (cmd.buttons & InputButtons.Fire) != 0;
 
-            if (_input.FireInput && Time.time >= nextFireTime)
+            if (fire && Time.time >= nextFireTime)
             {
                 nextFireTime = Time.time + 1f / fireRate;
                 Vector3 dir  = firePoint.forward.normalized;
@@ -67,7 +70,7 @@ namespace YourGameNamespace.Weapons
             clientDir.Normalize();
             if (clientDir == Vector3.zero) return;
 
-            Vector3 finalVel = clientDir * projectileSpeed + snap.Velocity * velocityInheritanceFactor;
+            Vector3 finalVel = snap.Direction.normalized * projectileSpeed + snap.Velocity * velocityInheritanceFactor; //clientDir * projectileSpeed
 
             var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(projectilePrefab, true);
             if (nob == null) return;

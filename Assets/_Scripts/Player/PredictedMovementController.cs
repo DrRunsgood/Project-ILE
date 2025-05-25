@@ -129,6 +129,7 @@ namespace _Scripts.Player
         {
             if (IsOwner)
             {
+                /*
                 // Gather inputs from InputHandler
                 float horizontal = _inputHandler.MovementInput.x;
                 float vertical = _inputHandler.MovementInput.y;
@@ -139,10 +140,11 @@ namespace _Scripts.Player
 
                 // Determine if skiing
                 bool isSkiing = _inputHandler.SkiInput;
-
+                
                 // Pack them into MovementData
                 MovementData data = new MovementData(horizontal, vertical, jump, yawInput, pitchInput, jetpack, isSkiing);
                 Replicate(data);
+                */
             }
             else
             {

@@ -1,7 +1,10 @@
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using FishNet.Object;
 using FishNet.Object.Prediction;
 using FishNet.Transporting;
+using Cmd = _Scripts.Player.InputCmd;   // short-hand
+
 
 namespace _Scripts.Player
 {
@@ -72,18 +75,18 @@ namespace _Scripts.Player
         [SerializeField] private LayerMask whatIsWall;
         [SerializeField] private float wallJumpUpForce = 8f;
         [SerializeField] private float wallJumpSideForce = 6f;
-        [SerializeField] private float wallRunForce = 200f;
         [SerializeField] private float targetWallRunSpeedSlow = 15f;
-        [SerializeField] private float slowWallRunThreshold = 25f;
         [SerializeField] private float targetWallRunSpeedMid = 25f;
-        [SerializeField] private float midWallRunThreshold = 40f;
         [SerializeField] private float targetWallRunSpeedFast = 40f;
         [SerializeField] private float maxWallRunTime = 1.5f;
         [SerializeField] private float wallCheckDistance = 0.6f;
         [SerializeField] private float minJumpHeight = 1.2f;
         [SerializeField] private float exitWallTime = 0.2f;
         [SerializeField] private float wallRunGraceTime = 0.2f;
-        [SerializeField] private float wallRunLerpSpeed = 5f;
+        [Header("Wall Running (Forces)")]
+        [SerializeField] private float wallStickForce = 50f;         // Force pulling player towards the wall
+        [SerializeField] private float wallRunAcceleration = 20f;  // How quickly player reaches target wall run speed
+        [SerializeField] private float wallRunVerticalDampFactor = 10f; // How strongly to suppress vertical movement
 
         [Header("Jetpack Settings")]
         [SerializeField] private float jetpackForce = 15f;
@@ -109,6 +112,14 @@ namespace _Scripts.Player
 
         #region Internals
 
+        // Cache the command we are simulating this tick.
+        private Cmd _cmd;
+
+        // Bit-flag helper (keeps expressions readable).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool Btn(InputButtons mask, InputButtons flag) => (mask &  flag) != 0;
+        public double LastTickTime { get; private set; }
+        
         private NetworkObject _netObj;
         private Rigidbody _rb;
         private PredictionRigidbody _predictionRb;
@@ -126,24 +137,12 @@ namespace _Scripts.Player
         private Vector3 _moveDirection;
        
         // Input
-        private InputHandler _inputHandler;
-        
-        private float _horizontal;
-        private float _vertical;
-        private float _yawInput;
-        private float _pitchInput;
-
-        // Determine abilities
-        private bool _jump;
-        private bool _sprint;
-        private bool _crouch;
-        private bool _wallRun;
-        private bool _jetpack;
-        private bool _isSkiing;
-        
+        private InputHandler _iH;
         
         // For camera orientation
         private float _currentPitch; // we clamp pitch with minPitch, maxPitch
+        public  float PrevPitch    { get; private set; }
+        public  float CurrentPitch => _currentPitch;
 
         // Wall Running
         private bool _canWallRun;
@@ -157,13 +156,7 @@ namespace _Scripts.Player
         private float _targetWallRunSpeed;
         private Vector3 _storedWallNormal = Vector3.zero;
         private float _wallRunGraceTimer;
-        //testing
         private float _currentWallRunSpeed; // Current speed for wall-running (maintained separately)
-        // new wall run force implements
-        [Header("Wall Running (Forces)")]
-        [SerializeField] private float wallStickForce = 50f;         // Force pulling player towards the wall
-        [SerializeField] private float wallRunAcceleration = 20f;  // How quickly player reaches target wall run speed
-        [SerializeField] private float wallRunVerticalDampFactor = 10f; // How strongly to suppress vertical movement
 
         // Jetpack
         private bool _isJetpacking;
@@ -179,45 +172,7 @@ namespace _Scripts.Player
         #endregion
 
         #region FishNet Data Structures
-
-        private struct MovementData : IReplicateData
-        {
-            private uint _tick;
-            public float Horizontal;
-            public float Vertical;
-            public float Yaw;
-            public float Pitch;
-            public MovementState State; // Replaces all individual movement bools
-            public bool JumpPressed;
-            public bool Jetpack;
-            public bool Skiing;
-            public bool WallRun;
-            public bool Sprint;
-            public bool Crouch;
-            
-
-            public MovementData(float horizontal, float vertical, float yaw, float pitch, MovementState state, bool jumpPressed, 
-                bool jetpack, bool isSkiing, bool wallRun, bool sprint, bool crouch)
-            {
-                _tick = 0; // Ensure tick is initialized
-                Horizontal = horizontal;
-                Vertical = vertical;
-                Yaw = yaw;
-                Pitch = pitch;
-                State = state;
-                JumpPressed = jumpPressed;
-                Jetpack = jetpack;
-                Skiing = isSkiing;
-                WallRun = wallRun;
-                Sprint = sprint;
-                Crouch = crouch;
-            }
-
-            public uint GetTick() => _tick;
-            public void SetTick(uint value) => _tick = value;
-            public void Dispose() { }
-        }
-        
+        // Replication struct found in InputCmd
         private struct ReconciliationData : IReconcileData
         {
             private uint _tick;
@@ -225,19 +180,16 @@ namespace _Scripts.Player
             public Vector3 Position;
             public Quaternion Rotation;
             public Vector3 LinearVelocity;
-            public Vector3 AngularVelocity;
             public MovementState State;
             public float CurrentPitch;
             public float Drag;
 
-            public ReconciliationData(Vector3 position, Quaternion rotation, Vector3 linearVelocity, Vector3 angularVelocity,
-                MovementState state, float currentPitch, float currentDrag)
+            public ReconciliationData(Vector3 position, Quaternion rotation, Vector3 linearVelocity, MovementState state, float currentPitch, float currentDrag)
             {
                 _tick = 0;
                 Position           = position;
                 Rotation           = rotation;
                 LinearVelocity     = linearVelocity;
-                AngularVelocity    = angularVelocity;
                 State              = state;
                 CurrentPitch       = currentPitch;
                 Drag               = currentDrag;
@@ -284,7 +236,7 @@ namespace _Scripts.Player
             SetLayerRecursively(gameObject, IsOwner ? local : remote);
             
             if (IsOwner)
-                _inputHandler = GetComponent<InputHandler>();
+                _iH = GetComponent<InputHandler>();
             
             if (cameraTransform != null)
                 cameraTransform.gameObject.SetActive(IsOwner);
@@ -302,25 +254,7 @@ namespace _Scripts.Player
             TimeManager.OnTick -= OnTick;
             TimeManager.OnPostTick -= OnPostTick;
         }
-
-        private void Update()
-        {
-            if (!IsOwner) return;
-            // Movement and Look control
-            _horizontal = _inputHandler.MovementInput.x;
-            _vertical = _inputHandler.MovementInput.y;
-            _yawInput = _inputHandler.LookInput.x;
-            _pitchInput = _inputHandler.LookInput.y;
-
-            // Determine abilities input
-            _jump = _inputHandler.JumpInput;
-            _sprint = _inputHandler.SprintInput;
-            _crouch = _inputHandler.CrouchInput;
-            _wallRun = _inputHandler.WallRunInput;
-            _jetpack = _inputHandler.JetpackInput;
-            _isSkiing = _inputHandler.SkiInput;
-        }
-
+        
         private void OnTick()
         {
             if (IsOwner)
@@ -329,10 +263,8 @@ namespace _Scripts.Player
                 //UpdateFuel();
                 
                 // Pack them into MovementData
-                MovementData data = new MovementData(_horizontal, _vertical, _yawInput, _pitchInput, _state, _jump, 
-                    _jetpack, _isSkiing, _wallRun, _sprint, _crouch);
-                
-                Replicate(data);
+                _cmd = _iH.CmdRing.Get(TimeManager.Tick);   // ← store once
+                Replicate(_cmd);
             }
             else
             {
@@ -354,7 +286,6 @@ namespace _Scripts.Player
                 _rb.position,
                 _rb.rotation,
                 _rb.linearVelocity,
-                _rb.angularVelocity,
                 _state,
                 _currentPitch,
                 _rb.linearDamping
@@ -366,10 +297,8 @@ namespace _Scripts.Player
         [Reconcile]
         private void Reconcile(ReconciliationData data, Channel channel = Channel.Unreliable)
         {
-            _rb.MovePosition(data.Position);
-            _rb.MoveRotation(data.Rotation);
+            _rb.Move(data.Position, data.Rotation);
             _rb.linearVelocity = data.LinearVelocity;
-            _rb.angularVelocity = data.AngularVelocity;
             _rb.linearDamping = data.Drag;
             
             // Correct movement state
@@ -385,8 +314,12 @@ namespace _Scripts.Player
         #region Replicate
 
         [Replicate]
-        private void Replicate(MovementData data, ReplicateState state = ReplicateState.Invalid, Channel channel = Channel.Unreliable)
+        private void Replicate(Cmd cmd, ReplicateState state = ReplicateState.Invalid, Channel channel = Channel.Unreliable)
         {
+            LastTickTime = Time.timeAsDouble;
+            _cmd = cmd;
+            PrevPitch = _currentPitch;
+            
             // Check for incoming Knockback
             if (_pendingKnockback.HasValue)
             {
@@ -403,38 +336,62 @@ namespace _Scripts.Player
             if(_isGrounded) _onSlope = OnSlope();
             
             // 1) Apply rotation from yaw/pitch
-            ApplyRotation(data.Yaw, data.Pitch);
+            ApplyRotation(cmd.look.x, cmd.look.y);
             
             // Check for wall
-            if (data.WallRun && data.State != MovementState.WallRunning)
-                CheckForWall(data);
+            if (Btn(cmd.buttons, InputButtons.WallRun) && _state != MovementState.WallRunning)
+                CheckForWall();
 
             // Update movement states
-            UpdateMovementState(data);
+            UpdateMovementState();
                 
-            if (data.State == MovementState.WallRunning) // Only update wall run state if actively wall running
-                UpdateWallRunState(data);
+            if (_state == MovementState.WallRunning) // Only update wall run state if actively wall running
+                UpdateWallRunState();
             
-            ControlEnv(data);
+            ControlEnv();
 
-            if (data.State == MovementState.Jetpacking)
+            
+            switch (_state)
             {
-                if (!_isGrounded) MovePlayer(data);
+                case MovementState.Jetpacking:
+                    if (!_isGrounded) MovePlayer();
+                    HandleJetpack();
+                    break;
+
+                case MovementState.Skiing:
+                    PerformSkiMovement();
+                    break;
+
+                case MovementState.WallRunning:
+                    if (Btn(cmd.buttons, InputButtons.Jump)) WallJump();
+                    else PerformWallRunMovement();
+                    break;
+
+                default:
+                    MovePlayer();
+                    break;
+            }
+            
+            /*
+            if (_state == MovementState.Jetpacking)
+            {
+                if (!_isGrounded) MovePlayer();
                 HandleJetpack(data);
             }
             
-            else if (data.State == MovementState.Skiing)
-                PerformSkiMovement(data);
+            else if (_state == MovementState.Skiing)
+                PerformSkiMovement(cmd);
             
-            else if (data.State == MovementState.WallRunning && data.JumpPressed)
+            else if (_state == MovementState.WallRunning && Btn(_cmd.buttons, InputButtons.Jump))
                 WallJump();
 
-            else if (data.State == MovementState.WallRunning)
+            else if (_state == MovementState.WallRunning)
                 PerformWallRunMovement();
             else
-                MovePlayer(data);
-
-            if (_isGrounded && data.JumpPressed) // Jump
+                MovePlayer();
+            */
+            
+            if (_isGrounded && Btn(cmd.buttons, InputButtons.Jump))
                 Jump();
             
             if (IsServer && LagCompensationManager.Instance != null)
@@ -448,20 +405,18 @@ namespace _Scripts.Player
         
         #region Rotation
 
-        private void ApplyRotation(float yawInput, float pitchInput)
+        private void ApplyRotation(float yawDeltaRaw, float pitchDeltaRaw)
         {
-            // Yaw => rotate _orientation horizontally
-            float yawDelta = yawInput * yawSensitivity;
-            Quaternion currentRot = _rb.rotation;
-            Quaternion yawRot = currentRot * Quaternion.Euler(0f, yawDelta, 0f);
-            _rb.MoveRotation(yawRot);
+            /* YAW ––– rotate the rigidbody ––––––––––––––––––––––––––––––– */
+            float yawDelta = yawDeltaRaw * yawSensitivity;
+            _rb.MoveRotation(_rb.rotation * Quaternion.Euler(0f, yawDelta, 0f));
 
-            // Pitch => track in _currentPitch
-            _currentPitch -= pitchInput * pitchSensitivity;
-            _currentPitch = Mathf.Clamp(_currentPitch, minPitch, maxPitch);
+            /* PITCH – just track a number; camera uses it every render frame */
+            _currentPitch = Mathf.Clamp(_currentPitch - pitchDeltaRaw * pitchSensitivity, minPitch, maxPitch);
 
             cameraTransform.localEulerAngles = new Vector3(_currentPitch, 0f, 0f);
         }
+
         #endregion
 
         #region Jump
@@ -486,10 +441,10 @@ namespace _Scripts.Player
             return Physics.CheckSphere(checkPos, feetRadius, groundMask);
         }
     
-        private void UpdateMovementState(MovementData data)
+        private void UpdateMovementState()
         {
             // Always check Jetpacking first (highest priority)
-            if (data.Jetpack)
+            if (Btn(_cmd.buttons, InputButtons.Jetpack))
             {
                 if (_state == MovementState.WallRunning) 
                     StopWallRun();
@@ -499,25 +454,25 @@ namespace _Scripts.Player
             }
 
             // If not already wall running, check for wall run initiation using the wall run key.
-            if (data.State != MovementState.WallRunning)
+            if (_state != MovementState.WallRunning)
             {
                 _canWallRun = CanWallRun();
-                if (data.WallRun && _canWallRun)
+                if (Btn(_cmd.buttons, InputButtons.WallRun) && _canWallRun)
                 {
                     StartWallRun();
                     _state = MovementState.WallRunning;
                 }
                 
-                else if (data.Skiing)
+                else if (Btn(_cmd.buttons, InputButtons.Ski))
                     _state = MovementState.Skiing;
                 
                 else if (_isGrounded)
                 {
-                    if (data.Crouch)
+                    if (Btn(_cmd.buttons, InputButtons.Crouch))
                     {
                         _state = MovementState.Crouching;
                     }
-                    else if (data.Sprint)
+                    else if (Btn(_cmd.buttons, InputButtons.Sprint))
                     {
                         _state = MovementState.Sprinting;
                     }
@@ -548,27 +503,27 @@ namespace _Scripts.Player
         }
 
 // --------------- MOVE PLAYER -----------------------------------------------        
-        private void MovePlayer(MovementData data)
+        private void MovePlayer()
         {
             transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z); // reset crouch
             
-            if (data.State == MovementState.Walking)
+            if (_state == MovementState.Walking)
                 _moveSpeed = walkSpeed; // Apply walk speed if walking
-            else if (data.State == MovementState.Sprinting)
+            else if (_state == MovementState.Sprinting)
                 _moveSpeed = sprintSpeed; // Apply sprint speed if sprinting
-            else if (data.State == MovementState.Crouching)
+            else if (_state == MovementState.Crouching)
             {
                 transform.localScale = new Vector3(transform.localScale.x, crouchYScale, transform.localScale.z);
                 _moveSpeed = crouchSpeed; // Apply crouch speed if crouching
             }
 
             // Calculate move direction
-            _moveDirection = (orientation.forward * data.Vertical) + (orientation.right * data.Horizontal);
+            _moveDirection = (orientation.forward * _cmd.move.y) + (orientation.right * _cmd.move.x);
             _moveDirection.Normalize();
             
             Vector3 currentVelocity = _rb.linearVelocity;
 
-            if (_onSlope && data.State != MovementState.Skiing && data.State != MovementState.Jetpacking && _rb.linearVelocity.magnitude <= _moveSpeed)
+            if (_onSlope && _state != MovementState.Skiing && _state != MovementState.Jetpacking && _rb.linearVelocity.magnitude <= _moveSpeed)
             {
                 Vector3 slopeMoveDir = Vector3.ProjectOnPlane(_moveDirection, _slopeHit.normal).normalized * _moveSpeed;
                 _predictionRb.Velocity(new Vector3(slopeMoveDir.x, currentVelocity.y, slopeMoveDir.z));
@@ -600,11 +555,11 @@ namespace _Scripts.Player
             return false;
         }
         
-        private void ControlEnv(MovementData data)
+        private void ControlEnv()
         {
             float drag;
 
-            switch (data.State)
+            switch (_state)
             {
                 case MovementState.Airborne or MovementState.Jetpacking:
                     drag = airDrag;
@@ -626,7 +581,7 @@ namespace _Scripts.Player
 
         #region Wall Run
 
-        private void CheckForWall(MovementData data)
+        private void CheckForWall()
         {
             Vector3 rayOrigin = transform.position;
             Vector3 rayDirection = orientation.forward;
@@ -648,19 +603,19 @@ namespace _Scripts.Player
                 else
                 {
                     _wallRunNormal = Vector3.zero; // Reset wall normal
-                    HandleWallLoss(data);
+                    HandleWallLoss();
                 }
             }
             else
             {
                 _wallRunNormal = Vector3.zero; // Reset wall normal
-                HandleWallLoss(data);
+                HandleWallLoss();
             }
         }
 
-        private void HandleWallLoss(MovementData data)
+        private void HandleWallLoss()
         {
-            if (data.State == MovementState.WallRunning)
+            if (_state == MovementState.WallRunning)
             {
                 _wallRunGraceTimer -= (float)base.TimeManager.TickDelta;
                 
@@ -708,8 +663,8 @@ namespace _Scripts.Player
             // Initialize _currentWallRunSpeed to the player's initial speed
             _currentWallRunSpeed = speed;
             
-            if (speed < slowWallRunThreshold)      _targetWallRunSpeed = targetWallRunSpeedSlow;
-            else if (speed < midWallRunThreshold) _targetWallRunSpeed = targetWallRunSpeedMid;
+            if (speed < targetWallRunSpeedMid)      _targetWallRunSpeed = targetWallRunSpeedSlow;
+            else if (speed < targetWallRunSpeedFast) _targetWallRunSpeed = targetWallRunSpeedMid;
             else                                   _targetWallRunSpeed = targetWallRunSpeedFast;
             
             // Use orientation.forward as the base direction, projected onto the wall plane
@@ -725,9 +680,9 @@ namespace _Scripts.Player
             _wallRunDirection = intendedWallRunDir;
         }
 
-        private void UpdateWallRunState(MovementData data)
+        private void UpdateWallRunState()
         {
-            if (data.State == MovementState.WallRunning)
+            if (_state == MovementState.WallRunning)
             {
                 if (_canWallRun)
                 {
@@ -862,9 +817,9 @@ namespace _Scripts.Player
             _wallRunNormal = Vector3.zero;
             _wallRunDirection = Vector3.zero;
             _state = MovementState.Airborne;
-            _currentWallRunSpeed = 0f; // Reset current speed
-            _wallRunGraceTimer = 0f; // critical reset
-            _exitWallTimer = 0f;     // critical reset
+            _currentWallRunSpeed = 0f;
+            _wallRunGraceTimer = 0f;
+            _exitWallTimer = 0f;
         }
 
         private void WallJump()
@@ -882,20 +837,20 @@ namespace _Scripts.Player
         
         #region Jetpack
         
-        private void HandleJetpack(MovementData data)
+        private void HandleJetpack()
         {
-            if (data.State == MovementState.Jetpacking)  // && _currentJetpackFuel > jetpackFuelCutoff
+            if (_state == MovementState.Jetpacking)  // && _currentJetpackFuel > jetpackFuelCutoff
             {
-                ContinueJetpack(data);
+                ContinueJetpack();
                 
                 _currentJetpackFuel -= jetpackFuelBurnRate * (float)base.TimeManager.TickDelta;
                 _currentJetpackFuel = Mathf.Clamp(_currentJetpackFuel, 0f, maxJetpackFuel);
             }
         }
         
-        private void ContinueJetpack(MovementData data)
+        private void ContinueJetpack()
         {
-            Vector3 rawInput = new Vector3(data.Horizontal, 0f, data.Vertical);
+            Vector3 rawInput = new Vector3(_cmd.move.x, 0f, _cmd.move.y);
             Vector3 horizontalDirection = rawInput.sqrMagnitude > 0.01f?orientation.TransformDirection(rawInput).normalized:Vector3.zero;
             
             // Apply vertical lift
@@ -915,7 +870,7 @@ namespace _Scripts.Player
 
         #region Skiing
 
-        private void PerformSkiMovement(MovementData data)
+        private void PerformSkiMovement()
         {
             //if (!_isGrounded)
               //  return;

@@ -42,11 +42,7 @@ public sealed class LagCompensationManager : MonoBehaviour
     /// <summary>
     /// Called by each player's predicted controller once per server tick.
     /// </summary>
-    public void RecordSnapshot(NetworkObject playerObj,
-                               Vector3 firePointPos,
-                               Vector3 firePointDir,
-                               Vector3 playerVelocity,
-                               uint tick)
+    public void RecordSnapshot(NetworkObject playerObj, Vector3 firePointPos, Vector3 firePointDir, Vector3 playerVelocity, uint tick)
     {
         if (!_buffers.TryGetValue(playerObj, out var buf))
         {
