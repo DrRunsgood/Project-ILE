@@ -1,51 +1,45 @@
+// _Scripts/Weapons/Projectiles/BaseProjectile.cs
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
+using _Scripts.Data;
 using _Scripts.Player;
 
 [RequireComponent(typeof(Rigidbody))]
 public sealed class BaseProjectile : NetworkBehaviour
 {
-    /* ───────── Inspector ───────── */
-    [Header("General")]
-    [SerializeField] float     lifeTime   = 3f;
-    [SerializeField] float     radius     = 0.20f;            // physics body radius
-    [SerializeField] LayerMask hitMask;
-    [SerializeField] LayerMask playerMask;
-    public ParticleSystem projectileTrail;
-
-    [Header("Explosion / Knock‑back")]
-    [SerializeField] float  blastRadius        = 6f;
-    [SerializeField] float  knockbackForce     = 500f;
-    [SerializeField, Tooltip("1 = linear, 2 = quadratic, 1.5 ≈ Tribes")]
-    float knockbackExponent   = 1.5f;
-    [SerializeField, Tooltip("Treat centre hits as straight‑up impulse below this distance")]
-    float minDirectionThreshold = 0.01f;
-    public GameObject projectileExplosion;
-
-    /* ───────── Synced spawn state ───────── */
+/* ───────── data from the shooter ───────── */
+    WeaponDefinition _def;                              // set once
+    public void SetDefinition(WeaponDefinition d)
+    {
+        _def = d;
+        _gravScale.Value = d.gravityScale;
+        _gAcc = (d.gravityScale != 0f) ? Physics.gravity * d.gravityScale : Vector3.zero;
+    }
+    
+/* ───────── synced spawn state ───────── */
     readonly SyncVar<Vector3> _initPos   = new();
     readonly SyncVar<Vector3> _initVel   = new();
     readonly SyncVar<uint>    _spawnTick = new();
+    readonly SyncVar<float> _gravScale = new();
 
-    /* ───────── Runtime ───────── */
+/* ───────── runtime ───────── */
     Rigidbody   _rb;
     bool        _despawning;
     Transform   _shooterRoot;
-    Vector3     _currentVelocity;
-    
-    // ROCKET STUFF
-    
-    
+    Vector3     _velocity;
+    private Vector3 _gAcc;
+    public ParticleSystem projectileTrail;
+    public GameObject projectileExplosion;
 
-    /* interpolation */
+/* interpolation buffer */
     Vector3 _prev, _next;
     float   _timer, _tickDt;
 
-    /* Non‑alloc buffer for overlap queries */
-    readonly Collider[] _overlapBuf = new Collider[32];
+/* non-alloc helpers */
+    readonly Collider[] _buf = new Collider[32];
 
-    /* ---------------- public API ---------------- */
+/* ───────── initialisation ───────── */
     public void Init(Vector3 pos, Vector3 vel, uint tick, NetworkObject shooter)
     {
         _initPos.Value   = pos;
@@ -53,7 +47,7 @@ public sealed class BaseProjectile : NetworkBehaviour
         _spawnTick.Value = tick;
         _shooterRoot     = shooter.transform;
 
-        _currentVelocity = vel;
+        _velocity  = vel;
         transform.position = pos;
         _despawning = false;
 
@@ -62,136 +56,173 @@ public sealed class BaseProjectile : NetworkBehaviour
                 Physics.IgnoreCollision(projCol, c, true);
     }
 
-    /* ---------------- Unity / FishNet ---------------- */
+/* ───────── Unity / Fish-Net ───────── */
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         _rb.isKinematic = true;
         _rb.useGravity  = false;
+        _gravScale.OnChange += OnGravityChanged;
     }
-
+    
+    void OnDestroy() => _gravScale.OnChange -= OnGravityChanged;
+    
+    void OnGravityChanged(float prev, float next, bool asServer)
+    {
+        _gAcc = (next != 0f) ? Physics.gravity * next : Vector3.zero;
+    }
+    
     public override void OnStartServer() => TimeManager.OnTick += ServerTick;
     public override void OnStopServer () => TimeManager.OnTick -= ServerTick;
 
     public override void OnStartClient()
     {
-        base.OnStartClient();
         if (!IsServer)
         {
             TimeManager.OnTick += ClientTick;
             _prev = _next = transform.position;
-            _tickDt = (float)(TimeManager?.TickDelta ?? (1f / 60f));
+            _tickDt = (float)TimeManager.TickDelta;
         }
-        
-        // Play projectile trail
+
         if (projectileTrail != null)
         {
             projectileTrail.Clear(); // Good for pooled objects
             projectileTrail.Play();  // Start emission
         }
     }
+
     public override void OnStopClient()
     {
-        if (!IsServer) TimeManager.OnTick -= ClientTick;
+        if (!IsServer) TimeManager.OnTick -= ClientTick; 
         
         if (projectileTrail != null && projectileTrail.transform.parent == this.transform)
         {
             projectileTrail.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         }
     }
-    
+
+/* ───────── server-side physics ───────── */
     void ServerTick()
     {
-        if (_despawning) return;
+        if (_despawning || _def == null) return;
 
         double dt = TimeManager.TickDelta;
-        if ((TimeManager.Tick - _spawnTick.Value) * dt >= lifeTime) { DespawnSelf(); return; }
+        if ((TimeManager.Tick - _spawnTick.Value) * dt >= _def.lifeTime)
+        { DespawnSelf(); return; }
 
-        Vector3 disp   = _currentVelocity * (float)dt;
-        Vector3 origin = transform.position;
-        Vector3 target = origin + disp;
-        Vector3 dir    = _currentVelocity.normalized;
+        if (_gAcc != Vector3.zero)
+            _velocity += _gAcc * (float)dt;
 
-        // overlap right at the start (spawns inside wall)
-        int cnt = Physics.OverlapSphereNonAlloc(origin, radius, _overlapBuf, hitMask, QueryTriggerInteraction.Ignore);
+        Vector3 from = transform.position;
+        Vector3 to   = from + _velocity * (float)dt;
+
+        /* 1) overlap at origin */
+        int cnt = Physics.OverlapSphereNonAlloc(from, _def.castRadius, _buf, _def.hitMask, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < cnt; i++)
         {
-            Collider c = _overlapBuf[i];
-            if (c.transform.root == _shooterRoot) continue;
-            transform.position = origin;
-            Explode(origin, Vector3.up);
+            if (_buf[i] == null) continue;
+            if (_buf[i].transform.root == _shooterRoot) continue;
+            Explode(from, Vector3.up);
+            return;
+        }
+        
+        /* 2) explicit sweep */
+        if (Sweep(from, to, out RaycastHit hit) && hit.collider.transform.root != _shooterRoot)
+        {
+            transform.position = hit.point;
+            Explode(hit.point, hit.normal);
             return;
         }
 
-        // sphere‑cast forward
-        if (disp.sqrMagnitude > 0.0001f && Physics.SphereCast(origin, radius, dir, out RaycastHit hit, disp.magnitude,
-                               hitMask, QueryTriggerInteraction.Ignore))
-        {
-            if (hit.collider.transform.root != _shooterRoot)
-            {
-                transform.position = hit.point;
-                Explode(hit.point, hit.normal);
-                return;
-            }
-        }
-
-        // 3) nothing hit → move
-        transform.position = target;
+        /* 3) nothing hit – move */
+        transform.position = to;
     }
 
-    /* ---------------- Explosion & knock‑back ---------------- */
+    /* generic sweep based on definition */
+    bool Sweep(Vector3 from, Vector3 to, out RaycastHit hit)
+    {
+        Vector3 dir = (to - from);
+        float len   = dir.magnitude;
+        dir        /= len;
+
+        switch (_def.castMode)
+        {
+            case CastMode.Sphere:
+                return Physics.SphereCast(from, _def.castRadius, dir,
+                          out hit, len, _def.hitMask,
+                          QueryTriggerInteraction.Ignore);
+
+            case CastMode.Capsule:
+                Vector3 p1 = from + Vector3.up * _def.castHalf;
+                Vector3 p2 = from - Vector3.up * _def.castHalf;
+                return Physics.CapsuleCast(p1, p2, _def.castRadius, dir,
+                          out hit, len, _def.hitMask,
+                          QueryTriggerInteraction.Ignore);
+
+            case CastMode.Ray:
+                return Physics.Raycast(from, dir, out hit, len,
+                          _def.hitMask, QueryTriggerInteraction.Ignore);
+        }
+        hit = default;
+        return false;
+    }
+
+/* ───────── explosion & knock-back ───────── */
     void Explode(Vector3 pos, Vector3 normal)
     {
-        ApplyExplosionKnockback(pos, _currentVelocity.normalized);
-        PlayImpactObservers(pos, normal);
+        ApplyExplosion(pos, _velocity.normalized);
+        RpcSpawnImpact(pos, normal);
         DespawnSelf();
     }
 
-    void ApplyExplosionKnockback(Vector3 explosionCenter, Vector3 fallbackDir)
+    // ---------------------------------------------------------------------
+    void ApplyExplosion(Vector3 centre, Vector3 shotDir)
     {
-        int hits = Physics.OverlapSphereNonAlloc(explosionCenter, blastRadius, _overlapBuf, playerMask, QueryTriggerInteraction.Ignore);
+        int hitCount = Physics.OverlapSphereNonAlloc(centre, _def.blastRadius, _buf, _def.playerMask, QueryTriggerInteraction.Ignore);
 
-        for (int i = 0; i < hits; i++)
+        for (int i = 0; i < hitCount; ++i)
         {
-            Collider col = _overlapBuf[i];
-            if (!col.TryGetComponent(out AdvancedPredictedController ctrl))
+            if (!_buf[i].TryGetComponent(out AdvancedPredictedController ctrl))
                 continue;
 
-            Vector3 hitPt       = col.ClosestPoint(explosionCenter);
-            Vector3 toTarget    = hitPt - explosionCenter;
-            float   distance    = toTarget.magnitude;
+            /* ----- radial vs. fallback direction -------------------------- */
+            Vector3 to    = _buf[i].ClosestPoint(centre) - centre;
+            float   dist  = to.magnitude;
 
-            /* ---------- direction ---------- */
-            Vector3 knockDir;
-            if (distance < minDirectionThreshold)                    // «inside» or almost inside
-                knockDir = fallbackDir.normalized;                   // ← use projectile flight‑dir
-            else
-                knockDir = toTarget / distance;                      // ← normal radial dir
+            Vector3 dir   = (dist < _def.minDirThreshold)
+                ? shotDir                              // straight-up/fallback
+                : to / dist;                           // radial
 
-            /* ---------- power fall‑off ---------- */
-            float normDist = Mathf.Clamp01(distance / blastRadius);  // 0..1
-            float power    = Mathf.Pow(1f - normDist, knockbackExponent);
+            /* ----- fall-off power (0…1) ----------------------------------- */
+            float power   = Mathf.Pow(1f - Mathf.Clamp01(dist / _def.blastRadius), _def.knockFalloffExp);
 
-            Vector3 impulse = knockDir * (knockbackForce * power);
+            Vector3 impulse = dir * (_def.knockbackForce * power);
 
-            // owner + host this tick, others via RPC
+            /* ----- apply locally + broadcast ------------------------------ */
             ctrl.ReceiveKnockback(impulse);
             RpcApplyKnockback(ctrl.NetworkObject, impulse);
         }
-        
-        for (int i = 0; i < hits; i++) _overlapBuf[i] = null;  // clear buffer
+
+        for (int i = 0; i < hitCount; ++i) _buf[i] = null;   // hygiene
     }
 
-
-    /* RPC that lands on every client, incl. owner */
     [ObserversRpc(BufferLast = false, ExcludeOwner = false)]
-    void RpcApplyKnockback(NetworkObject playerNO, Vector3 impulse)
+    void RpcApplyKnockback(NetworkObject target, Vector3 impulse)
     {
-        if (playerNO.TryGetComponent(out AdvancedPredictedController ctrl))
+        if (target.TryGetComponent(out AdvancedPredictedController ctrl))
             ctrl.ReceiveKnockback(impulse);
     }
 
-    /* ---------------- Client interpolation ---------------- */
+    [ObserversRpc(BufferLast = false)]
+    void RpcSpawnImpact(Vector3 pos, Vector3 normal)
+    {
+        projectileTrail.Stop();
+        
+        if (projectileExplosion != null)
+            Instantiate(projectileExplosion, pos, projectileExplosion.transform.rotation, null);
+    }
+
+/* ───────── client interpolation ───────── 
     void ClientTick()
     {
         if (IsServer || _despawning || _spawnTick.Value == 0) return;
@@ -203,6 +234,25 @@ public sealed class BaseProjectile : NetworkBehaviour
         _next   = _initPos.Value + _initVel.Value * (e * _tickDt);
         _timer  = 0f;
     }
+    */
+
+    void ClientTick()
+    {
+        if (IsServer || _despawning || _spawnTick.Value == 0) return;
+        if (TimeManager.Tick < _spawnTick.Value) return;
+
+        _prev   = transform.position;
+
+        uint   e     = TimeManager.Tick - _spawnTick.Value;       // elapsed ticks
+        float  dt    = (float)TimeManager.TickDelta;              // seconds / tick
+        float  t     = e * dt;                                    // seconds since spawn
+
+        /* ---- predicted position identical to server integration ---- */
+        _next = _initPos.Value + _initVel.Value * t + _gAcc * (0.5f * t * t);
+
+        _tickDt = dt;
+        _timer  = 0f;
+    }
 
     void LateUpdate()
     {
@@ -211,16 +261,7 @@ public sealed class BaseProjectile : NetworkBehaviour
         transform.position = Vector3.Lerp(_prev, _next, Mathf.Clamp01(_timer / _tickDt));
     }
 
-    // --------------- VFX --------------- 
-    [ObserversRpc(BufferLast = false)]
-    void PlayImpactObservers(Vector3 pos, Vector3 normal)
-    {
-        projectileTrail.Stop();
-        
-        if (projectileExplosion != null)
-            Instantiate(projectileExplosion, pos, projectileExplosion.transform.rotation, null);
-    }
-    
+/* ───────── despawn ───────── */
     [Server] void DespawnSelf()
     {
         if (_despawning) return;

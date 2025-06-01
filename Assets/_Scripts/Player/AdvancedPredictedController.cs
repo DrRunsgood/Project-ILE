@@ -111,13 +111,11 @@ namespace _Scripts.Player
         #endregion
 
         #region Internals
-
-        // Cache the command we are simulating this tick.
-        private Cmd _cmd;
-
-        // Bit-flag helper (keeps expressions readable).
+        
+        private Cmd _cmd; // Cache the command we are simulating this tick.
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool Btn(InputButtons mask, InputButtons flag) => (mask &  flag) != 0;
+        static bool Btn(InputButtons mask, InputButtons flag) => (mask &  flag) != 0; // Bit-flag helper (keeps expressions readable).
         public double LastTickTime { get; private set; }
         
         private NetworkObject _netObj;
@@ -130,14 +128,12 @@ namespace _Scripts.Player
         private bool _onSlope;
         private RaycastHit _groundHit;
         private RaycastHit _slopeHit;
-
-        // Movement input
-        private float _horizontalInput;
-        private float _verticalInput;
-        private Vector3 _moveDirection;
-       
+        
         // Input
         private InputHandler _iH;
+        
+        // Movement vector
+        private Vector3 _moveDirection;
         
         // For camera orientation
         private float _currentPitch; // we clamp pitch with minPitch, maxPitch

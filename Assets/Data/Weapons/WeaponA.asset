@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df35101616fced345bd415aa95240daa, type: 3}
+  m_Name: WeaponA
+  m_EditorClassIdentifier: 
+  displayName: Rocket Launcher
+  fireRate: 1.2
+  usesAmmo: 0
+  magazine: 6
+  reloadTime: 1.2
+  projectilePrefab: {fileID: 1938724514370874692, guid: dffcccc3d1c6b0044adecae6241f6300, type: 3}
+  projectileSpeed: 120
+  velocityInheritance: 0.7
+  gravityScale: 0
+  lifeTime: 15
+  castMode: 0
+  castRadius: 0.5
+  castHalf: 0.4
+  hitMask:
+    serializedVersion: 2
+    m_Bits: 3959
+  playerMask:
+    serializedVersion: 2
+    m_Bits: 448
+  blastRadius: 15
+  baseDamage: 50
+  knockbackForce: 50
+  knockFalloffExp: 1.5
+  minDirThreshold: 0.01
+  heldPrefab: {fileID: 3329046351917159825, guid: 666f80d10f158d64eb0e123a4c75cba8, type: 3}
+  muzzleVFX: {fileID: 0}
+  impactVFX: {fileID: 0}
+  fireSFX: {fileID: 0}

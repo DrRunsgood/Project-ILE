@@ -10,6 +10,8 @@ namespace _Scripts.Player
     {
         /* Public so AdvancedPredictedController can read it.                   */
         public InputCmdRing CmdRing { get; } = new InputCmdRing();
+        public int  WeaponSlotInput   { get; private set; }   // -1 none, 0/1/2 pick slot
+        public int  MouseWheelDelta   { get; private set; }   // -1,0,+1
 
         void Update()
         {
@@ -43,6 +45,20 @@ namespace _Scripts.Player
             };
 
             CmdRing.Push(cmd);
+            
+            CaptureWeaponSelect();
+        }
+        
+        void CaptureWeaponSelect()
+        {
+            WeaponSlotInput = -1;
+            if (Input.GetKeyDown(KeyCode.Alpha1)) WeaponSlotInput = 0;
+            if (Input.GetKeyDown(KeyCode.Alpha2)) WeaponSlotInput = 1;
+            if (Input.GetKeyDown(KeyCode.Alpha3)) WeaponSlotInput = 2;
+
+            float wheel = Input.GetAxis("Mouse ScrollWheel");
+            MouseWheelDelta = wheel > 0f ? +1 :
+                wheel < 0f ? -1 : 0;
         }
     }
 }
