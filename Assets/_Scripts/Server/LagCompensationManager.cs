@@ -25,10 +25,10 @@ public sealed class LagCompensationManager : MonoBehaviour
 
     public struct FireSnapshot
     {
-        public Vector3 Position;  // Fire point position
-        public Vector3 Direction; // Fire point forward
-        public Vector3 Velocity;  // Player velocity
-        public uint Tick;         // Tick this snapshot was taken
+        public Vector3 Position;
+        public Vector3 Direction;
+        public Vector3 Velocity;
+        public uint Tick;
 
         public FireSnapshot(Vector3 pos, Vector3 dir, Vector3 vel, uint tick)
         {
@@ -39,9 +39,6 @@ public sealed class LagCompensationManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Called by each player's predicted controller once per server tick.
-    /// </summary>
     public void RecordSnapshot(NetworkObject playerObj, Vector3 firePointPos, Vector3 firePointDir, Vector3 playerVelocity, uint tick)
     {
         if (!_buffers.TryGetValue(playerObj, out var buf))
@@ -49,36 +46,50 @@ public sealed class LagCompensationManager : MonoBehaviour
             buf = new CircularBuffer<FireSnapshot>(bufferTicks);
             _buffers[playerObj] = buf;
         }
-
         buf.PushBack(new FireSnapshot(firePointPos, firePointDir, playerVelocity, tick));
     }
 
-    /// <summary>
-    /// Attempts to get a snapshot for a player at a specific tick.
-    /// </summary>
-    public bool TryGetSnapshot(NetworkObject playerObj, uint tick, out FireSnapshot snap)
+    public bool TryGetSnapshot(NetworkObject playerObj, uint targetTick, out FireSnapshot snap, uint tolerance = 0) // Added tolerance parameter
     {
         snap = default;
-
         if (!_buffers.TryGetValue(playerObj, out var buf))
         {
             return false;
         }
 
+        FireSnapshot bestMatch = default;
+        uint closestDiff = uint.MaxValue;
+        bool foundMatch = false;
+
         foreach (var s in buf)
         {
-            if (s.Tick == tick)
+            if (s.Tick == targetTick)
             {
                 snap = s;
-                return true;
+                return true; // Exact match is best
+            }
+
+            if (tolerance > 0)
+            {
+                uint diff = (s.Tick > targetTick) ? (s.Tick - targetTick) : (targetTick - s.Tick);
+                if (diff <= tolerance && diff < closestDiff)
+                {
+                    closestDiff = diff;
+                    bestMatch = s;
+                    foundMatch = true;
+                }
             }
         }
+
+        if (foundMatch)
+        {
+            snap = bestMatch;
+            return true;
+        }
+
         return false;
     }
 
-    /// <summary>
-    /// Returns the number of snapshots available for a given player.
-    /// </summary>
     public int GetSnapshotCount(NetworkObject playerObj)
     {
         return _buffers.TryGetValue(playerObj, out var buf) ? buf.Count : 0;

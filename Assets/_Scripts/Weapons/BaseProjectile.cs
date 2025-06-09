@@ -222,19 +222,7 @@ public sealed class BaseProjectile : NetworkBehaviour
             Instantiate(projectileExplosion, pos, projectileExplosion.transform.rotation, null);
     }
 
-/* ───────── client interpolation ───────── 
-    void ClientTick()
-    {
-        if (IsServer || _despawning || _spawnTick.Value == 0) return;
-        if (TimeManager.Tick < _spawnTick.Value) return;
-
-        _prev   = transform.position;
-        uint e  = TimeManager.Tick - _spawnTick.Value;
-        _tickDt = (float)TimeManager.TickDelta;
-        _next   = _initPos.Value + _initVel.Value * (e * _tickDt);
-        _timer  = 0f;
-    }
-    */
+/* ───────── client interpolation ───────── */
 
     void ClientTick()
     {

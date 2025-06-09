@@ -47,6 +47,7 @@ namespace _Scripts.Data
     /* ───────── Prefabs & Effects ───────── */
         [Header("Gun / FX")]
         public NetworkObject heldPrefab;                // gun in hand
+        public NetworkObject groundPrefab;
         public GameObject     muzzleVFX;
         public GameObject     impactVFX;
         public AudioClip      fireSFX;

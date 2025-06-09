@@ -37,6 +37,7 @@ MonoBehaviour:
   knockFalloffExp: 1.5
   minDirThreshold: 0.01
   heldPrefab: {fileID: 3329046351917159825, guid: 666f80d10f158d64eb0e123a4c75cba8, type: 3}
+  groundPrefab: {fileID: 3329046351917159825, guid: a9ad3a53bcdd17548b7e6cf9001fc02f, type: 3}
   muzzleVFX: {fileID: 0}
   impactVFX: {fileID: 0}
   fireSFX: {fileID: 0}

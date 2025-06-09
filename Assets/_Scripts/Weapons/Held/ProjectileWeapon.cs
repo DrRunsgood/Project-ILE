@@ -2,6 +2,7 @@ using _Scripts.Data;
 using _Scripts.Player;
 using FishNet;
 using FishNet.Object;
+using FishNet.Connection;
 using UnityEngine;
 
 namespace _Scripts.Weapons
@@ -27,7 +28,7 @@ namespace _Scripts.Weapons
         {
             _wm        = wm;
             _ih        = ih;
-            _shooterNO = wm.NetworkObject;          // authoritative object for snapshots
+            _shooterNO = wm.NetworkObject;
         }
 
         #endregion
@@ -44,39 +45,41 @@ namespace _Scripts.Weapons
             
             _nextFireTime = Time.time + 1f / def.fireRate;
 
-            /* work out ‘rewind tick’ exactly as before – no direction sent */
-            double halfRttMs  = TimeManager.HalfRoundTripTime;
-            double tickDt     = TimeManager.TickDelta;
-            uint   lagTicks   = (uint)Mathf.CeilToInt((float)((halfRttMs * 0.001) / tickDt));
-            const  uint safety = 1u;
-            uint   rewindTick = (lagTicks + safety > TimeManager.Tick)
-                ? 0u
-                : TimeManager.Tick - (lagTicks + safety);
-
-            Server_RequestFire(rewindTick);
+            Server_RequestFire(TimeManager.Tick);
         }
         
         /* ------------------------------------------------------------ */
         #region server-side fire
         [ServerRpc(RequireOwnership = true)]
-        private void Server_RequestFire(uint clientTick)
+        void Server_RequestFire(uint clientFireTick, NetworkConnection sender = null)
         {
-            if (def.projectilePrefab == null || _shooterNO == null) return;
-            
-            if (!LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, clientTick, out var snap))
+            if (def.projectilePrefab == null || _shooterNO == null || !sender?.IsValid == true)
                 return;
-
-            Vector3 dir       = snap.Direction.normalized;
-            Vector3 finalVel  = dir * def.projectileSpeed + snap.Velocity * def.velocityInheritance;
             
+            /* 1) one-way latency in *ticks* ------------------------------------ */
+            uint serverNow   = TimeManager.Tick;                 // this frame on server
+            uint pktLocal    = sender.PacketTick.LocalTick;      // server-tick when pkt arrived
+            uint oneWayTicks = serverNow - pktLocal;             // == pktLocal - pktRemote
+
+            /* 2) rewind target ----------------------------------------------- */
+            const uint safety = 1;                               // 0 or 1 is usual - try 0 when not local testing
+            uint rewindTick   = clientFireTick > (oneWayTicks+safety) ? clientFireTick - (oneWayTicks+safety) : 0u;
+
+            /* 3) fetch snapshot (±1 already tolerated inside) ---------------- */
+            if (!LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, rewindTick, out var snap, 1))
+                return;                                          // miss – give up
+
+            /* 4) spawn ------------------------------------------------------- */
+            Vector3 dir      = snap.Direction.normalized;
+            Vector3 finalVel = dir * def.projectileSpeed + snap.Velocity * def.velocityInheritance;
+
             var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(def.projectilePrefab, true);
             if (nob == null) return;
-            
+
             if (nob.TryGetComponent(out BaseProjectile proj))
             {
                 proj.SetDefinition(def);
-                // use lag-compensated muzzle pos
-                proj.Init(snap.Position, finalVel, TimeManager.Tick, _shooterNO);
+                proj.Init(snap.Position, finalVel, serverNow, _shooterNO);
                 ServerManager.Spawn(nob);
             }
             else

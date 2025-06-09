@@ -303,6 +303,9 @@ namespace _Scripts.Player
             _currentPitch = data.CurrentPitch;
             
             cameraTransform.localEulerAngles = new Vector3(_currentPitch, 0f, 0f);
+            
+          //Debug.Log($"Position: {data.Position}, Rotation: {data.Rotation}, Linear Velocity: {data.LinearVelocity}, Drag: {data.Drag}, State: {data.State}, Pitch: {data.CurrentPitch}");
+            
         }
 
         #endregion
@@ -390,12 +393,12 @@ namespace _Scripts.Player
             if (_isGrounded && Btn(cmd.buttons, InputButtons.Jump))
                 Jump();
             
+            _predictionRb.Simulate();
+            
             if (IsServer && LagCompensationManager.Instance != null)
             {
                 LagCompensationManager.Instance.RecordSnapshot(_netObj, firePoint.position, firePoint.forward, _rb.linearVelocity, TimeManager.Tick);
             }
-            
-            _predictionRb.Simulate();
         }
         #endregion
         
