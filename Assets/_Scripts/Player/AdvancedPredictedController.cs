@@ -32,7 +32,7 @@ namespace _Scripts.Player
         [Header("References")]
         [SerializeField] private Transform orientation;
         [Tooltip("If you have a separate camera transform, reference it here to apply pitch to the camera only.")]
-        [SerializeField] private Transform cameraTransform;
+        [SerializeField] private Transform headAnchor;
         [SerializeField] private Transform firePoint;
 
         [Header("Look Settings")]
@@ -107,6 +107,9 @@ namespace _Scripts.Player
 
         private MovementState _previousState;
         public MovementState State => _state;
+        
+        public Transform HeadAnchor => headAnchor;
+        public float CurrentPitch => _currentPitch;
 
         #endregion
 
@@ -138,7 +141,6 @@ namespace _Scripts.Player
         // For camera orientation
         private float _currentPitch; // we clamp pitch with minPitch, maxPitch
         public  float PrevPitch    { get; private set; }
-        public  float CurrentPitch => _currentPitch;
 
         // Wall Running
         private bool _canWallRun;
@@ -230,12 +232,21 @@ namespace _Scripts.Player
             int remote = LayerMask.NameToLayer(REMOTE_LAYER);
 
             SetLayerRecursively(gameObject, IsOwner ? local : remote);
-            
+
             if (IsOwner)
+            {
                 _iH = GetComponent<InputHandler>();
-            
-            if (cameraTransform != null)
-                cameraTransform.gameObject.SetActive(IsOwner);
+                
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible   = false;
+                
+                /* hand the scene camera the new target */
+                FpsCameraFollow cam = Camera.main?.GetComponent<FpsCameraFollow>();
+                if (cam != null) cam.SetTarget(this);
+            }
+
+            //if (cameraTransform != null)
+             //   cameraTransform.gameObject.SetActive(IsOwner);
         }
 
         public override void OnStartServer()
@@ -301,11 +312,6 @@ namespace _Scripts.Player
             _state = data.State;
 
             _currentPitch = data.CurrentPitch;
-            
-            cameraTransform.localEulerAngles = new Vector3(_currentPitch, 0f, 0f);
-            
-          //Debug.Log($"Position: {data.Position}, Rotation: {data.Rotation}, Linear Velocity: {data.LinearVelocity}, Drag: {data.Drag}, State: {data.State}, Pitch: {data.CurrentPitch}");
-            
         }
 
         #endregion
@@ -413,7 +419,7 @@ namespace _Scripts.Player
             /* PITCH – just track a number; camera uses it every render frame */
             _currentPitch = Mathf.Clamp(_currentPitch - pitchDeltaRaw * pitchSensitivity, minPitch, maxPitch);
 
-            cameraTransform.localEulerAngles = new Vector3(_currentPitch, 0f, 0f);
+            headAnchor.localEulerAngles = new Vector3(_currentPitch, 0f, 0f); //was cameraTransform.
         }
 
         #endregion

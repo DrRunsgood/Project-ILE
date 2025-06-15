@@ -30,7 +30,6 @@ public sealed class BaseProjectile : NetworkBehaviour
     Vector3     _velocity;
     private Vector3 _gAcc;
     public ParticleSystem projectileTrail;
-    public GameObject projectileExplosion;
 
 /* interpolation buffer */
     Vector3 _prev, _next;
@@ -199,6 +198,8 @@ public sealed class BaseProjectile : NetworkBehaviour
             Vector3 impulse = dir * (_def.knockbackForce * power);
 
             /* ----- apply locally + broadcast ------------------------------ */
+            if (_def.knockbackForce <= 0f) return;  // Only continue if knockbackForce > 0 to avoid NaN calc errors
+            
             ctrl.ReceiveKnockback(impulse);
             RpcApplyKnockback(ctrl.NetworkObject, impulse);
         }
@@ -216,10 +217,14 @@ public sealed class BaseProjectile : NetworkBehaviour
     [ObserversRpc(BufferLast = false)]
     void RpcSpawnImpact(Vector3 pos, Vector3 normal)
     {
-        projectileTrail.Stop();
-        
-        if (projectileExplosion != null)
-            Instantiate(projectileExplosion, pos, projectileExplosion.transform.rotation, null);
+        if (projectileTrail != null)
+        {
+            projectileTrail.Stop();
+            VfxPool.Spawn("VFX/RocketExplosion", pos, Quaternion.LookRotation(normal), 2.5f);
+        }
+        // for now use projectile trail to determine explosion until we build out our individual projectile scripts
+        //if (!string.IsNullOrEmpty("VFX/RocketExplosion"))
+          //  VfxPool.Spawn("VFX/RocketExplosion", pos, Quaternion.LookRotation(normal), 2.5f);
     }
 
 /* ───────── client interpolation ───────── */

@@ -17,6 +17,8 @@ namespace _Scripts.Weapons
         WeaponManager _wm;    // living on the owning player
         InputHandler  _ih;
         NetworkObject _shooterNO; // player’s NetworkObject (for lag-comp)
+        
+        public WeaponDefinition Definition => def;   // add this one-liner
 
         /* ───────── state ───────── */
         public bool IsActive { get; set; }          // set by WeaponManager
@@ -37,8 +39,7 @@ namespace _Scripts.Weapons
         {
             if (!IsOwner || !IsActive || _wm == null || _ih == null) return;
 
-            bool trigger =
-                (_ih.CmdRing.Get(TimeManager.Tick).buttons & InputButtons.Fire) != 0;
+            bool trigger = (_ih.CmdRing.Get(TimeManager.Tick).buttons & InputButtons.Fire) != 0;
 
             if (!trigger || Time.time < _nextFireTime)
                 return;
@@ -67,7 +68,7 @@ namespace _Scripts.Weapons
 
             /* 3) fetch snapshot (±1 already tolerated inside) ---------------- */
             if (!LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, rewindTick, out var snap, 1))
-                return;                                          // miss – give up
+                return; // miss – give up
 
             /* 4) spawn ------------------------------------------------------- */
             Vector3 dir      = snap.Direction.normalized;
@@ -75,6 +76,8 @@ namespace _Scripts.Weapons
 
             var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(def.projectilePrefab, true);
             if (nob == null) return;
+            
+            nob.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
 
             if (nob.TryGetComponent(out BaseProjectile proj))
             {

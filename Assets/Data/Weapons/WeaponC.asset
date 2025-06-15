@@ -10,20 +10,20 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: df35101616fced345bd415aa95240daa, type: 3}
-  m_Name: WeaponA
+  m_Name: WeaponC
   m_EditorClassIdentifier: 
-  displayName: Rocket Launcher
-  fireRate: 1.2
+  displayName: Chaingun
+  fireRate: 7
   usesAmmo: 0
   magazine: 6
   reloadTime: 1.2
-  projectilePrefab: {fileID: 1938724514370874692, guid: dffcccc3d1c6b0044adecae6241f6300, type: 3}
-  projectileSpeed: 120
-  velocityInheritance: 0.7
+  projectilePrefab: {fileID: 8766701267539982643, guid: a184955b35dd708459f8a77ca92e00e8, type: 3}
+  projectileSpeed: 400
+  velocityInheritance: 1
   gravityScale: 0
-  lifeTime: 15
+  lifeTime: 3
   castMode: 0
-  castRadius: 0.5
+  castRadius: 0.1
   castHalf: 0.4
   hitMask:
     serializedVersion: 2
@@ -31,14 +31,14 @@ MonoBehaviour:
   playerMask:
     serializedVersion: 2
     m_Bits: 448
-  blastRadius: 15
-  baseDamage: 50
-  knockbackForce: 50
-  knockFalloffExp: 1.5
-  minDirThreshold: 0.01
-  fpViewPrefab: {fileID: 2624510343394097245, guid: dd81737ac1239aa4f9c0b1e894b3375d, type: 3}
-  heldPrefab: {fileID: 3329046351917159825, guid: 666f80d10f158d64eb0e123a4c75cba8, type: 3}
-  groundPrefab: {fileID: 3329046351917159825, guid: a9ad3a53bcdd17548b7e6cf9001fc02f, type: 3}
+  blastRadius: 0
+  baseDamage: 15
+  knockbackForce: 0
+  knockFalloffExp: 0
+  minDirThreshold: 0
+  fpViewPrefab: {fileID: 7659545508074938032, guid: a66694ddfd4a7da40b372a2b6d153ca9, type: 3}
+  heldPrefab: {fileID: 4745445434944333998, guid: 1576650df2c63774fa4291e9038cbe71, type: 3}
+  groundPrefab: {fileID: 1350171054534706245, guid: c6d0b0f9b73d5e94ba4b08a22bd11e79, type: 3}
   muzzleVFX: {fileID: 0}
   impactVFX: {fileID: 0}
   fireSFX: {fileID: 0}

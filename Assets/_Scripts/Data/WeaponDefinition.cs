@@ -46,7 +46,8 @@ namespace _Scripts.Data
 
     /* ───────── Prefabs & Effects ───────── */
         [Header("Gun / FX")]
-        public NetworkObject heldPrefab;                // gun in hand
+        public GameObject    fpViewPrefab;  // Local visual game object for our first person player view
+        public NetworkObject heldPrefab;                // gun in hand for others
         public NetworkObject groundPrefab;
         public GameObject     muzzleVFX;
         public GameObject     impactVFX;

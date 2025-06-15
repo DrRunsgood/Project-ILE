@@ -18,6 +18,9 @@ namespace _Scripts.Player
 
         /* “drop” is a one-shot flag – consumed by WeaponManager */
         bool _dropPressed;
+        
+        // First/Third person camera toggle
+        bool _viewTogglePressed;
 
         /* ================================================================= */
         void Update()
@@ -27,11 +30,9 @@ namespace _Scripts.Player
             uint tick = TimeManager.Tick;
 
             /* ---------- 1) movement / look -------------------------------- */
-            Vector2 move = new(
-                Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+            Vector2 move = new(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
 
-            Vector2 look = new(
-                Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
+            Vector2 look = new(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
 
             /* ---------- 2) buttons --------------------------------------- */
             InputButtons btn = InputButtons.None;
@@ -53,6 +54,10 @@ namespace _Scripts.Player
             });
 
             CaptureWeaponHotkeys();
+            
+            // First/Third Person toggle
+            if (Input.GetKeyDown(KeyCode.V))
+                _viewTogglePressed = true;
         }
 
         /* ================================================================= */
@@ -73,8 +78,7 @@ namespace _Scripts.Player
 
             /* mouse-wheel scroll */
             float wheel = Input.GetAxis("Mouse ScrollWheel");
-            MouseWheelDelta = wheel > 0f ? +1 :
-                              wheel < 0f ? -1 : 0;
+            MouseWheelDelta = wheel > 0f ? +1 : wheel < 0f ? -1 : 0;
         }
 
         /// Called by WeaponManager once per frame.
@@ -83,6 +87,13 @@ namespace _Scripts.Player
             bool pressed = _dropPressed;
             _dropPressed = false;          // reset for next frame
             return pressed;
+        }
+        
+        public bool ConsumeViewToggle()
+        {
+            bool p = _viewTogglePressed;
+            _viewTogglePressed = false;
+            return p;
         }
     }
 }
