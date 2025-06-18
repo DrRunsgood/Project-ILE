@@ -32,7 +32,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 448
   blastRadius: 15
-  baseDamage: 50
+  damage: 45
   knockbackForce: 50
   knockFalloffExp: 1.5
   minDirThreshold: 0.01

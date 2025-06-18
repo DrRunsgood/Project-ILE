@@ -196,7 +196,7 @@ namespace _Scripts.Weapons
             WeaponInstance inst = _weapons[slot];
 
             // 1) ground pickup 
-            Vector3 pos = transform.position + transform.forward * 2.5f + Vector3.up * .3f;
+            Vector3 pos = transform.position + transform.forward * 5f + Vector3.up * .3f;
             NetworkObject ground = Instantiate(inst.Def.groundPrefab, pos, Quaternion.identity);
             ServerManager.Spawn(ground);
 
@@ -212,6 +212,13 @@ namespace _Scripts.Weapons
 
             // 5) despawn TP model 
             ServerManager.Despawn(inst.NetworkObj);
+        }
+        
+        [Server]
+        public void DropAll()
+        {
+            for (int i = _weapons.Count - 1; i >= 0; --i)
+                Server_DropWeapon(i);
         }
 
         [ObserversRpc(BufferLast = true, RunLocally = false)]

@@ -3,6 +3,7 @@ using UnityEngine;
 using FishNet.Object;
 using FishNet.Object.Prediction;
 using FishNet.Transporting;
+using FishNet.Object.Synchronizing;
 using Cmd = _Scripts.Player.InputCmd;   // short-hand
 
 
@@ -91,7 +92,7 @@ namespace _Scripts.Player
         [Header("Jetpack Settings")]
         [SerializeField] private float jetpackForce = 15f;
         [SerializeField] private float jetpackFuelBurnRate = 10f;
-        [SerializeField] private float maxJetpackFuel = 100f;
+        [SerializeField] private float maxEnergy = 100f;
         [SerializeField] private float jetpackFuelRegenRate = 5f;
         [SerializeField] private float jetpackFuelCutoff;
         [SerializeField] private float jetpackDirectionalBlend = 0.3f;
@@ -110,6 +111,15 @@ namespace _Scripts.Player
         
         public Transform HeadAnchor => headAnchor;
         public float CurrentPitch => _currentPitch;
+        
+        // SyncVar for soft death
+        readonly SyncVar<bool> _isFrozen = new(false);
+        
+        public bool IsFrozen
+        {
+            get => _isFrozen.Value;
+            set => _isFrozen.Value = value;   // call from the **server** only
+        }
 
         #endregion
 
@@ -140,7 +150,7 @@ namespace _Scripts.Player
         
         // For camera orientation
         private float _currentPitch; // we clamp pitch with minPitch, maxPitch
-        public  float PrevPitch    { get; private set; }
+        public float PrevPitch    { get; private set; }
 
         // Wall Running
         private bool _canWallRun;
@@ -158,7 +168,7 @@ namespace _Scripts.Player
 
         // Jetpack
         private bool _isJetpacking;
-        private float _currentJetpackFuel;
+        private float _energy;
         
         // Knockback
         private Vector3? _pendingKnockback;
@@ -219,8 +229,7 @@ namespace _Scripts.Player
             _predictionRb.Initialize(_rb);
 
             _startYScale = transform.localScale.y;
-            _currentJetpackFuel = maxJetpackFuel;
-
+            
             TimeManager.OnTick += OnTick;
             TimeManager.OnPostTick += OnPostTick;
         }
@@ -240,19 +249,16 @@ namespace _Scripts.Player
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible   = false;
                 
-                /* hand the scene camera the new target */
                 FpsCameraFollow cam = Camera.main?.GetComponent<FpsCameraFollow>();
                 if (cam != null) cam.SetTarget(this);
             }
-
-            //if (cameraTransform != null)
-             //   cameraTransform.gameObject.SetActive(IsOwner);
         }
 
         public override void OnStartServer()
         {
             int remote = LayerMask.NameToLayer(REMOTE_LAYER);
             SetLayerRecursively(gameObject, remote);
+            _energy = maxEnergy;
         }
 
         public override void OnStopNetwork()
@@ -321,6 +327,9 @@ namespace _Scripts.Player
         [Replicate]
         private void Replicate(Cmd cmd, ReplicateState state = ReplicateState.Invalid, Channel channel = Channel.Unreliable)
         {
+            if (IsFrozen)
+                return;
+            
             LastTickTime = Time.timeAsDouble;
             _cmd = cmd;
             PrevPitch = _currentPitch;
@@ -500,11 +509,11 @@ namespace _Scripts.Player
         
         private void UpdateFuel()
         {
-            if (!_state.HasFlag(MovementState.Jetpacking) && _currentJetpackFuel < maxJetpackFuel)
+            if (!_state.HasFlag(MovementState.Jetpacking) && _energy < maxEnergy)
             {
-                _currentJetpackFuel += jetpackFuelRegenRate * (float)base.TimeManager.TickDelta;
+                _energy += jetpackFuelRegenRate * (float)base.TimeManager.TickDelta;
             }
-            _currentJetpackFuel = Mathf.Clamp(_currentJetpackFuel, 0f, maxJetpackFuel);
+            _energy = Mathf.Clamp(_energy, 0f, maxEnergy);
         }
 
 // --------------- MOVE PLAYER -----------------------------------------------        
@@ -844,12 +853,12 @@ namespace _Scripts.Player
         
         private void HandleJetpack()
         {
-            if (_state == MovementState.Jetpacking)  // && _currentJetpackFuel > jetpackFuelCutoff
+            if (_state == MovementState.Jetpacking)  // && _energy > jetpackFuelCutoff
             {
                 ContinueJetpack();
                 
-                _currentJetpackFuel -= jetpackFuelBurnRate * (float)base.TimeManager.TickDelta;
-                _currentJetpackFuel = Mathf.Clamp(_currentJetpackFuel, 0f, maxJetpackFuel);
+                _energy -= jetpackFuelBurnRate * (float)base.TimeManager.TickDelta;
+                _energy = Mathf.Clamp(_energy, 0f, maxEnergy);
             }
         }
         
@@ -930,6 +939,27 @@ namespace _Scripts.Player
             _pendingTempDrag   = null;
                 
             _state = MovementState.Airborne;
+        }
+        #endregion
+        
+        #region respawn
+        public void HardResetMovement()
+        {
+            // 1) clear physics
+            _rb.Move(_rb.position, Quaternion.identity);
+            _rb.linearVelocity    = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+
+            // 4) misc state
+            _state              = MovementState.Airborne;
+            _pendingKnockback   = null;
+            _onSlope            = false;
+            _currentPitch       = 0f;
+        }
+        
+        public void ResetEnergy()
+        {
+            _energy = maxEnergy;
         }
         #endregion
     }

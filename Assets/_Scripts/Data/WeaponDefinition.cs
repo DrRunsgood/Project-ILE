@@ -37,7 +37,7 @@ namespace _Scripts.Data
     /* ───────── Explosion / Damage ───────── */
         [Header("Explosion / Knock-back & Damage")]
         public float  blastRadius       = 6f;           // 0 = none
-        public float  baseDamage        = 100f;
+        public float  damage        = 100f;
         public float  knockbackForce        = 500f;
         [Tooltip("1 = linear, 2 = quadratic, 1.5 ≈ Tribes")]
         public float  knockFalloffExp   = 1.5f;

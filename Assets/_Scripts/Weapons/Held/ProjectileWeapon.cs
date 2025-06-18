@@ -74,16 +74,21 @@ namespace _Scripts.Weapons
             Vector3 dir      = snap.Direction.normalized;
             Vector3 finalVel = dir * def.projectileSpeed + snap.Velocity * def.velocityInheritance;
 
-            var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(def.projectilePrefab, true);
+            var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(
+                def.projectilePrefab, true);
             if (nob == null) return;
-            
+
             nob.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
 
             if (nob.TryGetComponent(out BaseProjectile proj))
             {
                 proj.SetDefinition(def);
                 proj.Init(snap.Position, finalVel, serverNow, _shooterNO);
-                ServerManager.Spawn(nob);
+
+                ServerManager.Spawn(nob);                 // ← spawns on server
+
+                // ↓ send immutable spawn-state to all observers (owner will ignore)
+                proj.RpcInit(snap.Position, finalVel, serverNow, def.gravityScale);
             }
             else
                 ServerManager.Despawn(nob, DespawnType.Pool);
