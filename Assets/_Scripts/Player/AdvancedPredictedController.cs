@@ -92,9 +92,7 @@ namespace _Scripts.Player
         [Header("Jetpack Settings")]
         [SerializeField] private float jetpackForce = 15f;
         [SerializeField] private float jetpackFuelBurnRate = 10f;
-        [SerializeField] private float maxEnergy = 100f;
-        [SerializeField] private float jetpackFuelRegenRate = 5f;
-        [SerializeField] private float jetpackFuelCutoff;
+        [SerializeField] private float jetpackFuelCutoff = 5f;
         [SerializeField] private float jetpackDirectionalBlend = 0.3f;
         [SerializeField] private float maxAdditionalForwardSpeed = 30f;
         [SerializeField] private float maxAdditionalLateralSpeed = 40f;
@@ -102,6 +100,10 @@ namespace _Scripts.Player
         [Header("Skiing Settings")]
         [SerializeField] private float skiControl = 0.1f;
         [SerializeField] private float skiDrag = 0.1f;
+        
+        [Header("Energy Settings")]
+        [SerializeField] private float maxEnergy = 100f;
+        [SerializeField] private float energyRegenRate = 5f;
 
         [Header("Debug / State Info")]
         [SerializeField] private MovementState _state;
@@ -165,10 +167,14 @@ namespace _Scripts.Player
         private Vector3 _storedWallNormal = Vector3.zero;
         private float _wallRunGraceTimer;
         private float _currentWallRunSpeed; // Current speed for wall-running (maintained separately)
-
-        // Jetpack
+        
         private bool _isJetpacking;
+        
+        // Energy
         private float _energy;
+        public float Energy     => _energy;
+        public float MaxEnergy  => maxEnergy;
+
         
         // Knockback
         private Vector3? _pendingKnockback;
@@ -190,9 +196,11 @@ namespace _Scripts.Player
             public Vector3 LinearVelocity;
             public MovementState State;
             public float CurrentPitch;
+            public float Energy;
             public float Drag;
 
-            public ReconciliationData(Vector3 position, Quaternion rotation, Vector3 linearVelocity, MovementState state, float currentPitch, float currentDrag)
+            public ReconciliationData(Vector3 position, Quaternion rotation, Vector3 linearVelocity, MovementState state, 
+                float currentPitch, float currentEnergy, float currentDrag)
             {
                 _tick = 0;
                 Position           = position;
@@ -200,6 +208,7 @@ namespace _Scripts.Player
                 LinearVelocity     = linearVelocity;
                 State              = state;
                 CurrentPitch       = currentPitch;
+                Energy             = currentEnergy;
                 Drag               = currentDrag;
             }
 
@@ -272,9 +281,6 @@ namespace _Scripts.Player
         {
             if (IsOwner)
             {
-                // Update fuel
-                //UpdateFuel();
-                
                 // Pack them into MovementData
                 _cmd = _iH.CmdRing.Get(TimeManager.Tick);   // ← store once
                 Replicate(_cmd);
@@ -301,6 +307,7 @@ namespace _Scripts.Player
                 _rb.linearVelocity,
                 _state,
                 _currentPitch,
+                _energy,
                 _rb.linearDamping
             );
  
@@ -318,6 +325,8 @@ namespace _Scripts.Player
             _state = data.State;
 
             _currentPitch = data.CurrentPitch;
+            
+            _energy = data.Energy;
         }
 
         #endregion
@@ -331,8 +340,12 @@ namespace _Scripts.Player
                 return;
             
             LastTickTime = Time.timeAsDouble;
+            
+            float dt = (float)TimeManager.TickDelta;
             _cmd = cmd;
             PrevPitch = _currentPitch;
+            
+            RegenEnergy(dt); // Regen Energy first
             
             // Check for incoming Knockback
             if (_pendingKnockback.HasValue)
@@ -363,13 +376,19 @@ namespace _Scripts.Player
                 UpdateWallRunState();
             
             ControlEnv();
-
             
             switch (_state)
             {
                 case MovementState.Jetpacking:
-                    if (!_isGrounded) MovePlayer();
-                    HandleJetpack();
+                    if (SpendEnergy(jetpackFuelBurnRate * dt))
+                    {
+                        if (!_isGrounded) MovePlayer();   // optional air-control
+                        Jetpack();                // apply impulses
+                    }
+                    else
+                    {
+                        _state = MovementState.Airborne;  // pack sputters out
+                    }
                     break;
 
                 case MovementState.Skiing:
@@ -385,26 +404,7 @@ namespace _Scripts.Player
                     MovePlayer();
                     break;
             }
-            
-            /*
-            if (_state == MovementState.Jetpacking)
-            {
-                if (!_isGrounded) MovePlayer();
-                HandleJetpack(data);
-            }
-            
-            else if (_state == MovementState.Skiing)
-                PerformSkiMovement(cmd);
-            
-            else if (_state == MovementState.WallRunning && Btn(_cmd.buttons, InputButtons.Jump))
-                WallJump();
 
-            else if (_state == MovementState.WallRunning)
-                PerformWallRunMovement();
-            else
-                MovePlayer();
-            */
-            
             if (_isGrounded && Btn(cmd.buttons, InputButtons.Jump))
                 Jump();
             
@@ -457,14 +457,19 @@ namespace _Scripts.Player
     
         private void UpdateMovementState()
         {
-            // Always check Jetpacking first (highest priority)
             if (Btn(_cmd.buttons, InputButtons.Jetpack))
             {
-                if (_state == MovementState.WallRunning) 
-                    StopWallRun();
-                
-                _state = MovementState.Jetpacking;
-                return; // Exit early since jetpack overrides all movement logic
+                /* Already jet-packing?  → keep going as long as we still have *any* energy.
+                   Not jet-packing yet? → need at least jetpackFuelCutoff to ignite.        */
+                if (_state == MovementState.Jetpacking ? _energy > 0f : _energy >= jetpackFuelCutoff)
+                {
+                    // If we started jet-packing this frame, stop wall-run etc.
+                    if (_state != MovementState.Jetpacking && _state == MovementState.WallRunning)
+                        StopWallRun();
+
+                    _state = MovementState.Jetpacking;
+                    return;                     // jet-pack overrides all other states
+                }
             }
 
             // If not already wall running, check for wall run initiation using the wall run key.
@@ -506,25 +511,14 @@ namespace _Scripts.Player
                 _state = MovementState.WallRunning;
             }
         }
-        
-        private void UpdateFuel()
-        {
-            if (!_state.HasFlag(MovementState.Jetpacking) && _energy < maxEnergy)
-            {
-                _energy += jetpackFuelRegenRate * (float)base.TimeManager.TickDelta;
-            }
-            _energy = Mathf.Clamp(_energy, 0f, maxEnergy);
-        }
 
 // --------------- MOVE PLAYER -----------------------------------------------        
         private void MovePlayer()
         {
             transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z); // reset crouch
             
-            if (_state == MovementState.Walking)
-                _moveSpeed = walkSpeed; // Apply walk speed if walking
-            else if (_state == MovementState.Sprinting)
-                _moveSpeed = sprintSpeed; // Apply sprint speed if sprinting
+            if (_state == MovementState.Walking) _moveSpeed = walkSpeed; // Apply walk speed if walking
+            else if (_state == MovementState.Sprinting) _moveSpeed = sprintSpeed; // Apply sprint speed if sprinting
             else if (_state == MovementState.Crouching)
             {
                 transform.localScale = new Vector3(transform.localScale.x, crouchYScale, transform.localScale.z);
@@ -711,20 +705,17 @@ namespace _Scripts.Player
                 }
                 else if (_exitingWall)
                 {
-                    //Debug.Log($"_exitWallTimer: {_exitWallTimer}");
                     if (_exitWallTimer > 0f)
                         _exitWallTimer -= (float)base.TimeManager.TickDelta;
                     else
                     {
                         _exitingWall = false;
-                        //Debug.Log("Calling StopWallRun - A");
                         StopWallRun();
                     }
                 }
                 else
                 {
                     StopWallRun();
-                   // Debug.Log("Calling StopWallRun - B");
                 }
             }
         }
@@ -808,7 +799,7 @@ namespace _Scripts.Player
             float currentVerticalVelocity = _rb.linearVelocity.y;
             Vector3 verticalDampingForce = Vector3.down * (currentVerticalVelocity * wallRunVerticalDampFactor);
             _predictionRb.AddForce(verticalDampingForce, ForceMode.Acceleration); 
-            }
+        }
         
         private bool IsStillOnWall(out Vector3 currentWallNormal)
         {
@@ -851,18 +842,7 @@ namespace _Scripts.Player
         
         #region Jetpack
         
-        private void HandleJetpack()
-        {
-            if (_state == MovementState.Jetpacking)  // && _energy > jetpackFuelCutoff
-            {
-                ContinueJetpack();
-                
-                _energy -= jetpackFuelBurnRate * (float)base.TimeManager.TickDelta;
-                _energy = Mathf.Clamp(_energy, 0f, maxEnergy);
-            }
-        }
-        
-        private void ContinueJetpack()
+        private void Jetpack()
         {
             Vector3 rawInput = new Vector3(_cmd.move.x, 0f, _cmd.move.y);
             Vector3 horizontalDirection = rawInput.sqrMagnitude > 0.01f?orientation.TransformDirection(rawInput).normalized:Vector3.zero;
@@ -961,6 +941,27 @@ namespace _Scripts.Player
         {
             _energy = maxEnergy;
         }
+        #endregion
+        
+        #region energy
+        bool SpendEnergy(float amount)
+        {
+            Debug.Log(_energy);
+            if (_energy <= 0.17f)
+                return false;                      // totally empty
+
+            float consumed = Mathf.Min(amount, _energy);
+            _energy -= consumed;                   // burn what we have
+            return true;                           // there *was* energy this tick
+        }
+
+
+        void RegenEnergy(float dt)
+        {
+            if (_energy < maxEnergy)
+                _energy = Mathf.Min(maxEnergy, _energy + energyRegenRate * dt);
+        }
+
         #endregion
     }
 }

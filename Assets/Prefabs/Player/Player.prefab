@@ -106,6 +106,7 @@ MonoBehaviour:
   <PredictedOwner>k__BackingField: {fileID: 0}
   NetworkBehaviours:
   - {fileID: 2929346116547752253}
+  - {fileID: -3159674986349750010}
   - {fileID: 8501514172621720761}
   - {fileID: 4486696069042159977}
   - {fileID: 759703639484445222}
@@ -219,10 +220,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9aaa7f99bf513c5438155d713a12d393, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 255
+  _componentIndexCache: 1
   _addedNetworkObject: {fileID: 6832439599154668905}
-  _networkObjectCache: {fileID: 0}
-  _maxHp: 100
+  _networkObjectCache: {fileID: 6832439599154668905}
+  maxHp: 100
+  respawnDelay: 5
 --- !u!114 &8501514172621720761
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -235,7 +237,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ec967c5d64ad51a4d83d1fa1e57d4bb4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 1
+  _componentIndexCache: 2
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   orientation: {fileID: 9128714729413085702}
@@ -278,15 +280,15 @@ MonoBehaviour:
   wallRunAcceleration: 20
   wallRunVerticalDampFactor: 10
   jetpackForce: 0.75
-  jetpackFuelBurnRate: 15
-  maxJetpackFuel: 100
-  jetpackFuelRegenRate: 15
-  jetpackFuelCutoff: 0
+  jetpackFuelBurnRate: 22
+  jetpackFuelCutoff: 5
   jetpackDirectionalBlend: 0.3
   maxAdditionalForwardSpeed: 30
   maxAdditionalLateralSpeed: 40
   skiControl: 0.15
   skiDrag: 0.025
+  maxEnergy: 100
+  energyRegenRate: 10
   _state: 0
 --- !u!114 &4486696069042159977
 MonoBehaviour:
@@ -300,7 +302,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 97294ba1e2d1c964f939265702e2730a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 2
+  _componentIndexCache: 3
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   firstPersonAnchor: {fileID: 0}
@@ -587,7 +589,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 3
+  _componentIndexCache: 4
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:

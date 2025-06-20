@@ -83,7 +83,7 @@ namespace _Scripts.Weapons
             if (nob.TryGetComponent(out BaseProjectile proj))
             {
                 proj.SetDefinition(def);
-                proj.Init(snap.Position, finalVel, serverNow, _shooterNO);
+                proj.Init(snap.Position, finalVel, serverNow, _shooterNO);  // Server init
 
                 ServerManager.Spawn(nob);                 // ← spawns on server
 
