@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2bfa1b703f294646adb0f9b424f933b, type: 3}
+  m_Name: ShieldPack
+  m_EditorClassIdentifier: 
+  id: 2
+  heldPrefab: {fileID: 6308740775161836522, guid: 1134e54df645883498d696c80121e3a7, type: 3}
+  groundPrefab: {fileID: 3334061059481593068, guid: c1bdca4fe2d97e647b0b36c01138ad0c, type: 3}
+  hudIcon: {fileID: 0}
+  extraRegenPerSec: 0
+  shieldDrainPerSec: 14

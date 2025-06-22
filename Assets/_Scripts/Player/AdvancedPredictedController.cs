@@ -5,6 +5,7 @@ using FishNet.Object.Prediction;
 using FishNet.Transporting;
 using FishNet.Object.Synchronizing;
 using Cmd = _Scripts.Player.InputCmd;   // short-hand
+using _Scripts.Packs;
 
 
 namespace _Scripts.Player
@@ -131,7 +132,6 @@ namespace _Scripts.Player
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool Btn(InputButtons mask, InputButtons flag) => (mask &  flag) != 0; // Bit-flag helper (keeps expressions readable).
-        public double LastTickTime { get; private set; }
         
         private NetworkObject _netObj;
         private Rigidbody _rb;
@@ -147,12 +147,14 @@ namespace _Scripts.Player
         // Input
         private InputHandler _iH;
         
+        // Pack Manager
+        private PackManager _packMgr;
+        
         // Movement vector
         private Vector3 _moveDirection;
         
         // For camera orientation
         private float _currentPitch; // we clamp pitch with minPitch, maxPitch
-        public float PrevPitch    { get; private set; }
 
         // Wall Running
         private bool _canWallRun;
@@ -172,14 +174,17 @@ namespace _Scripts.Player
         
         // Energy
         private float _energy;
+        private float _burn;
+        
+        // Public helpers
         public float Energy     => _energy;
-        public float MaxEnergy  => maxEnergy;
-
+        public bool ShieldActive => _packMgr && _packMgr.Active && _packMgr.CurrentId == PackId.Shield;
         
         // Knockback
         private Vector3? _pendingKnockback;
         private float? _pendingTempDrag;
 
+        // Player layers
         private const string LOCAL_LAYER   = "LocalPlayer";
         private const string REMOTE_LAYER  = "RemotePlayer";
 
@@ -238,6 +243,8 @@ namespace _Scripts.Player
             _predictionRb.Initialize(_rb);
 
             _startYScale = transform.localScale.y;
+            
+            _packMgr = GetComponent<PackManager>();
             
             TimeManager.OnTick += OnTick;
             TimeManager.OnPostTick += OnPostTick;
@@ -339,13 +346,12 @@ namespace _Scripts.Player
             if (IsFrozen)
                 return;
             
-            LastTickTime = Time.timeAsDouble;
-            
             float dt = (float)TimeManager.TickDelta;
             _cmd = cmd;
-            PrevPitch = _currentPitch;
             
             RegenEnergy(dt); // Regen Energy first
+
+            PackLogic(dt); // Check pack logic
             
             // Check for incoming Knockback
             if (_pendingKnockback.HasValue)
@@ -380,7 +386,7 @@ namespace _Scripts.Player
             switch (_state)
             {
                 case MovementState.Jetpacking:
-                    if (SpendEnergy(jetpackFuelBurnRate * dt))
+                    if (SpendEnergy(_burn * dt))
                     {
                         if (!_isGrounded) MovePlayer();   // optional air-control
                         Jetpack();                // apply impulses
@@ -432,9 +438,26 @@ namespace _Scripts.Player
         }
 
         #endregion
+        
+        #region Pack Logic
+        private void PackLogic(float dt)
+        {
+            _burn = jetpackFuelBurnRate; // No pack - default energy
+            
+            if (_packMgr && _packMgr.CurrentId == PackId.Energy)
+                _burn = jetpackFuelBurnRate - _packMgr.CurrentDef.extraRegenPerSec;
+            
+            if (_packMgr && _packMgr.Active && _packMgr.CurrentId == PackId.Shield)
+            {
+                float shieldActiveDrain = _packMgr.CurrentDef.shieldDrainPerSec * dt;
+
+                if (!SpendEnergy(shieldActiveDrain) && IsServer)
+                    _packMgr.ForceActive(false);
+            }
+        }
+        #endregion
 
         #region Jump
-
         private void Jump()
         {
             _predictionRb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
@@ -448,7 +471,6 @@ namespace _Scripts.Player
         #endregion
 
         #region Movement Methods
-
         private bool IsGrounded()
         {
             Vector3 checkPos = _rb.position + feetOffset;
@@ -459,8 +481,7 @@ namespace _Scripts.Player
         {
             if (Btn(_cmd.buttons, InputButtons.Jetpack))
             {
-                /* Already jet-packing?  → keep going as long as we still have *any* energy.
-                   Not jet-packing yet? → need at least jetpackFuelCutoff to ignite.        */
+                /* Already jet-packing? → keep going, Not jet-packing yet? → need at least jetpackFuelCutoff to ignite. */
                 if (_state == MovementState.Jetpacking ? _energy > 0f : _energy >= jetpackFuelCutoff)
                 {
                     // If we started jet-packing this frame, stop wall-run etc.
@@ -946,7 +967,6 @@ namespace _Scripts.Player
         #region energy
         bool SpendEnergy(float amount)
         {
-            Debug.Log(_energy);
             if (_energy <= 0.17f)
                 return false;                      // totally empty
 
@@ -960,6 +980,26 @@ namespace _Scripts.Player
         {
             if (_energy < maxEnergy)
                 _energy = Mathf.Min(maxEnergy, _energy + energyRegenRate * dt);
+        }
+        
+        /*  Server-side shield absorb helper                                  */
+        [Server] public int AbsorbDamageWithShield(int incoming)
+        {
+            // shield inactive? -> nothing absorbed
+            if (!(_packMgr && _packMgr.Active && _packMgr.CurrentId == PackId.Shield))
+                return incoming;
+
+            // How much can we pay?
+            int absorb = Mathf.Min(incoming, Mathf.CeilToInt(_energy));
+
+            // Burn that energy
+            _energy -= absorb;
+
+            // Drop shield immediately if empty
+            if (_energy <= 0f) _packMgr.ForceActive(false);
+
+            // Return un-absorbed remainder (may be zero)
+            return incoming - absorb;
         }
 
         #endregion

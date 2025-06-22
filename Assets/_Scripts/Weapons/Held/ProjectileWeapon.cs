@@ -74,8 +74,7 @@ namespace _Scripts.Weapons
             Vector3 dir      = snap.Direction.normalized;
             Vector3 finalVel = dir * def.projectileSpeed + snap.Velocity * def.velocityInheritance;
 
-            var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(
-                def.projectilePrefab, true);
+            var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(def.projectilePrefab, true);
             if (nob == null) return;
 
             nob.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);

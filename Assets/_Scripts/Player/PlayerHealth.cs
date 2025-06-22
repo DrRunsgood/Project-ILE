@@ -1,6 +1,7 @@
 // _Scripts/Player/PlayerHealth.cs
 using System;
 using System.Collections;
+using _Scripts.Packs;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
@@ -30,6 +31,7 @@ public sealed class PlayerHealth : NetworkBehaviour
     /* ───── cached refs ──────── */
     AdvancedPredictedController ctrl;
     WeaponManager               wm;
+    PackManager                 pm;
     Rigidbody                   rb;
     Collider[]                  cols;
     Renderer[]                  rends;
@@ -41,6 +43,7 @@ public sealed class PlayerHealth : NetworkBehaviour
         _hp.OnChange += HpChanged;
 
         ctrl  = GetComponent<AdvancedPredictedController>();
+        pm    = GetComponent<PackManager>();
         wm    = GetComponent<WeaponManager>();
         rb    = GetComponent<Rigidbody>();
         cols  = GetComponentsInChildren<Collider>(true);
@@ -60,7 +63,12 @@ public sealed class PlayerHealth : NetworkBehaviour
     [Server] public void ApplyDamage(int dmg, NetworkObject instigator = null)
     {
         if (IsDead || dmg <= 0) return;
-
+        
+        // Check for shield absorb
+        if (ctrl != null)
+            dmg = ctrl.AbsorbDamageWithShield(dmg);  // may return 0
+        if (dmg <= 0) return;                        // all soaked; early-out
+        
         _hp.Value = Mathf.Max(_hp.Value - dmg, 0);
         if (_hp.Value == 0)
             HandleDeath(instigator);
@@ -94,8 +102,9 @@ public sealed class PlayerHealth : NetworkBehaviour
         RpcSetAlive(false);
         SetPlayable(false);          // owner logic only
 
-        // 3) drop held weapons
+        // 3) drop held weapons and pack
         wm?.DropAll();
+        pm?.Server_Drop();
 
         OnDied?.Invoke();
 

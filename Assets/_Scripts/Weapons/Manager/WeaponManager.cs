@@ -168,7 +168,7 @@ namespace _Scripts.Weapons
             if (wanted != _activeSlot.Value)
                 Server_SetActiveSlot(wanted);
 
-            if (_ih.ConsumeDropKey())
+            if (_ih.ConsumeWeaponDrop())
                 Server_RequestDropActive();
         }
         #endregion
