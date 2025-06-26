@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 259766503543606204}
   - component: {fileID: 1243500400067292670}
   - component: {fileID: -5097744487122522207}
+  - component: {fileID: 5036338582039366833}
   m_Layer: 0
   m_Name: EnergyPackEquipped
   m_TagString: Untagged
@@ -63,7 +64,7 @@ MonoBehaviour:
   _isGlobal: 0
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
-  _defaultDespawnType: 0
+  _defaultDespawnType: 1
   NetworkObserver: {fileID: 0}
   _enablePrediction: 0
   _predictionType: 0
@@ -102,6 +103,21 @@ MonoBehaviour:
   _componentIndexCache: 0
   _addedNetworkObject: {fileID: 1243500400067292670}
   _networkObjectCache: {fileID: 1243500400067292670}
+--- !u!114 &5036338582039366833
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2523874939648916999}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eacabe7a1bf71de4d9f3b444accf5986, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 1243500400067292670}
+  _networkObjectCache: {fileID: 0}
 --- !u!1 &3424239697743539373
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,5 +1,6 @@
 // _Scripts/Weapons/Manager/WeaponManager.cs
 using System.Collections.Generic;
+using FishNet;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
@@ -72,9 +73,9 @@ namespace _Scripts.Weapons
                 return false;
 
             /* spawn TP weapon */
-            NetworkObject nob = Instantiate(def.heldPrefab, _anchor);
-            nob.transform.localPosition = Vector3.zero;
-            nob.transform.localRotation = Quaternion.identity;
+            NetworkObject nob = TakeFromPool(def.heldPrefab);
+            if (nob == null) return false;            // pool exhausted?
+            nob.transform.SetParent(_anchor, false);
             ServerManager.Spawn(nob, Owner);
 
             _weapons.Add(new WeaponInstance(def, nob));
@@ -185,8 +186,7 @@ namespace _Scripts.Weapons
         /* ═════════════════════════════ */
         #region Drop
         [ServerRpc(RequireOwnership = true)]
-        void Server_RequestDropActive() =>
-            Server_DropWeapon(_activeSlot.Value);
+        void Server_RequestDropActive() => Server_DropWeapon(_activeSlot.Value);
         
         [Server]
         void Server_DropWeapon(int slot)
@@ -197,8 +197,16 @@ namespace _Scripts.Weapons
 
             // 1) ground pickup 
             Vector3 pos = transform.position + transform.forward * 5f + Vector3.up * .3f;
-            NetworkObject ground = Instantiate(inst.Def.groundPrefab, pos, Quaternion.identity);
-            ServerManager.Spawn(ground);
+            NetworkObject ground = TakeFromPool(inst.Def.groundPrefab);
+            if (ground != null)
+            {
+                ground.transform.SetPositionAndRotation(pos, Quaternion.identity); //Quaternion.LookRotation(Vector3.up)
+                ServerManager.Spawn(ground);
+
+                //  ▸ give it a short grace period so the dropper cannot re-pickup
+                if (ground.TryGetComponent(out WeaponPickup wp))
+                    wp.Arm(0.15f);
+            }
 
             // 2) bookkeeping 
             _weapons.RemoveAt(slot);
@@ -211,7 +219,7 @@ namespace _Scripts.Weapons
             RpcRemoveHeld(inst.NetworkObj);
 
             // 5) despawn TP model 
-            ServerManager.Despawn(inst.NetworkObj);
+            ServerManager.Despawn(inst.NetworkObj, DespawnType.Pool);
         }
         
         [Server]
@@ -257,6 +265,18 @@ namespace _Scripts.Weapons
                 NetworkObj.gameObject.SetActive(state);
                 if (_pw) _pw.IsActive = state;
             }
+        }
+        #endregion
+        
+        #region Pooling helper
+        static NetworkObject TakeFromPool(NetworkObject prefab)
+        {
+            NetworkObject nob = InstanceFinder.NetworkManager.GetPooledInstantiated(prefab, true);
+            if (nob == null) return null;
+            
+            nob.transform.SetParent(null, false);
+     
+            return nob;
         }
         #endregion
     }

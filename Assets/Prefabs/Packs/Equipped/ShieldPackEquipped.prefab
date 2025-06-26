@@ -1021,6 +1021,7 @@ GameObject:
   - component: {fileID: 6947221791012426551}
   - component: {fileID: 6308740775161836522}
   - component: {fileID: 5111002473554448233}
+  - component: {fileID: 5704540815586695960}
   m_Layer: 0
   m_Name: ShieldPackEquipped
   m_TagString: Untagged
@@ -1073,7 +1074,7 @@ MonoBehaviour:
   _isGlobal: 0
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
-  _defaultDespawnType: 0
+  _defaultDespawnType: 1
   NetworkObserver: {fileID: 0}
   _enablePrediction: 0
   _predictionType: 0
@@ -1088,7 +1089,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 23
+  <PrefabId>k__BackingField: 25
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 17591873460625206060
   <SceneId>k__BackingField: 0
@@ -1112,3 +1113,18 @@ MonoBehaviour:
   _componentIndexCache: 0
   _addedNetworkObject: {fileID: 6308740775161836522}
   _networkObjectCache: {fileID: 6308740775161836522}
+--- !u!114 &5704540815586695960
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7165007019444149940}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eacabe7a1bf71de4d9f3b444accf5986, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 6308740775161836522}
+  _networkObjectCache: {fileID: 0}

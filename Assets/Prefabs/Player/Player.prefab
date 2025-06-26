@@ -110,6 +110,7 @@ MonoBehaviour:
   - {fileID: -3159674986349750010}
   - {fileID: 8501514172621720761}
   - {fileID: 4486696069042159977}
+  - {fileID: 7031928564848404723}
   - {fileID: 759703639484445222}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
@@ -320,9 +321,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f3ef7529f2bc8e245ac51ce1d76eb5d7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 255
+  _componentIndexCache: 4
   _addedNetworkObject: {fileID: 6832439599154668905}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 6832439599154668905}
   packAnchor: {fileID: 2388324582239347131}
 --- !u!1 &2646340587292378190
 GameObject:
@@ -638,7 +639,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 4
+  _componentIndexCache: 5
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:
@@ -648,14 +649,14 @@ MonoBehaviour:
   _controllerMovementSettings:
     EnableTeleport: 0
     TeleportThreshold: 1
-    AdaptiveInterpolationValue: 0
+    AdaptiveInterpolationValue: 3
     InterpolationValue: 2
-    SmoothedProperties: 3
+    SmoothedProperties: 4294967295
     SnapNonSmoothedProperties: 0
   _spectatorMovementSettings:
     EnableTeleport: 0
     TeleportThreshold: 1
-    AdaptiveInterpolationValue: 0
-    InterpolationValue: 1
-    SmoothedProperties: 3
+    AdaptiveInterpolationValue: 3
+    InterpolationValue: 2
+    SmoothedProperties: 4294967295
     SnapNonSmoothedProperties: 0

@@ -32,7 +32,7 @@ namespace _Scripts.Packs
             if (player.TryGetComponent(out PackManager pm))
             {
                 pm.Server_GivePack(definition);
-                ServerManager.Despawn(gameObject);
+                ServerManager.Despawn(gameObject, DespawnType.Pool);
             }
         }
     }

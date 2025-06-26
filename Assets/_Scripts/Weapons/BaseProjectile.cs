@@ -58,7 +58,7 @@ public class BaseProjectile : NetworkBehaviour
     }
 
     /* called automatically on every non-owner right after Spawn() */
-    [ObserversRpc(BufferLast = false, ExcludeOwner = false)]
+    [ObserversRpc(BufferLast = false, ExcludeOwner = true)]
     public void RpcInit(Vector3 pos, Vector3 vel, uint tick, float gravScale)
     {
         if (IsServer) return;                     // server already has them
