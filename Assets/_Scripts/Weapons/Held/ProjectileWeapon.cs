@@ -39,7 +39,7 @@ namespace _Scripts.Weapons
         {
             if (!IsOwner || !IsActive || _wm == null || _ih == null) return;
 
-            bool trigger = (_ih.CmdRing.Get(TimeManager.Tick).buttons & InputButtons.Fire) != 0;
+            bool trigger = (_ih.HeldButtons & InputButtons.Fire) != 0;
 
             if (!trigger || Time.time < _nextFireTime)
                 return;

@@ -4,14 +4,19 @@ using FishNet.Object;
 
 namespace _Scripts.Player
 {
-    /// Captures Unity-input every render-frame, writes an InputCmd for
-    /// client-side prediction, and exposes one-shot hot-key flags.
+    /// Capture local-player input every render frame and expose it
+    /// as simple properties Fish-Net can read on the next simulation tick.
     [DisallowMultipleComponent]
     public sealed class InputHandler : NetworkBehaviour
     {
-        /* --------------- prediction ring --------------- */
-        public InputCmdRing CmdRing { get; } = new InputCmdRing();
+        /* ---------------- public read-only ---------------- */
+        public Vector2       Move        { get; private set; }   // –1…+1 per axis
+        public Vector2       Look        { get; private set; }   // raw mouse delta
+        public InputButtons  HeldButtons { get; private set; }   // held this frame
+        public InputButtons  DownButtons { get; private set; }   // went down *this* frame
 
+        /* -------------------------------------------------- */
+        
         /* --------------- weapon hot-keys ---------------- */
         public int  WeaponSlotInput  { get; private set; }   // –1 / 0 / 1 / 2
         public int  MouseWheelDelta  { get; private set; }   // –1 / 0 / +1
@@ -20,41 +25,49 @@ namespace _Scripts.Player
         bool _togglePackPressed;    // "F" - Activate/deactivate active packs
         bool _packDropRequested;     // “P”   – shown to PackManager
         bool _viewToggleRequested;   // “V”   – camera FP/TP switch
+        
 
-        /* ================================================================ */
         void Update()
         {
-            if (!IsOwner) return;                // ignore spectators
+            if (!IsOwner)
+                return;             // ignore spectators / remote avatars
 
-            uint tick = TimeManager.Tick;
+            /* 1) movement axes (WASD) */
+            float mx = Input.GetAxisRaw("Horizontal");           // -1 / 0 / +1
+            float mz = Input.GetAxisRaw("Vertical");
+            Move = new Vector2(mx, mz).normalized;
 
-            /* -------- 1. movement & look axes -------- */
-            Vector2 move = new(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+            /* 2) raw mouse delta */
+            float lx = Input.GetAxisRaw("Mouse X");
+            float ly = Input.GetAxisRaw("Mouse Y");
+            Look = new Vector2(lx, ly);
 
-            Vector2 look = new(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
+            /* 3) buttons ----------------------------------- */
+            InputButtons held  = InputButtons.None;
+            InputButtons down  = InputButtons.None;
 
-            /* -------- 2. button bits ----------------- */
-            InputButtons btn = InputButtons.None;
-            if (Input.GetKey(KeyCode.LeftAlt))     btn |= InputButtons.Jump;
-            if (Input.GetKey(KeyCode.LeftShift))   btn |= InputButtons.Sprint;
-            if (Input.GetKey(KeyCode.X))           btn |= InputButtons.Crouch;
-            if (Input.GetMouseButton(1))           btn |= InputButtons.Jetpack;
-            if (Input.GetKey(KeyCode.Space))       btn |= InputButtons.Ski;
-            if (Input.GetKey(KeyCode.E))           btn |= InputButtons.WallRun;
-            if (Input.GetMouseButton(0))           btn |= InputButtons.Fire;
-
-            CmdRing.Push(new InputCmd
+            // helper local function
+            static void CaptureKey(ref InputButtons h, ref InputButtons d,
+                KeyCode k, InputButtons flag)
             {
-                tick    = tick,
-                move    = move,
-                look    = look,
-                buttons = btn
-            });
+                if (Input.GetKey(k))     h |= flag;   // currently held
+                if (Input.GetKeyDown(k)) d |= flag;   // went down this frame
+            }
 
+            CaptureKey(ref held, ref down, KeyCode.LeftAlt,   InputButtons.Jump);
+            CaptureKey(ref held, ref down, KeyCode.LeftShift, InputButtons.Sprint);
+            CaptureKey(ref held, ref down, KeyCode.X,         InputButtons.Crouch);
+            CaptureKey(ref held, ref down, KeyCode.Mouse1,    InputButtons.Jetpack); // RMB
+            CaptureKey(ref held, ref down, KeyCode.Space,     InputButtons.Ski);
+            CaptureKey(ref held, ref down, KeyCode.E,         InputButtons.WallRun);
+            CaptureKey(ref held, ref down, KeyCode.Mouse0,    InputButtons.Fire);    // LMB
+
+            HeldButtons = held;
+            DownButtons = down;
+            
             CaptureHotkeys();
         }
-
-        /* ================================================================ */
+    
         void CaptureHotkeys()
         {
             /* --- weapon selection ------------------------------------ */
@@ -66,7 +79,7 @@ namespace _Scripts.Player
 
             float wheel = Input.GetAxis("Mouse ScrollWheel");
             MouseWheelDelta = wheel > 0f ? +1 : wheel < 0f ? -1 : 0;
-            
+                
             /* --- Pack activation --------------------------------- */
             if (Input.GetKeyDown(KeyCode.F)) _togglePackPressed = true;
 
@@ -86,7 +99,7 @@ namespace _Scripts.Player
             _weaponDropRequested = false;
             return v;
         }
-        
+            
         public bool ConsumePackToggle()
         {
             bool v = _togglePackPressed;

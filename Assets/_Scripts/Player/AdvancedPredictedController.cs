@@ -4,7 +4,6 @@ using FishNet.Object;
 using FishNet.Object.Prediction;
 using FishNet.Transporting;
 using FishNet.Object.Synchronizing;
-using Cmd = _Scripts.Player.InputCmd;   // short-hand
 using _Scripts.Packs;
 
 
@@ -109,7 +108,6 @@ namespace _Scripts.Player
         [Header("Debug / State Info")]
         [SerializeField] private MovementState _state;
 
-        private MovementState _previousState;
         public MovementState State => _state;
         
         public Transform HeadAnchor => headAnchor;
@@ -127,9 +125,6 @@ namespace _Scripts.Player
         #endregion
 
         #region Internals
-        
-        private Cmd _cmd; // Cache the command we are simulating this tick.
-        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool Btn(InputButtons mask, InputButtons flag) => (mask &  flag) != 0; // Bit-flag helper (keeps expressions readable).
         
@@ -141,7 +136,6 @@ namespace _Scripts.Player
         private float _startYScale;
         private bool _isGrounded;
         private bool _onSlope;
-        private RaycastHit _groundHit;
         private RaycastHit _slopeHit;
         
         // Input
@@ -170,8 +164,6 @@ namespace _Scripts.Player
         private float _wallRunGraceTimer;
         private float _currentWallRunSpeed; // Current speed for wall-running (maintained separately)
         
-        private bool _isJetpacking;
-        
         // Energy
         private float _energy;
         private float _burn;
@@ -187,11 +179,74 @@ namespace _Scripts.Player
         // Player layers
         private const string LOCAL_LAYER   = "LocalPlayer";
         private const string REMOTE_LAYER  = "RemotePlayer";
+        
+        // MovementData
+        private MovementData _md;
 
         #endregion
 
         #region FishNet Data Structures
-        // Replication struct found in InputCmd
+        // Replication struct
+        
+        // DG - New Code
+        #region helpers – 2-bit Move encoder
+        static class MoveCodec
+        {
+            // 00 = 0   01 = +1   10 = –1
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static byte Pack(float x, float z)
+            {
+                byte b = 0;
+                if      (x >  0.1f) b |= 0b01;        // bits 0-1
+                else if (x < -0.1f) b |= 0b10;
+                if      (z >  0.1f) b |= 0b01 << 2;   // bits 2-3
+                else if (z < -0.1f) b |= 0b10 << 2;
+                return b;
+            }
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static Vector2 Unpack(byte b)
+            {
+                int dx = (b & 0b11)     switch
+                {
+                    0b01 => +1, 0b10 => -1, _ => 0
+                };
+                int dz = ((b >> 2) & 0b11) switch
+                {
+                    0b01 => +1, 0b10 => -1, _ => 0
+                };
+                return new Vector2(dx, dz);
+            }
+        }
+        #endregion
+
+        #region replicate payload -------------------------------------------
+        public struct MovementData : IReplicateData
+        {
+            /* packed fields */
+            private uint _tick;                     // Fish-Net needs this
+            public  byte MoveXZ;                    // 4 bits
+            public  sbyte LookX, LookY;             // 2 × 1-byte deltas
+            public  InputButtons Held;              // held-down flags
+            public  InputButtons Down;              // went-down-this-frame flags
+
+            /* ctor helper you will call from OnTick() */
+            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, InputButtons down)
+            {
+                _tick   = tick;
+                MoveXZ  = MoveCodec.Pack(move.x, move.y);
+                LookX = (sbyte)Mathf.Clamp(Mathf.RoundToInt(look.x * 32f), sbyte.MinValue, sbyte.MaxValue);
+                LookY   = (sbyte)Mathf.Clamp(Mathf.RoundToInt(look.y * 32f), sbyte.MinValue, sbyte.MaxValue);
+                Held    = held;
+                Down    = down;
+            }
+
+            /* IReplicateData boiler-plate */
+            public uint  GetTick()            => _tick;
+            public void  SetTick(uint value)  => _tick = value;
+            public void  Dispose()            { }
+        }
+        #endregion
+        
         private struct ReconciliationData : IReconcileData
         {
             private uint _tick;
@@ -289,8 +344,10 @@ namespace _Scripts.Player
             if (IsOwner)
             {
                 // Pack them into MovementData
-                _cmd = _iH.CmdRing.Get(TimeManager.Tick);   // ← store once
-                Replicate(_cmd);
+                var ih = _iH;                                    // cached in OnStartClient
+                _md = new MovementData(TimeManager.Tick, ih.Move, ih.Look, ih.HeldButtons, ih.DownButtons);
+
+                Replicate(_md);
             }
             else
             {
@@ -341,42 +398,38 @@ namespace _Scripts.Player
         #region Replicate
 
         [Replicate]
-        private void Replicate(Cmd cmd, ReplicateState state = ReplicateState.Invalid, Channel channel = Channel.Unreliable)
+        private void Replicate(MovementData md, ReplicateState state = ReplicateState.Invalid, Channel channel = Channel.Unreliable)
         {
-            if (IsFrozen)
-                return;
+            if (IsFrozen) return;
             
             float dt = (float)TimeManager.TickDelta;
-            _cmd = cmd;
+            
+            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held, out InputButtons down);
             
             RegenEnergy(dt); // Regen Energy first
 
             PackLogic(dt); // Check pack logic
             
-            // Check for incoming Knockback
-            if (_pendingKnockback.HasValue)
+            if (_pendingKnockback.HasValue) // Check incoming Knockback
             {
                 ApplyKnockback();
                 _predictionRb.Simulate();
                 return; 
             }
             
-            // Ground check
-            _isGrounded = IsGrounded();
-
-            // Reset slope check, recheck if on ground - micro optimization over checking every ontick
-            _onSlope = false;
+            _isGrounded = IsGrounded();  // Ground check
+            
+            _onSlope = false; // Reset slope check, recheck if on ground
             if(_isGrounded) _onSlope = OnSlope();
             
-            // 1) Apply rotation from yaw/pitch
-            ApplyRotation(cmd.look.x, cmd.look.y);
+            ApplyRotation(look.x, look.y);  // Apply Rotation
             
             // Check for wall
-            if (Btn(cmd.buttons, InputButtons.WallRun) && _state != MovementState.WallRunning)
+            if (Btn(down, InputButtons.WallRun) && _state != MovementState.WallRunning)
                 CheckForWall();
 
             // Update movement states
-            UpdateMovementState();
+            UpdateMovementState(down, held);
                 
             if (_state == MovementState.WallRunning) // Only update wall run state if actively wall running
                 UpdateWallRunState();
@@ -388,8 +441,8 @@ namespace _Scripts.Player
                 case MovementState.Jetpacking:
                     if (SpendEnergy(_burn * dt))
                     {
-                        if (!_isGrounded) MovePlayer();   // optional air-control
-                        Jetpack();                // apply impulses
+                        if (!_isGrounded) MovePlayer(move);   // optional air-control
+                        Jetpack(move);                // apply impulses
                     }
                     else
                     {
@@ -402,16 +455,16 @@ namespace _Scripts.Player
                     break;
 
                 case MovementState.WallRunning:
-                    if (Btn(cmd.buttons, InputButtons.Jump)) WallJump();
+                    if (Btn(down, InputButtons.Jump)) WallJump();
                     else PerformWallRunMovement();
                     break;
 
                 default:
-                    MovePlayer();
+                    MovePlayer(move);
                     break;
             }
 
-            if (_isGrounded && Btn(cmd.buttons, InputButtons.Jump))
+            if (_isGrounded && Btn(down, InputButtons.Jump))
                 Jump();
             
             _predictionRb.Simulate();
@@ -419,6 +472,37 @@ namespace _Scripts.Player
             if (IsServer && LagCompensationManager.Instance != null)
             {
                 LagCompensationManager.Instance.RecordSnapshot(_netObj, firePoint.position, firePoint.forward, _rb.linearVelocity, TimeManager.Tick);
+            }
+        }
+        #endregion
+        
+        #region Decompression
+        static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out InputButtons down)
+        {
+            move = MoveCodec.Unpack(md.MoveXZ);
+            look = new Vector2(md.LookX * (1f/32f), md.LookY * (1f/32f));
+            held = md.Held;
+            down = md.Down;
+        }
+        #endregion
+        
+        #region Pack Logic
+        private void PackLogic(float dt)
+        {
+            _burn = jetpackFuelBurnRate; // No pack - default energy
+            
+            if (_packMgr == null || _packMgr.CurrentId == PackId.None)
+                return; 
+            
+            if (_packMgr.CurrentId == PackId.Energy)
+                _burn = jetpackFuelBurnRate - _packMgr.CurrentDef.extraRegenPerSec;
+            
+            if (_packMgr.Active && _packMgr.CurrentId == PackId.Shield)
+            {
+                float shieldActiveDrain = _packMgr.CurrentDef.shieldDrainPerSec * dt;
+
+                if (!SpendEnergy(shieldActiveDrain) && IsServer)
+                    _packMgr.ForceActive(false);
             }
         }
         #endregion
@@ -437,24 +521,6 @@ namespace _Scripts.Player
             headAnchor.localEulerAngles = new Vector3(_currentPitch, 0f, 0f); //was cameraTransform.
         }
 
-        #endregion
-        
-        #region Pack Logic
-        private void PackLogic(float dt)
-        {
-            _burn = jetpackFuelBurnRate; // No pack - default energy
-            
-            if (_packMgr && _packMgr.CurrentId == PackId.Energy)
-                _burn = jetpackFuelBurnRate - _packMgr.CurrentDef.extraRegenPerSec;
-            
-            if (_packMgr && _packMgr.Active && _packMgr.CurrentId == PackId.Shield)
-            {
-                float shieldActiveDrain = _packMgr.CurrentDef.shieldDrainPerSec * dt;
-
-                if (!SpendEnergy(shieldActiveDrain) && IsServer)
-                    _packMgr.ForceActive(false);
-            }
-        }
         #endregion
 
         #region Jump
@@ -477,9 +543,9 @@ namespace _Scripts.Player
             return Physics.CheckSphere(checkPos, feetRadius, groundMask);
         }
     
-        private void UpdateMovementState()
+        private void UpdateMovementState(InputButtons down, InputButtons held)
         {
-            if (Btn(_cmd.buttons, InputButtons.Jetpack))
+            if (Btn(held, InputButtons.Jetpack))
             {
                 /* Already jet-packing? → keep going, Not jet-packing yet? → need at least jetpackFuelCutoff to ignite. */
                 if (_state == MovementState.Jetpacking ? _energy > 0f : _energy >= jetpackFuelCutoff)
@@ -497,22 +563,22 @@ namespace _Scripts.Player
             if (_state != MovementState.WallRunning)
             {
                 _canWallRun = CanWallRun();
-                if (Btn(_cmd.buttons, InputButtons.WallRun) && _canWallRun)
+                if (Btn(down, InputButtons.WallRun) && _canWallRun)
                 {
                     StartWallRun();
                     _state = MovementState.WallRunning;
                 }
                 
-                else if (Btn(_cmd.buttons, InputButtons.Ski))
+                else if (Btn(held, InputButtons.Ski))
                     _state = MovementState.Skiing;
                 
                 else if (_isGrounded)
                 {
-                    if (Btn(_cmd.buttons, InputButtons.Crouch))
+                    if (Btn(held, InputButtons.Crouch))
                     {
                         _state = MovementState.Crouching;
                     }
-                    else if (Btn(_cmd.buttons, InputButtons.Sprint))
+                    else if (Btn(held, InputButtons.Sprint))
                     {
                         _state = MovementState.Sprinting;
                     }
@@ -534,7 +600,7 @@ namespace _Scripts.Player
         }
 
 // --------------- MOVE PLAYER -----------------------------------------------        
-        private void MovePlayer()
+        private void MovePlayer(Vector2 move)
         {
             transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z); // reset crouch
             
@@ -547,7 +613,7 @@ namespace _Scripts.Player
             }
 
             // Calculate move direction
-            _moveDirection = (orientation.forward * _cmd.move.y) + (orientation.right * _cmd.move.x);
+            _moveDirection = (orientation.forward * move.y) + (orientation.right * move.x);
             _moveDirection.Normalize();
             
             Vector3 currentVelocity = _rb.linearVelocity;
@@ -863,10 +929,15 @@ namespace _Scripts.Player
         
         #region Jetpack
         
-        private void Jetpack()
+        private void Jetpack(Vector2 move)
         {
-            Vector3 rawInput = new Vector3(_cmd.move.x, 0f, _cmd.move.y);
-            Vector3 horizontalDirection = rawInput.sqrMagnitude > 0.01f?orientation.TransformDirection(rawInput).normalized:Vector3.zero;
+            Vector3 horizDir = Vector3.zero;
+
+            if (move.sqrMagnitude > 0.01f)
+            {
+                Vector3 local = new Vector3(move.x, 0f, move.y);
+                horizDir = orientation.TransformDirection(local).normalized;
+            }
             
             // Apply vertical lift
             Vector3 finalImpulse = Vector3.up * (jetpackForce * 0.7f); 
@@ -875,7 +946,7 @@ namespace _Scripts.Player
           
             // Apply horizontal thrust **only if below speed limits**
             if (currentHorizVel.magnitude <= maxAdditionalForwardSpeed)
-                finalImpulse += horizontalDirection * (jetpackForce * 0.3f);
+                finalImpulse += horizDir * (jetpackForce * 0.3f);
             
             // Apply force without normalization to preserve intended thrust balance
             _predictionRb.AddForce(finalImpulse, ForceMode.Impulse);
@@ -908,7 +979,7 @@ namespace _Scripts.Player
 
         #endregion
         
-        #region Knock‑back
+        #region Knockback
         // Called from BaseProjectile via RPC on every client *and* the server.
         public void ReceiveKnockback(Vector3 impulse, float tempDrag = -1f)
         {
