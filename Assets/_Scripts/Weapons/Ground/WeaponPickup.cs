@@ -8,7 +8,7 @@ namespace _Scripts.Weapons
     [RequireComponent(typeof(Collider))]
     public sealed class WeaponPickup : NetworkBehaviour
     {
-        [SerializeField] float armDelay = 0.15f;   // << new – tweak freely
+        [SerializeField] float armDelay = 0.15f;
         double _armedAt;
         
         [SerializeField] WeaponDefinition definition;

@@ -225,7 +225,7 @@ namespace _Scripts.Player
             /* packed fields */
             private uint _tick;                     // Fish-Net needs this
             public  byte MoveXZ;                    // 4 bits
-            public  sbyte LookX, LookY;             // 2 × 1-byte deltas
+            public  short LookX, LookY;             // 2 × 1-byte deltas
             public  InputButtons Held;              // held-down flags
             public  InputButtons Down;              // went-down-this-frame flags
 
@@ -234,8 +234,8 @@ namespace _Scripts.Player
             {
                 _tick   = tick;
                 MoveXZ  = MoveCodec.Pack(move.x, move.y);
-                LookX = (sbyte)Mathf.Clamp(Mathf.RoundToInt(look.x * 32f), sbyte.MinValue, sbyte.MaxValue);
-                LookY   = (sbyte)Mathf.Clamp(Mathf.RoundToInt(look.y * 32f), sbyte.MinValue, sbyte.MaxValue);
+                LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * 128f), short.MinValue, short.MaxValue);
+                LookY = (short)Mathf.Clamp(Mathf.RoundToInt(look.y * 128f), short.MinValue, short.MaxValue);
                 Held    = held;
                 Down    = down;
             }
@@ -464,7 +464,7 @@ namespace _Scripts.Player
                     break;
             }
 
-            if (_isGrounded && Btn(down, InputButtons.Jump))
+            if (_isGrounded && Btn(held, InputButtons.Jump))
                 Jump();
             
             _predictionRb.Simulate();
@@ -480,7 +480,7 @@ namespace _Scripts.Player
         static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out InputButtons down)
         {
             move = MoveCodec.Unpack(md.MoveXZ);
-            look = new Vector2(md.LookX * (1f/32f), md.LookY * (1f/32f));
+            look = new Vector2(md.LookX * (1f / 128f), md.LookY * (1f / 128f));
             held = md.Held;
             down = md.Down;
         }

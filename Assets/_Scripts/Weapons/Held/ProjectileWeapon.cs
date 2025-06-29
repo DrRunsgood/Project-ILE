@@ -81,13 +81,12 @@ namespace _Scripts.Weapons
 
             if (nob.TryGetComponent(out BaseProjectile proj))
             {
-                proj.SetDefinition(def);
                 proj.Init(snap.Position, finalVel, serverNow, _shooterNO);  // Server init
 
                 ServerManager.Spawn(nob);                 // ← spawns on server
 
                 // ↓ send immutable spawn-state to all observers (owner will ignore)
-                proj.RpcInit(snap.Position, finalVel, serverNow, def.gravityScale);
+                proj.RpcInit(snap.Position, finalVel, serverNow);
             }
             else
                 ServerManager.Despawn(nob, DespawnType.Pool);

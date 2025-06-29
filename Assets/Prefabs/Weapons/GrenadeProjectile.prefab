@@ -97,9 +97,9 @@ GameObject:
   - component: {fileID: 8466621704711765710}
   - component: {fileID: 1938724514370874692}
   - component: {fileID: 5545623792797295480}
-  - component: {fileID: 7367067840573324604}
+  - component: {fileID: 8098368023954044871}
   m_Layer: 9
-  m_Name: BaseProjectile
+  m_Name: GrenadeProjectile
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -168,7 +168,7 @@ MonoBehaviour:
   _teleportThreshold: 1
   <PrefabId>k__BackingField: 14
   <SpawnableCollectionId>k__BackingField: 0
-  <AssetPathHash>k__BackingField: 6157560854778366673
+  <AssetPathHash>k__BackingField: 1470384050601542829
   <SceneId>k__BackingField: 0
   SerializedTransformProperties:
     Position: {x: 0, y: 0, z: 0}
@@ -202,7 +202,7 @@ Rigidbody:
   m_Interpolate: 1
   m_Constraints: 112
   m_CollisionDetection: 1
---- !u!114 &7367067840573324604
+--- !u!114 &8098368023954044871
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -211,14 +211,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 5568818204516327162}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 47cc8ca00bc9a594784578e0059526b4, type: 3}
+  m_Script: {fileID: 11500000, guid: 205f853403124234787f59a95fa55a00, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 1938724514370874692}
   _networkObjectCache: {fileID: 0}
-  projectileTrail: {fileID: 3561789490652591754}
-  projectileExplosion: {fileID: 1764654978243476, guid: a98b15aa948478849b54661e4d9a317e, type: 3}
+  def: {fileID: 11400000, guid: 63c3fbdc7fd562745a98ea0fd03bf99e, type: 2}
+  projectileTrail: {fileID: 0}
 --- !u!1001 &6897245378069661687
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -276,11 +276,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 2c2ec5e665f6a3c43b2c11ae975a6f97, type: 3}
---- !u!198 &3561789490652591754 stripped
-ParticleSystem:
-  m_CorrespondingSourceObject: {fileID: 7987684294029816189, guid: 2c2ec5e665f6a3c43b2c11ae975a6f97, type: 3}
-  m_PrefabInstance: {fileID: 6897245378069661687}
-  m_PrefabAsset: {fileID: 0}
 --- !u!4 &8771883196566250467 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2741581023790801940, guid: 2c2ec5e665f6a3c43b2c11ae975a6f97, type: 3}

@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 8237013643074239126}
   - component: {fileID: 3731921180239083331}
   - component: {fileID: 8766701267539982643}
-  - component: {fileID: -2407944189921430375}
+  - component: {fileID: 6550858206905530399}
   m_Layer: 0
   m_Name: ChainBullet
   m_TagString: Untagged
@@ -169,7 +169,7 @@ MonoBehaviour:
     Rotation: {x: 0, y: 0, z: 0, w: 1}
     Scale: {x: 0.2, y: 0.2, z: 1}
     IsValid: 1
---- !u!114 &-2407944189921430375
+--- !u!114 &6550858206905530399
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -178,10 +178,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 3249243439519315288}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 47cc8ca00bc9a594784578e0059526b4, type: 3}
+  m_Script: {fileID: 11500000, guid: 9e0f4311d5a14384989902d73a2e8a82, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 8766701267539982643}
   _networkObjectCache: {fileID: 0}
+  def: {fileID: 11400000, guid: a28c83aa53782194b80335f1df23e504, type: 2}
   projectileTrail: {fileID: 0}

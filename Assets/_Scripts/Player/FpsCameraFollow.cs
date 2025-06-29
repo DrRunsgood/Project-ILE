@@ -34,7 +34,7 @@ public class FpsCameraFollow : MonoBehaviour
 
         /* auto-find owner if not set */
         if (target == null)
-            foreach (var pc in FindObjectsOfType<AdvancedPredictedController>())
+            foreach (var pc in FindObjectsByType<AdvancedPredictedController>(FindObjectsSortMode.None))
                 if (pc.IsOwner) { SetTarget(pc); break; }
 
         ApplyCulling(false);               // start FP

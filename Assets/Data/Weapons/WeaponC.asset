@@ -31,7 +31,7 @@ MonoBehaviour:
   playerMask:
     serializedVersion: 2
     m_Bits: 448
-  blastRadius: 0.01
+  blastRadius: 0
   damage: 7
   knockbackForce: 0
   knockFalloffExp: 0

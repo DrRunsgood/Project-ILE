@@ -17,7 +17,7 @@ MonoBehaviour:
   usesAmmo: 0
   magazine: 6
   reloadTime: 1.2
-  projectilePrefab: {fileID: 1938724514370874692, guid: dffcccc3d1c6b0044adecae6241f6300, type: 3}
+  projectilePrefab: {fileID: 1938724514370874692, guid: a92775eb364dda849b8968eef5b72b1b, type: 3}
   projectileSpeed: 120
   velocityInheritance: 0.7
   gravityScale: 1.5

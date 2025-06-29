@@ -12,19 +12,20 @@ namespace _Scripts.Weapons
     public sealed class WeaponManager : NetworkBehaviour
     {
         /* ───────── inspector ───────── */
-        [SerializeField] Transform firstPersonAnchor;          // filled at runtime
-        [SerializeField] Transform _anchor;                    // “HeldWeapons” (TP)
+        [SerializeField] Transform firstPersonAnchor;      // created at runtime
+        [SerializeField] Transform _anchor;                // TP models parent
 
         /* ───────── public API ──────── */
-        public int       ActiveSlot   => _activeSlot.Value;    // –1 = none
-        public Transform WeaponAnchor => _anchor;
+        public Transform  WeaponAnchor => _anchor;
 
         /* ───────── private fields ──── */
         const int MaxSlots = 3;
 
         readonly List<WeaponInstance>                  _weapons  = new();
         readonly Dictionary<NetworkObject, GameObject> _fpViews  = new();
-        readonly SyncVar<int>                          _activeSlot = new(-1);
+
+        // NEW: active weapon replicated by NetworkObject reference
+        readonly SyncVar<NetworkObject> _activeNob = new(null);
 
         InputHandler _ih;
 
@@ -32,17 +33,17 @@ namespace _Scripts.Weapons
         #region Unity – setup
         void Awake()
         {
-            /* ensure TP anchor exists */
             if (_anchor == null)
             {
                 Transform gfx = transform.Find("Graphics") ?? transform;
-                _anchor = gfx.Find("HeldWeapons")
-                       ?? new GameObject("HeldWeapons").transform;
+                _anchor = gfx.Find("HeldWeapons") ??
+                          new GameObject("HeldWeapons").transform;
                 _anchor.SetParent(gfx, false);
             }
 
             _ih = GetComponent<InputHandler>();
-            _activeSlot.OnChange += (_, __, ___) => RefreshActiveSlot();
+
+            _activeNob.OnChange += (_, __, ___) => RefreshActive();
         }
 
         public override void OnStartClient()
@@ -50,7 +51,7 @@ namespace _Scripts.Weapons
             base.OnStartClient();
             if (!IsOwner) return;
 
-            /* ensure FirstPersonItems exists under MainCamera */
+            // ensure FP anchor
             Transform cam = Camera.main.transform;
             firstPersonAnchor = cam.Find("FirstPersonItems");
             if (firstPersonAnchor == null)
@@ -61,7 +62,7 @@ namespace _Scripts.Weapons
         }
 
         void OnDestroy() =>
-            _activeSlot.OnChange -= (_, __, ___) => RefreshActiveSlot();
+            _activeNob.OnChange -= (_, __, ___) => RefreshActive();
         #endregion
         /* ═════════════════════════════ */
 
@@ -72,17 +73,17 @@ namespace _Scripts.Weapons
             if (_weapons.Count >= MaxSlots || HasWeapon(def))
                 return false;
 
-            /* spawn TP weapon */
             NetworkObject nob = TakeFromPool(def.heldPrefab);
-            if (nob == null) return false;            // pool exhausted?
+            if (nob == null) return false;
             nob.transform.SetParent(_anchor, false);
             ServerManager.Spawn(nob, Owner);
 
             _weapons.Add(new WeaponInstance(def, nob));
-            RpcAttachHeld(nob);                           // client bookkeeping
+            RpcAttachHeld(nob);
 
-            if (_activeSlot.Value == -1)
-                _activeSlot.Value = 0;
+            // auto-equip if none active
+            if (_activeNob.Value == null)
+                SetActiveWeapon(nob);
 
             return true;
         }
@@ -95,60 +96,63 @@ namespace _Scripts.Weapons
         }
         #endregion
 
-        #region RPC – attach held model on every peer
-        [ObserversRpc(BufferLast = true, RunLocally = true)]
+        #region RPC – attach held model
+        [ObserversRpc(RunLocally = true)]    // removed BufferLast
         void RpcAttachHeld(NetworkObject nob)
         {
-            /* 1) set layer so owner camera hides TP gun */
+            /* 1) layer for owner TP gun */
             if (IsOwner)
             {
                 int tpLayer = LayerMask.NameToLayer("TP_Only");
-                foreach (Transform t in nob.transform.GetComponentsInChildren<Transform>(true))
+                foreach (Transform t in nob.GetComponentsInChildren<Transform>(true))
                     t.gameObject.layer = tpLayer;
             }
-            
+
             nob.transform.SetParent(_anchor, false);
 
-            /* 2) local lists */
+            /* 2) local bookkeeping */
             if (_weapons.Find(w => w.NetworkObj == nob) == null)
                 _weapons.Add(new WeaponInstance(null, nob));
 
             if (nob.TryGetComponent(out ProjectileWeapon pw))
                 pw.CachePlayerRefs(this, _ih);
 
-            /* 3) spawn FP view for owner */
+            /* 3) owner FP view */
             if (IsOwner && !_fpViews.ContainsKey(nob))
             {
-                WeaponDefinition def = pw.Definition;          // uses existing ref
+                WeaponDefinition def = pw.Definition;
                 if (def && def.fpViewPrefab)
                 {
                     GameObject fp = Instantiate(def.fpViewPrefab, firstPersonAnchor);
                     fp.transform.localPosition = Vector3.zero;
                     fp.transform.localRotation = Quaternion.identity;
                     _fpViews[nob] = fp;
-                    fp.transform.localScale = Vector3.one * 2f;
+                    fp.transform.localScale = Vector3.one * 2f; // DG - scaled to match the real representation, for now
                 }
             }
 
-            RefreshActiveSlot();
+            RefreshActive();
         }
         #endregion
 
-        #region Active-slot handling
-        void RefreshActiveSlot()
+        #region Active weapon helpers
+        void RefreshActive()
         {
-            int sel = _activeSlot.Value;
+            NetworkObject wanted = _activeNob.Value;
 
-            for (int i = 0; i < _weapons.Count; ++i)
+            foreach (var w in _weapons)
             {
-                bool active = (i == sel);
-                _weapons[i].SetActive(active);
+                bool active = w.NetworkObj == wanted;
+                w.SetActive(active);
 
-                if (IsOwner &&
-                    _fpViews.TryGetValue(_weapons[i].NetworkObj, out var fp))
+                if (IsOwner && _fpViews.TryGetValue(w.NetworkObj, out var fp))
                     fp.SetActive(active);
             }
         }
+
+        /* server-side setter */
+        [Server]
+        void SetActiveWeapon(NetworkObject nob) => _activeNob.Value = nob;
         #endregion
 
         /* ═════════════════════════════ */
@@ -157,17 +161,20 @@ namespace _Scripts.Weapons
         {
             if (!IsOwner || _weapons.Count == 0) return;
 
-            int wanted = _activeSlot.Value;
+            int currentIdx = _weapons.FindIndex(w => w.NetworkObj == _activeNob.Value);
+            if (currentIdx < 0) currentIdx = 0;
+
+            int wanted = currentIdx;
 
             if (_ih.WeaponSlotInput >= 0)
                 wanted = _ih.WeaponSlotInput;
             else if (_ih.MouseWheelDelta != 0)
                 wanted = Mathf.Clamp(
-                    (_activeSlot.Value + _ih.MouseWheelDelta + _weapons.Count) % _weapons.Count,
+                    (currentIdx + _ih.MouseWheelDelta + _weapons.Count) % _weapons.Count,
                     0, _weapons.Count - 1);
 
-            if (wanted != _activeSlot.Value)
-                Server_SetActiveSlot(wanted);
+            if (wanted != currentIdx)
+                Server_SetActiveByIndex(wanted);
 
             if (_ih.ConsumeWeaponDrop())
                 Server_RequestDropActive();
@@ -176,52 +183,56 @@ namespace _Scripts.Weapons
 
         #region Slot change RPC
         [ServerRpc(RequireOwnership = true)]
-        void Server_SetActiveSlot(int slot)
+        void Server_SetActiveByIndex(int idx)
         {
-            if (slot >= 0 && slot < _weapons.Count)
-                _activeSlot.Value = slot;
+            if (idx >= 0 && idx < _weapons.Count)
+                SetActiveWeapon(_weapons[idx].NetworkObj);
         }
         #endregion
 
         /* ═════════════════════════════ */
         #region Drop
         [ServerRpc(RequireOwnership = true)]
-        void Server_RequestDropActive() => Server_DropWeapon(_activeSlot.Value);
-        
-        [Server]
-        void Server_DropWeapon(int slot)
+        void Server_RequestDropActive()
         {
-            if (slot < 0 || slot >= _weapons.Count) return;
+            int idx = _weapons.FindIndex(w => w.NetworkObj == _activeNob.Value);
+            Server_DropWeapon(idx);
+        }
 
-            WeaponInstance inst = _weapons[slot];
+        [Server]
+        void Server_DropWeapon(int idx)
+        {
+            if (idx < 0 || idx >= _weapons.Count) return;
 
-            // 1) ground pickup 
+            WeaponInstance inst = _weapons[idx];
+
+            /* 1) ground pickup */
             Vector3 pos = transform.position + transform.forward * 5f + Vector3.up * .3f;
             NetworkObject ground = TakeFromPool(inst.Def.groundPrefab);
             if (ground != null)
             {
-                ground.transform.SetPositionAndRotation(pos, Quaternion.identity); //Quaternion.LookRotation(Vector3.up)
+                ground.transform.SetPositionAndRotation(pos, Quaternion.identity);
                 ServerManager.Spawn(ground);
 
-                //  ▸ give it a short grace period so the dropper cannot re-pickup
                 if (ground.TryGetComponent(out WeaponPickup wp))
                     wp.Arm(0.15f);
             }
 
-            // 2) bookkeeping 
-            _weapons.RemoveAt(slot);
+            /* 2) bookkeeping */
+            _weapons.RemoveAt(idx);
 
-            // 3) new active slot 
-            _activeSlot.Value = (_weapons.Count == 0) ? -1 :
-                                Mathf.Clamp(slot, 0, _weapons.Count - 1);
+            /* 3) new active */
+            NetworkObject newActive = _weapons.Count > 0 ? _weapons[0].NetworkObj : null;
+            if (inst.NetworkObj == _activeNob.Value)
+                SetActiveWeapon(newActive);
 
-            // 4) client cleanup 
+            /* 4) client cleanup */
             RpcRemoveHeld(inst.NetworkObj);
 
-            // 5) despawn TP model 
+            /* 5) despawn TP */
             ServerManager.Despawn(inst.NetworkObj, DespawnType.Pool);
         }
-        
+
         [Server]
         public void DropAll()
         {
@@ -229,7 +240,7 @@ namespace _Scripts.Weapons
                 Server_DropWeapon(i);
         }
 
-        [ObserversRpc(BufferLast = true, RunLocally = false)]
+        [ObserversRpc(RunLocally = false)]
         void RpcRemoveHeld(NetworkObject nob)
         {
             int idx = _weapons.FindIndex(w => w.NetworkObj == nob);
@@ -241,15 +252,15 @@ namespace _Scripts.Weapons
                 _fpViews.Remove(nob);
             }
 
-            RefreshActiveSlot();
+            RefreshActive();
         }
         #endregion
 
         /* ═════════════════════════════ */
-        #region Helper
+        #region Helper classes + pooling
         sealed class WeaponInstance
         {
-            public readonly WeaponDefinition Def;      // null on clients
+            public readonly WeaponDefinition Def;      // null on pure clients
             public readonly NetworkObject    NetworkObj;
             readonly ProjectileWeapon        _pw;
 
@@ -266,16 +277,13 @@ namespace _Scripts.Weapons
                 if (_pw) _pw.IsActive = state;
             }
         }
-        #endregion
-        
-        #region Pooling helper
+
         static NetworkObject TakeFromPool(NetworkObject prefab)
         {
             NetworkObject nob = InstanceFinder.NetworkManager.GetPooledInstantiated(prefab, true);
             if (nob == null) return null;
-            
+
             nob.transform.SetParent(null, false);
-     
             return nob;
         }
         #endregion
