@@ -18,6 +18,10 @@ namespace _Scripts.Data
         public int   magazine       = 6;
         public float reloadTime     = 1.2f;             // seconds
         
+        [Header("Energy weapon")]
+        public float energyPerShot = 4f;  // cost in “energy units”
+        public bool  requiresEnergyPack;      // true  ⇒ can only be picked up
+        
     /* ───────── Projectile flight ───────── */
         [Header("Projectile")]
         public NetworkObject projectilePrefab;

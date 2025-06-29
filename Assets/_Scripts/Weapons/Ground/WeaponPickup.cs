@@ -2,6 +2,7 @@
 using FishNet.Object;
 using UnityEngine;
 using _Scripts.Data;
+using _Scripts.Packs;
 
 namespace _Scripts.Weapons
 {
@@ -40,6 +41,14 @@ namespace _Scripts.Weapons
             /* 2) server side → do authoritative work */
             if (!IsServer) return;
             if (!other.TryGetComponent(out WeaponManager wm)) return;
+            
+            /* ───── energy-weapon gate ───── */
+            if (definition.requiresEnergyPack)
+            {
+                // look for a PackManager on the same player root
+                if (!other.TryGetComponent(out PackManager pm) || pm.CurrentId != PackId.Energy)
+                    return;                     // reject pickup – just ignore the overlap
+            }
 
             if (wm.Server_AddWeapon(definition))
                 ServerManager.Despawn(gameObject);          // consumed
@@ -50,8 +59,16 @@ namespace _Scripts.Weapons
         void Server_RequestPickup(NetworkObject playerObj)
         {
             if (!playerObj.TryGetComponent(out WeaponManager wm)) return;
-            if (wm.Server_AddWeapon(definition))
-                ServerManager.Despawn(gameObject);
+
+            /* energy-weapon gate */
+            if (definition.requiresEnergyPack)
+            {
+                if (!playerObj.TryGetComponent(out PackManager pm) || pm.CurrentId != PackId.Energy)
+                    return;
+            }
+
+            if (wm.Server_AddWeapon(definition)) ServerManager.Despawn(gameObject);
         }
+
     }
 }

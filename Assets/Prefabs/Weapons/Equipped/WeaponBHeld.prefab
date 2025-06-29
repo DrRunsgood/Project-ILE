@@ -52,7 +52,7 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 6716188861691387432}
   _networkObjectCache: {fileID: 6716188861691387432}
   def: {fileID: 11400000, guid: 63c3fbdc7fd562745a98ea0fd03bf99e, type: 2}
-  firePoint: {fileID: 8590990546500050901}
+  muzzle: {fileID: 8590990546500050901}
 --- !u!114 &6716188861691387432
 MonoBehaviour:
   m_ObjectHideFlags: 0

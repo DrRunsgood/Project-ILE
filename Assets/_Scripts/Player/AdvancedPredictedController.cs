@@ -34,7 +34,7 @@ namespace _Scripts.Player
         [SerializeField] private Transform orientation;
         [Tooltip("If you have a separate camera transform, reference it here to apply pitch to the camera only.")]
         [SerializeField] private Transform headAnchor;
-        [SerializeField] private Transform firePoint;
+        [SerializeField] private Transform viewOrigin;
 
         [Header("Look Settings")]
         [Tooltip("How fast we rotate horizontally.")]
@@ -296,10 +296,9 @@ namespace _Scripts.Player
             _netObj = GetComponent<NetworkObject>();
             _predictionRb = new PredictionRigidbody();
             _predictionRb.Initialize(_rb);
-
-            _startYScale = transform.localScale.y;
-            
             _packMgr = GetComponent<PackManager>();
+            
+            _startYScale = transform.localScale.y;
             
             TimeManager.OnTick += OnTick;
             TimeManager.OnPostTick += OnPostTick;
@@ -469,9 +468,15 @@ namespace _Scripts.Player
             
             _predictionRb.Simulate();
             
+            if (viewOrigin != null && headAnchor != null)
+            {
+                viewOrigin.position = headAnchor.position;
+                viewOrigin.rotation = headAnchor.rotation;
+            }
+            
             if (IsServer && LagCompensationManager.Instance != null)
             {
-                LagCompensationManager.Instance.RecordSnapshot(_netObj, firePoint.position, firePoint.forward, _rb.linearVelocity, TimeManager.Tick);
+                LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, viewOrigin.forward, _rb.linearVelocity, TimeManager.Tick);
             }
         }
         #endregion
@@ -1053,7 +1058,7 @@ namespace _Scripts.Player
                 _energy = Mathf.Min(maxEnergy, _energy + energyRegenRate * dt);
         }
         
-        /*  Server-side shield absorb helper                                  */
+        /*  Server-side helpers       */
         [Server] public int AbsorbDamageWithShield(int incoming)
         {
             // shield inactive? -> nothing absorbed
@@ -1071,6 +1076,12 @@ namespace _Scripts.Player
 
             // Return un-absorbed remainder (may be zero)
             return incoming - absorb;
+        }
+        
+        [Server]
+        public void ServerSpendEnergy(float amount)
+        {
+            _energy = Mathf.Max(0f, _energy - amount);
         }
 
         #endregion

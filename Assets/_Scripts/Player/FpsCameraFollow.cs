@@ -9,6 +9,7 @@ public class FpsCameraFollow : MonoBehaviour
     Transform head;
     Camera   cam;
     InputHandler ih;
+    Renderer[] characterRenderers;
 
     /* inspector: third-person offset */
     [Header("Third-Person Offset")]
@@ -26,6 +27,9 @@ public class FpsCameraFollow : MonoBehaviour
         target = t;
         head   = t ? t.HeadAnchor : null;
         ih     = t ? t.GetComponent<InputHandler>() : null;   // ← add this line
+        
+        if (target != null)
+            characterRenderers = target.GetComponentsInChildren<Renderer>(true);
     }
 
     void Start()
@@ -65,7 +69,6 @@ public class FpsCameraFollow : MonoBehaviour
         else
             transform.position = head.position;
     }
-    
 
     /* layer toggle */
     void ApplyCulling(bool tpMode)
