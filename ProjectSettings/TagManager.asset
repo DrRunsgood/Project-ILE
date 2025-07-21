@@ -12,8 +12,8 @@ TagManager:
   - Water
   - UI
   - Player
-  - LocalPlayer
-  - RemotePlayer
+  - 
+  - 
   - Projectiles
   - Ground
   - Wallrun

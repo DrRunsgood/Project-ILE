@@ -13,11 +13,11 @@ GameObject:
   - component: {fileID: 830621418103231863}
   - component: {fileID: 1451465412514159687}
   - component: {fileID: 16042802745636805}
-  - component: {fileID: 2877665405076106222}
   - component: {fileID: 4356129245166151907}
   - component: {fileID: -8571736992089961157}
   - component: {fileID: 2760273553822079888}
   - component: {fileID: 3329046351917159825}
+  - component: {fileID: 3642031733799321826}
   m_Layer: 0
   m_Name: WeaponAGround
   m_TagString: Untagged
@@ -334,33 +334,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2624510343394097245}
   m_Mesh: {fileID: 0}
---- !u!54 &2877665405076106222
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2624510343394097245}
-  serializedVersion: 5
-  m_Mass: 1
-  m_LinearDamping: 2
-  m_AngularDamping: 0
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 1
-  m_Interpolate: 0
-  m_Constraints: 0
-  m_CollisionDetection: 0
 --- !u!65 &4356129245166151907
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -412,7 +385,7 @@ MonoBehaviour:
   _componentIndexCache: 1
   _addedNetworkObject: {fileID: 3329046351917159825}
   _networkObjectCache: {fileID: 3329046351917159825}
-  armDelay: 0.15
+  defaultArmDelay: 0.15
   definition: {fileID: 11400000, guid: 73c5ce75cb888d743a20c1a0c0550991, type: 2}
 --- !u!114 &3329046351917159825
 MonoBehaviour:
@@ -435,6 +408,7 @@ MonoBehaviour:
   NetworkBehaviours:
   - {fileID: -8571736992089961157}
   - {fileID: 2760273553822079888}
+  - {fileID: 3642031733799321826}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
   RuntimeParentNetworkBehaviour: {fileID: 0}
@@ -464,7 +438,32 @@ MonoBehaviour:
   <AssetPathHash>k__BackingField: 6292922002317935839
   <SceneId>k__BackingField: 0
   SerializedTransformProperties:
-    Position: {x: 9.99566, y: 124.41, z: -61.30562}
+    Position: {x: 0, y: 0, z: 0}
     Rotation: {x: -0, y: -0, z: -0, w: 1}
     Scale: {x: 1, y: 1, z: 1}
     IsValid: 1
+--- !u!114 &3642031733799321826
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2624510343394097245}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d4ef8c7f880c3941a58c7442d1ed1b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _componentIndexCache: 2
+  _addedNetworkObject: {fileID: 3329046351917159825}
+  _networkObjectCache: {fileID: 3329046351917159825}
+  gravityScale: 1
+  bounciness: 0.3
+  slideFriction: 15
+  stopSpeed: 0.05
+  sphereRadius: 0.15
+  worldMask:
+    serializedVersion: 2
+    m_Bits: 3665
+  reaction: 0
+  lifeTime: -1

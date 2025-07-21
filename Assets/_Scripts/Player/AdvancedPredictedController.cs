@@ -6,7 +6,6 @@ using FishNet.Transporting;
 using FishNet.Object.Synchronizing;
 using _Scripts.Packs;
 
-
 namespace _Scripts.Player
 {
     [RequireComponent(typeof(Rigidbody))]
@@ -35,6 +34,7 @@ namespace _Scripts.Player
         [Tooltip("If you have a separate camera transform, reference it here to apply pitch to the camera only.")]
         [SerializeField] private Transform headAnchor;
         [SerializeField] private Transform viewOrigin;
+        public Transform ViewOrigin => viewOrigin;
 
         [Header("Look Settings")]
         [Tooltip("How fast we rotate horizontally.")]
@@ -53,6 +53,10 @@ namespace _Scripts.Player
         [SerializeField] private float groundDrag = 5f;
         [SerializeField] private float airDrag = 0.1f;
         [SerializeField] private float blendFactor = 0.005f;
+        
+        [Header("Physics Materials")]
+        [SerializeField] private PhysicsMaterial gripMat;
+        [SerializeField] private PhysicsMaterial skiMat;
         
         [Header("Jumping")]
         [SerializeField] private float jumpForce = 5f;
@@ -131,6 +135,7 @@ namespace _Scripts.Player
         private NetworkObject _netObj;
         private Rigidbody _rb;
         private PredictionRigidbody _predictionRb;
+        Collider _col;
 
         private float _moveSpeed;
         private float _startYScale;
@@ -175,20 +180,17 @@ namespace _Scripts.Player
         // Knockback
         private Vector3? _pendingKnockback;
         private float? _pendingTempDrag;
+        private bool _heartBeat;  // Used to mark replicate packet dirty when receiving knockback to keep kb responsive but keep network efficienies
 
-        // Player layers
-        private const string LOCAL_LAYER   = "LocalPlayer";
-        private const string REMOTE_LAYER  = "RemotePlayer";
-        
         // MovementData
         private MovementData _md;
+       
 
         #endregion
 
         #region FishNet Data Structures
         // Replication struct
         
-        // DG - New Code
         #region helpers – 2-bit Move encoder
         static class MoveCodec
         {
@@ -222,6 +224,7 @@ namespace _Scripts.Player
         #region replicate payload -------------------------------------------
         public struct MovementData : IReplicateData
         {
+            public byte Heart;
             /* packed fields */
             private uint _tick;                     // Fish-Net needs this
             public  byte MoveXZ;                    // 4 bits
@@ -230,7 +233,7 @@ namespace _Scripts.Player
             public  InputButtons Down;              // went-down-this-frame flags
 
             /* ctor helper you will call from OnTick() */
-            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, InputButtons down)
+            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, InputButtons down, bool heart)
             {
                 _tick   = tick;
                 MoveXZ  = MoveCodec.Pack(move.x, move.y);
@@ -238,6 +241,7 @@ namespace _Scripts.Player
                 LookY = (short)Mathf.Clamp(Mathf.RoundToInt(look.y * 128f), short.MinValue, short.MaxValue);
                 Held    = held;
                 Down    = down;
+                Heart  = (byte)(heart ? 1 : 0);
             }
 
             /* IReplicateData boiler-plate */
@@ -257,10 +261,9 @@ namespace _Scripts.Player
             public MovementState State;
             public float CurrentPitch;
             public float Energy;
-            public float Drag;
 
             public ReconciliationData(Vector3 position, Quaternion rotation, Vector3 linearVelocity, MovementState state, 
-                float currentPitch, float currentEnergy, float currentDrag)
+                float currentPitch, float currentEnergy)
             {
                 _tick = 0;
                 Position           = position;
@@ -269,7 +272,6 @@ namespace _Scripts.Player
                 State              = state;
                 CurrentPitch       = currentPitch;
                 Energy             = currentEnergy;
-                Drag               = currentDrag;
             }
 
             public uint GetTick() => _tick;
@@ -280,14 +282,6 @@ namespace _Scripts.Player
         #endregion
 
         #region Network Events
-
-        private static void SetLayerRecursively(GameObject go, int layer)
-        {
-            go.layer = layer;
-            foreach (Transform t in go.transform)
-                SetLayerRecursively(t.gameObject, layer);
-        }
-
         public override void OnStartNetwork()
         {
             base.OnStartNetwork();
@@ -297,6 +291,7 @@ namespace _Scripts.Player
             _predictionRb = new PredictionRigidbody();
             _predictionRb.Initialize(_rb);
             _packMgr = GetComponent<PackManager>();
+            _col = GetComponent<Collider>();
             
             _startYScale = transform.localScale.y;
             
@@ -307,10 +302,6 @@ namespace _Scripts.Player
         public override void OnStartClient()
         {
             base.OnStartClient();
-            int local  = LayerMask.NameToLayer(LOCAL_LAYER);
-            int remote = LayerMask.NameToLayer(REMOTE_LAYER);
-
-            SetLayerRecursively(gameObject, IsOwner ? local : remote);
 
             if (IsOwner)
             {
@@ -321,14 +312,15 @@ namespace _Scripts.Player
                 
                 FpsCameraFollow cam = Camera.main?.GetComponent<FpsCameraFollow>();
                 if (cam != null) cam.SetTarget(this);
+
+                SetPhysicMaterial(gripMat);
             }
         }
 
         public override void OnStartServer()
         {
-            int remote = LayerMask.NameToLayer(REMOTE_LAYER);
-            SetLayerRecursively(gameObject, remote);
             _energy = maxEnergy;
+            SetPhysicMaterial(gripMat);
         }
 
         public override void OnStopNetwork()
@@ -342,9 +334,8 @@ namespace _Scripts.Player
         {
             if (IsOwner)
             {
-                // Pack them into MovementData
-                var ih = _iH;                                    // cached in OnStartClient
-                _md = new MovementData(TimeManager.Tick, ih.Move, ih.Look, ih.HeldButtons, ih.DownButtons);
+                var ih = _iH;
+                _md = new MovementData(TimeManager.Tick, ih.Move, ih.Look, ih.HeldButtons, ih.DownButtons, _heartBeat);
 
                 Replicate(_md);
             }
@@ -370,8 +361,7 @@ namespace _Scripts.Player
                 _rb.linearVelocity,
                 _state,
                 _currentPitch,
-                _energy,
-                _rb.linearDamping
+                _energy
             );
  
             Reconcile(recData);
@@ -382,16 +372,12 @@ namespace _Scripts.Player
         {
             _rb.Move(data.Position, data.Rotation);
             _rb.linearVelocity = data.LinearVelocity;
-            _rb.linearDamping = data.Drag;
-            
+
             // Correct movement state
             _state = data.State;
-
             _currentPitch = data.CurrentPitch;
-            
             _energy = data.Energy;
         }
-
         #endregion
 
         #region Replicate
@@ -409,12 +395,14 @@ namespace _Scripts.Player
 
             PackLogic(dt); // Check pack logic
             
+            
             if (_pendingKnockback.HasValue) // Check incoming Knockback
             {
                 ApplyKnockback();
                 _predictionRb.Simulate();
-                return; 
+                return;
             }
+            
             
             _isGrounded = IsGrounded();  // Ground check
             
@@ -560,7 +548,7 @@ namespace _Scripts.Player
                         StopWallRun();
 
                     _state = MovementState.Jetpacking;
-                    return;                     // jet-pack overrides all other states
+                    return;                     // jetpack overrides all other states
                 }
             }
 
@@ -599,9 +587,20 @@ namespace _Scripts.Player
             }
             else
             {
-                // If already in wall run, remain in wall run state.
                 _state = MovementState.WallRunning;
             }
+            
+            switch (_state) // Change material if skiing to remove friction
+            {
+                case MovementState.Skiing:
+                    SetPhysicMaterial(skiMat);
+                    break;
+
+                default:
+                    SetPhysicMaterial(gripMat);
+                    break;
+            }
+            
         }
 
 // --------------- MOVE PLAYER -----------------------------------------------        
@@ -638,6 +637,7 @@ namespace _Scripts.Player
                 Vector3 currentHorizVel = new Vector3(currentVelocity.x, 0f, currentVelocity.z);
                 if (_moveDirection != Vector3.zero && currentHorizVel.magnitude > 0.1f)
                 {
+                    //Vector3 newHorizDir = Vector3.Slerp(currentHorizVel.normalized, _moveDirection, blendFactor).normalized;
                     Vector3 newHorizDir = Vector3.Slerp(currentHorizVel.normalized, _moveDirection, blendFactor).normalized;
                     Vector3 newHorizVel = newHorizDir * currentHorizVel.magnitude;
                     _predictionRb.Velocity(new Vector3(newHorizVel.x, _rb.linearVelocity.y, newHorizVel.z));
@@ -994,15 +994,16 @@ namespace _Scripts.Player
             if (IsServer)
             {
                 _pendingKnockback = impulse;
-                if (tempDrag >= 0f) _pendingTempDrag = tempDrag;   // new helper field
+                if (tempDrag >= 0f) _pendingTempDrag = tempDrag; 
             }
             else
             {
                 if (tempDrag >= 0f) _rb.linearDamping = tempDrag;
                 _predictionRb.AddForce(impulse, ForceMode.Impulse);
             }
+            _heartBeat = !_heartBeat;
         }
-
+        
         private void ApplyKnockback()
         {
             float oldDrag = _rb.linearDamping;
@@ -1018,6 +1019,7 @@ namespace _Scripts.Player
             _state = MovementState.Airborne;
         }
         #endregion
+        
         
         #region respawn
         public void HardResetMovement()
@@ -1083,7 +1085,12 @@ namespace _Scripts.Player
         {
             _energy = Mathf.Max(0f, _energy - amount);
         }
-
         #endregion
+        
+        void SetPhysicMaterial(PhysicsMaterial pm)
+        {
+            if (_col.sharedMaterial != pm)
+                _col.sharedMaterial = pm;
+        }
     }
 }

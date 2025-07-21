@@ -1,11 +1,9 @@
 // _Scripts/Packs/PackManager.cs
 using System;
-using FishNet;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Player;          // for InputHandler / PackId
-// PackDatabase lives in the same namespace (_Scripts.Packs), so no extra using.
 
 namespace _Scripts.Packs
 {
@@ -81,7 +79,7 @@ namespace _Scripts.Packs
                 ServerManager.Despawn(heldNob, DespawnType.Pool);
             }
 
-            NetworkObject nob = TakeFromPool(def.heldPrefab);
+            NetworkObject nob = PoolUtil.TakeFromPool(def.heldPrefab);
             if (nob == null) return false;
 
             nob.transform.SetParent(packAnchor, false);   // zeroed local TRS
@@ -104,7 +102,7 @@ namespace _Scripts.Packs
             Vector3 pos = transform.position + transform.forward * 5f + Vector3.up * 0.3f;
             Quaternion rot = Quaternion.Euler(90, 0, 0);
 
-            NetworkObject ground = TakeFromPool(CurrentDef.groundPrefab);
+            NetworkObject ground = PoolUtil.TakeFromPool(CurrentDef.groundPrefab);
             
             if (ground != null)
             {
@@ -156,18 +154,6 @@ namespace _Scripts.Packs
                 nob.transform.SetParent(packAnchor, false);
         }
 
-        #endregion
-
-        #region Pooling helper
-        static NetworkObject TakeFromPool(NetworkObject prefab)
-        {
-            NetworkObject nob = InstanceFinder.NetworkManager.GetPooledInstantiated(prefab, true);
-            if (nob == null) return null;
-            
-            nob.transform.SetParent(null, false);
-     
-            return nob;
-        }
         #endregion
     }
 }

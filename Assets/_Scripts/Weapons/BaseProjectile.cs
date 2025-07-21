@@ -14,21 +14,21 @@ public abstract class BaseProjectile : NetworkBehaviour
     /* ─── deterministic spawn state (NO SyncVars!) ──────────────────── */
     Vector3 _initPos;
     Vector3 _initVel;
-    uint    _spawnTick;
+    protected uint    _spawnTick;
 
     /* ─── runtime ------------------------------------------------------ */
     Rigidbody       _rb;
-    bool            _despawning;
-    Transform       _shooterRoot;
+    protected bool            _despawning;
+    protected Transform       _shooterRoot;
     NetworkObject   _shooterObj;
-    Vector3         _velocity;
+    protected Vector3         _velocity;
 
     /* interpolation */
     protected Vector3 _prev, _next;
-    float   _timer, _tickDt;
+    protected float   _timer, _tickDt;
 
     /* helper */
-    readonly Collider[] _buf = new Collider[32];
+    protected readonly Collider[] _buf = new Collider[32];
     public   ParticleSystem projectileTrail;
 
     /* ───────────────────────────── */
@@ -62,6 +62,7 @@ public abstract class BaseProjectile : NetworkBehaviour
         _initPos   = pos;
         _initVel   = vel;
         _spawnTick = tick;
+        _velocity = vel;
         
         gravAcc = def.gravityScale == 0 ? Vector3.zero : Physics.gravity * def.gravityScale;
 
@@ -143,7 +144,7 @@ public abstract class BaseProjectile : NetworkBehaviour
 
     /* ───────────────────────────── */
     #region Client interpolation
-    void ClientTick()
+    protected virtual void ClientTick()
     {
         if (IsServer || _despawning) return;
         if (TimeManager.Tick < _spawnTick) return;   // init not yet arrived
@@ -205,12 +206,10 @@ public abstract class BaseProjectile : NetworkBehaviour
         DespawnSelf();
     }
     
-    /* ───── multi-sample LOS: true if *any* ray is clear ───── */
-    bool ClearLineOfSight(Vector3 blast, Collider target)
+    // ───── multi-sample LOS: true if *any* ray is clear 
+    protected bool ClearLineOfSight(Vector3 blast, Collider target)
     {
-        //   centre, head, feet, left shoulder, right shoulder
-        Vector3[] samples =
-        {
+        Vector3[] samples = {
             target.bounds.center,
             target.bounds.center + Vector3.up * 0.8f,
             target.bounds.center - Vector3.up * 0.8f,
@@ -223,32 +222,28 @@ public abstract class BaseProjectile : NetworkBehaviour
             Vector3 dir  = blast - origin;
             float   dist = dir.magnitude;
             if (dist <= 0.01f) return true;          // overlapping
-
             dir /= dist;
 
             if (Physics.Raycast(origin, dir, out RaycastHit hit, dist - 0.01f, def.hitMask, QueryTriggerInteraction.Ignore))
             {
-                // Clear if first thing hit is the target itself
-                if (hit.collider.transform.root == target.transform.root)
+                Transform root = hit.collider.transform.root;
+                if (root == target.transform.root || (_shooterRoot != null && root == _shooterRoot))
                     return true;
             }
             else
             {
-                // Nothing in the way → clear
                 return true;
             }
         }
-        // all samples blocked
         return false;
     }
 
-    /* ───── modified ApplyExplosion ───── */
+    // ───── modified ApplyExplosion
     protected virtual void ApplyExplosion(Vector3 centre, Vector3 shotDir, Collider directHitCol)
     {
         int cnt = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.playerMask, QueryTriggerInteraction.Ignore);
 
         bool any = false;
-
         // ---------- players inside radius ----------
         for (int i = 0; i < cnt; ++i)
         {
@@ -258,7 +253,7 @@ public abstract class BaseProjectile : NetworkBehaviour
             // new LOS gate
             if (!ClearLineOfSight(centre, c))
                 continue;
-
+            
             any |= DealDamageAndKnockback(c, centre, shotDir);
         }
 
@@ -271,7 +266,7 @@ public abstract class BaseProjectile : NetworkBehaviour
     }
 
     // helper that contains your old fall-off, knock-back etc.
-    protected bool DealDamageAndKnockback(Collider col, Vector3 centre, Vector3 shotDir)
+    protected virtual bool DealDamageAndKnockback(Collider col, Vector3 centre, Vector3 shotDir)
     {
         Transform root = col.transform.root;
         if (!root.TryGetComponent(out AdvancedPredictedController ctrl) || !root.TryGetComponent(out PlayerHealth hp))
@@ -302,7 +297,7 @@ public abstract class BaseProjectile : NetworkBehaviour
     }
 
     [ObserversRpc(BufferLast = false)]
-    void RpcSpawnImpact(Vector3 pos, Vector3 normal)
+    protected void RpcSpawnImpact(Vector3 pos, Vector3 normal)
     {
         VfxPool.Spawn("VFX/RocketExplosion", pos, Quaternion.LookRotation(normal), 2.5f);
     }

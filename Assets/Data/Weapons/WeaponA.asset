@@ -17,6 +17,8 @@ MonoBehaviour:
   usesAmmo: 0
   magazine: 6
   reloadTime: 1.2
+  energyPerShot: 4
+  requiresEnergyPack: 0
   projectilePrefab: {fileID: 1938724514370874692, guid: dffcccc3d1c6b0044adecae6241f6300, type: 3}
   projectileSpeed: 120
   velocityInheritance: 0.7
@@ -27,10 +29,10 @@ MonoBehaviour:
   castHalf: 0.4
   hitMask:
     serializedVersion: 2
-    m_Bits: 3959
+    m_Bits: 3703
   playerMask:
     serializedVersion: 2
-    m_Bits: 448
+    m_Bits: 64
   blastRadius: 15
   damage: 45
   knockbackForce: 50
@@ -42,3 +44,4 @@ MonoBehaviour:
   muzzleVFX: {fileID: 0}
   impactVFX: {fileID: 0}
   fireSFX: {fileID: 0}
+  hiddenQuickItem: 0

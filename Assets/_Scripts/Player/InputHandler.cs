@@ -25,8 +25,10 @@ namespace _Scripts.Player
         bool _togglePackPressed;    // "F" - Activate/deactivate active packs
         bool _packDropRequested;     // “P”   – shown to PackManager
         bool _viewToggleRequested;   // “V”   – camera FP/TP switch
+        bool _grenadeUseRequested;
+        bool _medkitUseRequested;
+        bool _beaconUseRequested;
         
-
         void Update()
         {
             if (!IsOwner)
@@ -89,6 +91,13 @@ namespace _Scripts.Player
 
             /* --- camera view toggle ---------------------------------- */
             if (Input.GetKeyDown(KeyCode.V)) _viewToggleRequested = true;
+            
+            /* --- Item consumption ---------------------------------- */
+            // inside CaptureHotkeys()
+            if (Input.GetKeyDown(KeyCode.G)) _grenadeUseRequested = true;   // Grenade
+            if (Input.GetKeyDown(KeyCode.H)) _medkitUseRequested  = true;   // Med-kit
+            if (Input.GetKeyDown(KeyCode.B)) _beaconUseRequested  = true;   // Beacon
+
         }
 
         /* ================================================================ */
@@ -120,5 +129,11 @@ namespace _Scripts.Player
             _viewToggleRequested = false;
             return v;
         }
+        
+        // one-shot accessors – UI or managers read once per frame
+        public bool ConsumeGrenadeUse() { bool v = _grenadeUseRequested; _grenadeUseRequested = false; return v; }
+        public bool ConsumeMedkitUse () { bool v = _medkitUseRequested ; _medkitUseRequested  = false; return v; }
+        public bool ConsumeBeaconUse () { bool v = _beaconUseRequested;  _beaconUseRequested  = false; return v; }
+        
     }
 }

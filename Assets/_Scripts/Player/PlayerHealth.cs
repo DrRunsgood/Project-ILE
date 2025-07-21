@@ -36,6 +36,9 @@ public sealed class PlayerHealth : NetworkBehaviour
     Collider[]                  cols;
     Renderer[]                  rends;
 
+    /* ───── Co-routines ──────── */
+    Coroutine _healRoutine;
+    
     /* ═════════════════════════ */
     #region Init
     void Awake()
@@ -74,11 +77,27 @@ public sealed class PlayerHealth : NetworkBehaviour
             HandleDeath(instigator);
     }
 
-    [Server] public void ApplyHeal(int amount)
+    [Server] public void ApplyHeal(int amount) =>
+        ApplyHealOverTime(amount, 0f);
+    
+    [Server] public void ApplyHealOverTime(int amount, float seconds)
     {
-        if (IsDead || amount <= 0) return;
-        _hp.Value = Mathf.Min(_hp.Value + amount, maxHp);
+        if (IsDead || amount <= 0 || _hp.Value >= maxHp) return;
+
+        /* cancel any previous HoT so the newest kit replaces it     */
+        if (_healRoutine != null)
+            StopCoroutine(_healRoutine);
+
+        if (seconds <= 0f)
+        {
+            _hp.Value = Mathf.Min(_hp.Value + amount, maxHp);
+        }
+        else
+        {
+            _healRoutine = StartCoroutine(HealRoutine(amount, seconds));
+        }
     }
+    
     #endregion
 
     /* ───────────────────────── */
@@ -134,6 +153,30 @@ public sealed class PlayerHealth : NetworkBehaviour
         SetPlayable(true);
         RpcSetAlive(true);
         OnRespawned?.Invoke();
+    }
+    
+    [Server] IEnumerator HealRoutine(int amount, float seconds)
+    {
+        float elapsed   = 0f;
+        float perSecond = amount / seconds;
+        float carry     = 0f;                    // fractional remainder
+
+        while (elapsed < seconds && _hp.Value < maxHp && !IsDead)
+        {
+            yield return new WaitForSeconds((float)TimeManager.TickDelta);
+
+            float dt = (float)TimeManager.TickDelta;
+            elapsed += dt;
+
+            carry += perSecond * dt;
+            int inc = Mathf.FloorToInt(carry);
+            if (inc > 0)
+            {
+                _hp.Value = Mathf.Min(_hp.Value + inc, maxHp);
+                carry -= inc;
+            }
+        }
+        _healRoutine = null;                     // finished / interrupted
     }
 
     /* ═════════ helpers ═════════ */

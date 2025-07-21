@@ -17,7 +17,8 @@ GameObject:
   - component: {fileID: 8501514172621720761}
   - component: {fileID: 4486696069042159977}
   - component: {fileID: 7031928564848404723}
-  m_Layer: 0
+  - component: {fileID: -6653470587612458186}
+  m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -65,6 +66,7 @@ MonoBehaviour:
   - {fileID: 8501514172621720761}
   - {fileID: 4486696069042159977}
   - {fileID: 7031928564848404723}
+  - {fileID: -6653470587612458186}
   - {fileID: 759703639484445222}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
@@ -133,7 +135,7 @@ CapsuleCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1246683354149957449}
-  m_Material: {fileID: 13400000, guid: 8adab7be8cfea70489bd82c5ca1f0d69, type: 2}
+  m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -209,6 +211,8 @@ MonoBehaviour:
   groundDrag: 2.5
   airDrag: 0.001
   blendFactor: 0.003
+  gripMat: {fileID: 13400000, guid: 72fc03409c59b7f45b02fa60009d721f, type: 2}
+  skiMat: {fileID: 13400000, guid: 06f0a59c169905e4e8568d2b000122a3, type: 2}
   jumpForce: 12
   jumpCooldown: 0.5
   crouchYScale: 0.5
@@ -263,6 +267,8 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 6832439599154668905}
   firstPersonAnchor: {fileID: 0}
   _anchor: {fileID: 1024700727967286960}
+  defaultQuickItems:
+  - {fileID: 11400000, guid: 44aceb61cf6796b498d775bc98420803, type: 2}
 --- !u!114 &7031928564848404723
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -279,6 +285,21 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   packAnchor: {fileID: 2388324582239347131}
+--- !u!114 &-6653470587612458186
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246683354149957449}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8ba9a6fc05ee3a04aa8fe890761f9e4b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _componentIndexCache: 5
+  _addedNetworkObject: {fileID: 6832439599154668905}
+  _networkObjectCache: {fileID: 6832439599154668905}
 --- !u!1 &2646340587292378190
 GameObject:
   m_ObjectHideFlags: 0
@@ -288,7 +309,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2388324582239347131}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: PackAnchor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -321,7 +342,7 @@ GameObject:
   - component: {fileID: 8854438168527651508}
   - component: {fileID: 5543219099015207182}
   - component: {fileID: 5486347008128861531}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Visor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -405,7 +426,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 6417992383834631347}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: viewOrigin
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -436,7 +457,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1024700727967286960}
-  m_Layer: 13
+  m_Layer: 6
   m_Name: HeldWeapons
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -467,7 +488,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 9128714729413085702}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Orientation
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -498,7 +519,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 448569795313915978}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: CamAnchor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -534,7 +555,7 @@ GameObject:
   - component: {fileID: 8012112908243625123}
   - component: {fileID: 1928804306502622935}
   - component: {fileID: 759703639484445222}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Capsule
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -624,7 +645,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 5
+  _componentIndexCache: 6
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:

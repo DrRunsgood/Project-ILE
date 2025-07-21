@@ -29,10 +29,10 @@ MonoBehaviour:
   castHalf: 0.4
   hitMask:
     serializedVersion: 2
-    m_Bits: 3959
+    m_Bits: 3703
   playerMask:
     serializedVersion: 2
-    m_Bits: 448
+    m_Bits: 64
   blastRadius: 0
   damage: 75
   knockbackForce: 0
@@ -44,3 +44,4 @@ MonoBehaviour:
   muzzleVFX: {fileID: 0}
   impactVFX: {fileID: 0}
   fireSFX: {fileID: 0}
+  hiddenQuickItem: 0

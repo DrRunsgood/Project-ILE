@@ -56,5 +56,8 @@ namespace _Scripts.Data
         public GameObject     muzzleVFX;
         public GameObject     impactVFX;
         public AudioClip      fireSFX;
+        
+        [Header("Meta / UI")]
+        public bool hiddenQuickItem = false;
     }
 }

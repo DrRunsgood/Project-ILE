@@ -1,4 +1,4 @@
-//  _Scripts/Weapons/Ground/WeaponPickup.cs
+// _Scripts/Weapons/Ground/WeaponPickup.cs
 using FishNet.Object;
 using UnityEngine;
 using _Scripts.Data;
@@ -9,66 +9,95 @@ namespace _Scripts.Weapons
     [RequireComponent(typeof(Collider))]
     public sealed class WeaponPickup : NetworkBehaviour
     {
-        [SerializeField] float armDelay = 0.15f;
-        double _armedAt;
-        
+        /* ───── Inspector ───── */
+        [SerializeField] float            defaultArmDelay = 0.15f;   // scene‑placed fallback
         [SerializeField] WeaponDefinition definition;
-        float _pickupEnableTime;            // set by the server
 
-        /* called by server *immediately after* spawning the ground item */
-        [Server] public void Arm(float delay)
-            => _pickupEnableTime = (float)Time.timeAsDouble + delay;
+        /* ───── Runtime ───── */
+        double _pickupEnableTime;   // shared on all peers
 
+        /* ════════════ Arming from WeaponManager ════════════ */
+        [Server] public void Arm(float delay)               // called right after Spawn()
+        {
+            double enable = Time.timeAsDouble + delay;
+            SetEnableTime(enable);                          // server local
+            RpcSetEnableTime(enable);                       // every client (buffered)
+        }
+
+        /* ════════════ Scene‑placed objects ════════════ */
         public override void OnStartServer()
         {
             base.OnStartServer();
-            _armedAt = Time.timeAsDouble + armDelay;   // disarm for next 150 ms
+            if (_pickupEnableTime == 0)                     // was in scene
+            {
+                double enable = Time.timeAsDouble + defaultArmDelay;
+                SetEnableTime(enable);
+                RpcSetEnableTime(enable);
+            }
         }
-        void OnTriggerEnter(Collider other)
+
+        /* ════════════ Tiny buffered RPC ════════════ */
+        [ObserversRpc(BufferLast = true)]
+        void RpcSetEnableTime(double enable)
         {
-            if (Time.timeAsDouble < _armedAt) return;
-            /* 0) still in grace period? → ignore */
+            if (IsServer) return;        // host already set locally
+            SetEnableTime(enable);
+        }
+
+        void SetEnableTime(double enable) => _pickupEnableTime = enable;
+
+        /* ════════════ Overlap events ════════════ */
+        void OnTriggerEnter(Collider other) => TryPickup(other);
+        void OnTriggerStay (Collider other) => TryPickup(other);
+        
+        void TryPickup(Collider other)
+        {
+            /* Grace period still active? */
             if (Time.timeAsDouble < _pickupEnableTime)
                 return;
 
-            /* 1) client side → just ask the server */
+            /* ---------------- CLIENT PATH ---------------- */
             if (!IsServer && other.TryGetComponent(out NetworkObject nObj))
             {
+                if (!nObj.IsOwner)          
+                    return;
+                // Let the server decide – still safe if we’re inside the trigger
                 Server_RequestPickup(nObj);
                 return;
             }
 
-            /* 2) server side → do authoritative work */
+            /* ---------------- SERVER PATH ---------------- */
             if (!IsServer) return;
             if (!other.TryGetComponent(out WeaponManager wm)) return;
-            
-            /* ───── energy-weapon gate ───── */
+
+            /* Energy‑pack gate (if required) */
             if (definition.requiresEnergyPack)
             {
-                // look for a PackManager on the same player root
-                if (!other.TryGetComponent(out PackManager pm) || pm.CurrentId != PackId.Energy)
-                    return;                     // reject pickup – just ignore the overlap
+                if (!other.TryGetComponent(out PackManager pm) ||
+                    pm.CurrentId != PackId.Energy)
+                    return;
             }
 
+            /* Attempt to add weapon, despawn if accepted */
             if (wm.Server_AddWeapon(definition))
-                ServerManager.Despawn(gameObject);          // consumed
+                ServerManager.Despawn(gameObject, DespawnType.Pool);
         }
 
-        /* -------- bridge from client to server ----------------------- */
+        /* ════════════ Bridge RPC (client → server) ════════════ */
         [ServerRpc(RequireOwnership = false)]
         void Server_RequestPickup(NetworkObject playerObj)
         {
             if (!playerObj.TryGetComponent(out WeaponManager wm)) return;
 
-            /* energy-weapon gate */
             if (definition.requiresEnergyPack)
             {
-                if (!playerObj.TryGetComponent(out PackManager pm) || pm.CurrentId != PackId.Energy)
+                if (!playerObj.TryGetComponent(out PackManager pm) ||
+                    pm.CurrentId != PackId.Energy)
                     return;
             }
 
-            if (wm.Server_AddWeapon(definition)) ServerManager.Despawn(gameObject);
+            if (wm.Server_AddWeapon(definition))
+                ServerManager.Despawn(gameObject, DespawnType.Pool);
         }
-
     }
 }
