@@ -97,7 +97,7 @@ namespace _Scripts.Player
         [SerializeField] private float jetpackForce = 15f;
         [SerializeField] private float jetpackFuelBurnRate = 10f;
         [SerializeField] private float jetpackFuelCutoff = 5f;
-        [SerializeField] private float jetpackDirectionalBlend = 0.3f;
+        [SerializeField] private float jetUpliftRatio = 0.75f;
         [SerializeField] private float maxAdditionalForwardSpeed = 30f;
         [SerializeField] private float maxAdditionalLateralSpeed = 40f;
 
@@ -395,14 +395,12 @@ namespace _Scripts.Player
 
             PackLogic(dt); // Check pack logic
             
-            
             if (_pendingKnockback.HasValue) // Check incoming Knockback
             {
                 ApplyKnockback();
                 _predictionRb.Simulate();
                 return;
             }
-            
             
             _isGrounded = IsGrounded();  // Ground check
             
@@ -426,15 +424,21 @@ namespace _Scripts.Player
             switch (_state)
             {
                 case MovementState.Jetpacking:
+                    ApplyAirControl(move); // optional air-control
+
                     if (SpendEnergy(_burn * dt))
                     {
-                        if (!_isGrounded) MovePlayer(move);   // optional air-control
-                        Jetpack(move);                // apply impulses
+                        Jetpack(move); // apply impulses
                     }
                     else
                     {
                         _state = MovementState.Airborne;  // pack sputters out
                     }
+                    break;
+                
+                case MovementState.Airborne:
+                    ApplyAirControl(move); // Use the same air control helper
+                    //ApplyAirBrake(move);   // Use a helper for the 'S' key brake
                     break;
 
                 case MovementState.Skiing:
@@ -463,9 +467,7 @@ namespace _Scripts.Player
             }
             
             if (IsServer && LagCompensationManager.Instance != null)
-            {
                 LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, viewOrigin.forward, _rb.linearVelocity, TimeManager.Tick);
-            }
         }
         #endregion
         
@@ -632,17 +634,6 @@ namespace _Scripts.Player
                 // Normal movement on flat ground
                 _predictionRb.Velocity(new Vector3(_moveDirection.x * _moveSpeed, _rb.linearVelocity.y, _moveDirection.z * _moveSpeed));
             }
-            else
-            {   // Air movement velocity blend
-                Vector3 currentHorizVel = new Vector3(currentVelocity.x, 0f, currentVelocity.z);
-                if (_moveDirection != Vector3.zero && currentHorizVel.magnitude > 0.1f)
-                {
-                    //Vector3 newHorizDir = Vector3.Slerp(currentHorizVel.normalized, _moveDirection, blendFactor).normalized;
-                    Vector3 newHorizDir = Vector3.Slerp(currentHorizVel.normalized, _moveDirection, blendFactor).normalized;
-                    Vector3 newHorizVel = newHorizDir * currentHorizVel.magnitude;
-                    _predictionRb.Velocity(new Vector3(newHorizVel.x, _rb.linearVelocity.y, newHorizVel.z));
-                }
-            }
         }
 
         private bool OnSlope()
@@ -717,7 +708,7 @@ namespace _Scripts.Player
         {
             if (_state == MovementState.WallRunning)
             {
-                _wallRunGraceTimer -= (float)base.TimeManager.TickDelta;
+                _wallRunGraceTimer -= (float)TimeManager.TickDelta;
                 
                 if (_wallRunGraceTimer <= 0f)
                 {
@@ -787,7 +778,7 @@ namespace _Scripts.Player
                 if (_canWallRun)
                 {
                     if (_wallRunTimer > 0f)
-                        _wallRunTimer -= (float)base.TimeManager.TickDelta;
+                        _wallRunTimer -= (float)TimeManager.TickDelta;
                     else
                     {
                         _exitingWall  = true;
@@ -798,7 +789,7 @@ namespace _Scripts.Player
                 else if (_exitingWall)
                 {
                     if (_exitWallTimer > 0f)
-                        _exitWallTimer -= (float)base.TimeManager.TickDelta;
+                        _exitWallTimer -= (float)TimeManager.TickDelta;
                     else
                     {
                         _exitingWall = false;
@@ -844,7 +835,7 @@ namespace _Scripts.Player
                 else
                 {
                     // No wall contact at all; use grace timer before stopping
-                    _wallRunGraceTimer -= (float)base.TimeManager.TickDelta;
+                    _wallRunGraceTimer -= (float)TimeManager.TickDelta;
                     if (_wallRunGraceTimer <= 0f)
                     {
                         StopWallRun();
@@ -932,10 +923,37 @@ namespace _Scripts.Player
 
         #endregion
         
-        #region Jetpack
+        #region Airborne & Jetpack Control
+
+        private void ApplyAirControl(Vector2 move)
+        {
+            
+            if (move.sqrMagnitude < 0.01f) return;
+
+            // Calculate desired world-space direction from player's WASD input
+            _moveDirection = ((orientation.forward * move.y) + (orientation.right * move.x)).normalized;
+
+            // --- VELOCITY RELATIVE FALLOFF ---
+            Vector3 currentHorizontalVelocity = new Vector3(_rb.linearVelocity.x, 0, _rb.linearVelocity.z);
+            float speedInDesiredDirection = Vector3.Dot(currentHorizontalVelocity, _moveDirection);
+
+            // Calculate a multiplier based on our speed in the desired direction.
+            // This is 1.0 at 0 speed, and falls off to 0.0 at maxAirControlSpeed.
+            float effectiveness = 1f - Mathf.Clamp01(speedInDesiredDirection / 60f);  // maxAirControlSpeed
+    
+            // If moving backward, we want full power to change direction.
+            if (speedInDesiredDirection < 0)
+            {
+                effectiveness = 1f;
+            }
+
+            // Apply the force, scaled by its effectiveness.
+            _predictionRb.AddForce(_moveDirection * (effectiveness * 10f), ForceMode.Acceleration);
+        }
         
         private void Jetpack(Vector2 move)
         {
+            /*
             Vector3 horizDir = Vector3.zero;
 
             if (move.sqrMagnitude > 0.01f)
@@ -955,6 +973,47 @@ namespace _Scripts.Player
             
             // Apply force without normalization to preserve intended thrust balance
             _predictionRb.AddForce(finalImpulse, ForceMode.Impulse);
+            */
+            float totalThrust = 40f; // Base force from Inspector
+            
+            Vector3 directionalThrustComponent = Vector3.zero;
+
+                // Only calculate directional thrust if the player is giving WASD input
+                if (move.sqrMagnitude > 0.01f)
+                {
+                    // 1. Determine the world-space direction of the player's input
+                    Vector3 localMove = new Vector3(move.x, 0f, move.y);
+                    Vector3 worldMoveDir = orientation.TransformDirection(localMove).normalized;
+
+                    // 2. Get the player's current horizontal velocity and its speed
+                    Vector3 currentHorizontalVelocity = new Vector3(_rb.linearVelocity.x, 0, _rb.linearVelocity.z);
+                    
+                    // 3. Calculate the player's speed specifically along the desired thrust axis
+                    float speedInDesiredDirection = Vector3.Dot(currentHorizontalVelocity, worldMoveDir);
+
+                    // 4. Only apply directional thrust if we are not already moving too fast in that direction
+                    if (speedInDesiredDirection < 60f) //maxSpeedForDirectionalThrust
+                    {
+                        // Calculate a falloff multiplier to smoothly reduce thrust as we approach the max speed.
+                        // This is 1.0 at 0 speed, and falls off to 0.0 at maxSpeedForDirectionalThrust.
+                        // If speedInDesiredDirection is negative (moving opposite), Clamp01 makes it 0, so falloff is 1.0 (full power).
+                        float falloff = 1f - Mathf.Clamp01(speedInDesiredDirection / 60f); //maxSpeedForDirectionalThrust
+                        
+                        // The total potential magnitude for directional thrust
+                        float directionalThrustMagnitude = totalThrust * (1f - jetUpliftRatio);
+
+                        // The final directional thrust is scaled by the falloff
+                        directionalThrustComponent = worldMoveDir * (directionalThrustMagnitude * falloff);
+                    }
+                    // If speedInDesiredDirection >= maxSpeedForDirectionalThrust, directionalThrustComponent remains Vector3.zero
+                }
+
+                // 5. Always calculate the upward lift component
+                Vector3 liftThrust = Vector3.up * (totalThrust * jetUpliftRatio);
+
+                // 6. Combine lift and directional forces and apply them to the Rigidbody
+                Vector3 finalJetForce = liftThrust + directionalThrustComponent;
+                _predictionRb.AddForce(finalJetForce, ForceMode.Force);
         }
         
         #endregion
