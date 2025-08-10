@@ -435,6 +435,8 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 3329046351917159825}
   def: {fileID: 11400000, guid: 73c5ce75cb888d743a20c1a0c0550991, type: 2}
   muzzle: {fileID: 635783655219336320}
+  debugAimLines: 1
+  debugMaxRange: 1000
 --- !u!114 &105925002582440046
 MonoBehaviour:
   m_ObjectHideFlags: 0

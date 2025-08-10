@@ -126,7 +126,7 @@ Rigidbody:
   m_UseGravity: 1
   m_IsKinematic: 0
   m_Interpolate: 0
-  m_Constraints: 112
+  m_Constraints: 80
   m_CollisionDetection: 2
 --- !u!136 &5029882488096950468
 CapsuleCollider:
@@ -209,8 +209,7 @@ MonoBehaviour:
   sprintSpeed: 12
   crouchSpeed: 4
   groundDrag: 2.5
-  airDrag: 0.001
-  blendFactor: 0.003
+  airDrag: 0.0005
   gripMat: {fileID: 13400000, guid: 72fc03409c59b7f45b02fa60009d721f, type: 2}
   skiMat: {fileID: 13400000, guid: 06f0a59c169905e4e8568d2b000122a3, type: 2}
   jumpForce: 12
@@ -239,17 +238,18 @@ MonoBehaviour:
   wallStickForce: 50
   wallRunAcceleration: 20
   wallRunVerticalDampFactor: 10
-  jetpackForce: 0.75
+  jetpackForce: 42
   jetpackFuelBurnRate: 22
   jetpackFuelCutoff: 5
-  jetpackDirectionalBlend: 0.3
+  jetUpliftRatio: 0.75
   maxAdditionalForwardSpeed: 30
   maxAdditionalLateralSpeed: 40
   skiControl: 0.15
-  skiDrag: 0.025
+  skiDrag: 0.02
   maxEnergy: 100
   energyRegenRate: 10
   _state: 0
+  pitchSmoothTime: 0.025
 --- !u!114 &4486696069042159977
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -441,10 +441,10 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5037445246091374550}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
+  m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 448569795313915978}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -534,8 +534,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8653286886805714578}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.4, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.3984375, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -654,7 +654,7 @@ MonoBehaviour:
     AttachOnStop: 0
   _controllerMovementSettings:
     EnableTeleport: 0
-    TeleportThreshold: 1
+    TeleportThreshold: 0
     AdaptiveInterpolationValue: 3
     InterpolationValue: 2
     SmoothedProperties: 4294967295

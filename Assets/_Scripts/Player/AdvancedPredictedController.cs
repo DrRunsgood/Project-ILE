@@ -8,6 +8,37 @@ using _Scripts.Packs;
 
 namespace _Scripts.Player
 {
+    public static class NetUtils
+    {
+        public static class MoveCodec
+        {
+            // 00 = 0   01 = +1   10 = –1
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static byte Pack(float x, float z)
+            {
+                byte b = 0;
+                if      (x >  0.1f) b |= 0b01;        // bits 0-1
+                else if (x < -0.1f) b |= 0b10;
+                if      (z >  0.1f) b |= 0b01 << 2;   // bits 2-3
+                else if (z < -0.1f) b |= 0b10 << 2;
+                return b;
+            }
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static Vector2 Unpack(byte b)
+            {
+                int dx = (b & 0b11)     switch
+                {
+                    0b01 => +1, 0b10 => -1, _ => 0
+                };
+                int dz = ((b >> 2) & 0b11) switch
+                {
+                    0b01 => +1, 0b10 => -1, _ => 0
+                };
+                return new Vector2(dx, dz);
+            }
+        }
+    }
+    
     [RequireComponent(typeof(Rigidbody))]
     public class AdvancedPredictedController : NetworkBehaviour
     {
@@ -52,7 +83,6 @@ namespace _Scripts.Player
         [Header("Physics & Drag")]
         [SerializeField] private float groundDrag = 5f;
         [SerializeField] private float airDrag = 0.1f;
-        [SerializeField] private float blendFactor = 0.005f;
         
         [Header("Physics Materials")]
         [SerializeField] private PhysicsMaterial gripMat;
@@ -94,7 +124,7 @@ namespace _Scripts.Player
         [SerializeField] private float wallRunVerticalDampFactor = 10f; // How strongly to suppress vertical movement
 
         [Header("Jetpack Settings")]
-        [SerializeField] private float jetpackForce = 15f;
+        [SerializeField] private float jetpackForce = 42f;
         [SerializeField] private float jetpackFuelBurnRate = 10f;
         [SerializeField] private float jetpackFuelCutoff = 5f;
         [SerializeField] private float jetUpliftRatio = 0.75f;
@@ -154,6 +184,7 @@ namespace _Scripts.Player
         
         // For camera orientation
         private float _currentPitch; // we clamp pitch with minPitch, maxPitch
+        private float _yaw;
 
         // Wall Running
         private bool _canWallRun;
@@ -184,7 +215,12 @@ namespace _Scripts.Player
 
         // MovementData
         private MovementData _md;
-       
+        
+        
+        // TESTING
+        float _renderPitch;
+        float _renderPitchVel;
+        [SerializeField] float pitchSmoothTime = 0.025f;
 
         #endregion
 
@@ -192,33 +228,7 @@ namespace _Scripts.Player
         // Replication struct
         
         #region helpers – 2-bit Move encoder
-        static class MoveCodec
-        {
-            // 00 = 0   01 = +1   10 = –1
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static byte Pack(float x, float z)
-            {
-                byte b = 0;
-                if      (x >  0.1f) b |= 0b01;        // bits 0-1
-                else if (x < -0.1f) b |= 0b10;
-                if      (z >  0.1f) b |= 0b01 << 2;   // bits 2-3
-                else if (z < -0.1f) b |= 0b10 << 2;
-                return b;
-            }
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static Vector2 Unpack(byte b)
-            {
-                int dx = (b & 0b11)     switch
-                {
-                    0b01 => +1, 0b10 => -1, _ => 0
-                };
-                int dz = ((b >> 2) & 0b11) switch
-                {
-                    0b01 => +1, 0b10 => -1, _ => 0
-                };
-                return new Vector2(dx, dz);
-            }
-        }
+        
         #endregion
 
         #region replicate payload -------------------------------------------
@@ -228,7 +238,7 @@ namespace _Scripts.Player
             /* packed fields */
             private uint _tick;                     // Fish-Net needs this
             public  byte MoveXZ;                    // 4 bits
-            public  short LookX, LookY;             // 2 × 1-byte deltas
+            public  short LookX, LookY;             // deltas
             public  InputButtons Held;              // held-down flags
             public  InputButtons Down;              // went-down-this-frame flags
 
@@ -236,9 +246,9 @@ namespace _Scripts.Player
             public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, InputButtons down, bool heart)
             {
                 _tick   = tick;
-                MoveXZ  = MoveCodec.Pack(move.x, move.y);
-                LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * 128f), short.MinValue, short.MaxValue);
-                LookY = (short)Mathf.Clamp(Mathf.RoundToInt(look.y * 128f), short.MinValue, short.MaxValue);
+                MoveXZ  = NetUtils.MoveCodec.Pack(move.x, move.y);
+                LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * 100f), short.MinValue, short.MaxValue);
+                LookY = (short)Mathf.Clamp(Mathf.RoundToInt(look.y * 100f), short.MinValue, short.MaxValue);
                 Held    = held;
                 Down    = down;
                 Heart  = (byte)(heart ? 1 : 0);
@@ -253,32 +263,30 @@ namespace _Scripts.Player
         
         private struct ReconciliationData : IReconcileData
         {
-            private uint _tick;
-
-            public Vector3 Position;
-            public Quaternion Rotation;
-            public Vector3 LinearVelocity;
+            uint _tick;
+            public Vector3  Position;
+            public ushort   Speed, Heading;
+            public short    Vy;
+            public byte     EnergyQ;
             public MovementState State;
-            public float CurrentPitch;
-            public float Energy;
+            public ushort   YawQ;
+            public ushort    CurrentPitchQ;
 
-            public ReconciliationData(Vector3 position, Quaternion rotation, Vector3 linearVelocity, MovementState state, 
-                float currentPitch, float currentEnergy)
+            public ReconciliationData(Vector3 pos, Vector3 vel, MovementState st, float yawDeg, float pitchDeg, byte energyQ)
             {
                 _tick = 0;
-                Position           = position;
-                Rotation           = rotation;
-                LinearVelocity     = linearVelocity;
-                State              = state;
-                CurrentPitch       = currentPitch;
-                Energy             = currentEnergy;
+                Position  = pos;
+                EncodeVelocity(vel, out Speed, out Heading, out Vy);
+                EnergyQ   = energyQ;          // just store
+                State     = st;
+                YawQ = (ushort)Mathf.Clamp(Mathf.RoundToInt(((yawDeg % 360f + 360f) % 360f) * (65535f / 360f)), 0, 65535);
+                CurrentPitchQ = QuantizePitch(pitchDeg);
             }
-
-            public uint GetTick() => _tick;
-            public void SetTick(uint value) => _tick = value;
-            public void Dispose() { }
+            public uint  GetTick() => _tick;
+            public void  SetTick(uint v) => _tick = v;
+            public void  Dispose() { }
         }
-
+        
         #endregion
 
         #region Network Events
@@ -294,6 +302,7 @@ namespace _Scripts.Player
             _col = GetComponent<Collider>();
             
             _startYScale = transform.localScale.y;
+            _yaw = transform.eulerAngles.y;
             
             TimeManager.OnTick += OnTick;
             TimeManager.OnPostTick += OnPostTick;
@@ -303,6 +312,8 @@ namespace _Scripts.Player
         {
             base.OnStartClient();
 
+            _renderPitch = _currentPitch;
+                
             if (IsOwner)
             {
                 _iH = GetComponent<InputHandler>();
@@ -357,11 +368,11 @@ namespace _Scripts.Player
         {
             var recData = new ReconciliationData(
                 _rb.position,
-                _rb.rotation,
                 _rb.linearVelocity,
                 _state,
+                _yaw,
                 _currentPitch,
-                _energy
+                QuantiseEnergy(_energy)
             );
  
             Reconcile(recData);
@@ -370,13 +381,14 @@ namespace _Scripts.Player
         [Reconcile]
         private void Reconcile(ReconciliationData data, Channel channel = Channel.Unreliable)
         {
-            _rb.Move(data.Position, data.Rotation);
-            _rb.linearVelocity = data.LinearVelocity;
+            _rb.Move(data.Position, Quaternion.Euler(0f, data.YawQ * (360f / 65535f), 0f));
+            _rb.linearVelocity = DecodeVelocity(data.Speed, data.Heading, data.Vy);
 
             // Correct movement state
             _state = data.State;
-            _currentPitch = data.CurrentPitch;
-            _energy = data.Energy;
+            _currentPitch = DequantizePitch(data.CurrentPitchQ);
+            _yaw = data.YawQ * (360f / 65535f);
+            _energy = DequantiseEnergy(data.EnergyQ);
         }
         #endregion
 
@@ -406,6 +418,7 @@ namespace _Scripts.Player
             
             _onSlope = false; // Reset slope check, recheck if on ground
             if(_isGrounded) _onSlope = OnSlope();
+            
             
             ApplyRotation(look.x, look.y);  // Apply Rotation
             
@@ -438,11 +451,10 @@ namespace _Scripts.Player
                 
                 case MovementState.Airborne:
                     ApplyAirControl(move); // Use the same air control helper
-                    //ApplyAirBrake(move);   // Use a helper for the 'S' key brake
                     break;
 
                 case MovementState.Skiing:
-                    PerformSkiMovement();
+                    PerformSkiMovement(move);
                     break;
 
                 case MovementState.WallRunning:
@@ -466,19 +478,67 @@ namespace _Scripts.Player
                 viewOrigin.rotation = headAnchor.rotation;
             }
             
-            if (IsServer && LagCompensationManager.Instance != null)
+            if (IsServer && LagCompensationManager.Instance != null) 
                 LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, viewOrigin.forward, _rb.linearVelocity, TimeManager.Tick);
         }
         #endregion
         
-        #region Decompression
+        
+        void LateUpdate()
+        {
+            // critically damped smoothing toward authoritative _currentPitch
+            _renderPitch = Mathf.SmoothDampAngle(
+                _renderPitch, _currentPitch, ref _renderPitchVel, pitchSmoothTime
+            );
+            if (headAnchor)
+                headAnchor.localEulerAngles = new Vector3(_renderPitch, 0f, 0f);
+        }
+        
+
+
+        #region Quantization and Decompression
         static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out InputButtons down)
         {
-            move = MoveCodec.Unpack(md.MoveXZ);
-            look = new Vector2(md.LookX * (1f / 128f), md.LookY * (1f / 128f));
+            move = NetUtils.MoveCodec.Unpack(md.MoveXZ);
+            look = new Vector2(md.LookX * 0.01f, md.LookY * 0.01f);
             held = md.Held;
             down = md.Down;
         }
+        
+        // ─── Velocity polar helpers ───────────────────────────────
+        static void EncodeVelocity(Vector3 v, out ushort speed, out ushort heading, out short vy)
+        {
+            float horiz = new Vector2(v.x, v.z).magnitude;
+            speed = (ushort)Mathf.Clamp(Mathf.RoundToInt(horiz * 100f), 0, 65535);
+            heading = (ushort)Mathf.Clamp(
+                Mathf.RoundToInt(((Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg + 360f) % 360f) * 182.04444f), 0, 65535); // 65535 / 360 = 182.04444
+            vy = (short)Mathf.Clamp(Mathf.RoundToInt(v.y * 100f), short.MinValue, short.MaxValue);
+        }
+        
+        static Vector3 DecodeVelocity(ushort speed, ushort heading, short vy)
+        {
+            float horizSpeed = speed * 0.01f;
+            float ang        = heading * (360f / 65535f) * Mathf.Deg2Rad;
+            Vector3 horiz    = new Vector3(Mathf.Sin(ang), 0f, Mathf.Cos(ang)) * horizSpeed;
+            return new Vector3(horiz.x, vy * 0.01f, horiz.z);
+        }
+
+        // ─── Energy quantiser ─────────────────────────────────────
+        byte QuantiseEnergy(float e) => (byte)Mathf.Clamp(Mathf.RoundToInt(e / maxEnergy * 255f), 0, 255);
+        float DequantiseEnergy(byte b) => b / 255f * maxEnergy;
+        
+        static ushort QuantizePitch(float pitch)
+        {
+            float n = Mathf.InverseLerp(-90f, 90f, Mathf.Clamp(pitch, -90f, 90f));
+            return (ushort)Mathf.Clamp(Mathf.RoundToInt(n * 65535f), 0, 65535);
+        }
+// Back to degrees
+        static float DequantizePitch(ushort q)
+        {
+            float n = q / 65535f;
+            return Mathf.Lerp(-90f, 90f, n);
+        }
+        
         #endregion
         
         #region Pack Logic
@@ -506,14 +566,14 @@ namespace _Scripts.Player
 
         private void ApplyRotation(float yawDeltaRaw, float pitchDeltaRaw)
         {
-            /* YAW ––– rotate the rigidbody ––––––––––––––––––––––––––––––– */
-            float yawDelta = yawDeltaRaw * yawSensitivity;
-            _rb.MoveRotation(_rb.rotation * Quaternion.Euler(0f, yawDelta, 0f));
+            
+            _yaw += yawDeltaRaw * yawSensitivity;
+            _rb.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));
 
-            /* PITCH – just track a number; camera uses it every render frame */
+            // PITCH – just track a number; camera uses it every render frame 
             _currentPitch = Mathf.Clamp(_currentPitch - pitchDeltaRaw * pitchSensitivity, minPitch, maxPitch);
 
-            headAnchor.localEulerAngles = new Vector3(_currentPitch, 0f, 0f); //was cameraTransform.
+            //headAnchor.localEulerAngles = new Vector3(_currentPitch, 0f, 0f); //was cameraTransform.
         }
 
         #endregion
@@ -948,34 +1008,11 @@ namespace _Scripts.Player
             }
 
             // Apply the force, scaled by its effectiveness.
-            _predictionRb.AddForce(_moveDirection * (effectiveness * 10f), ForceMode.Acceleration);
+            _predictionRb.AddForce(_moveDirection * (effectiveness * 12.5f), ForceMode.Acceleration);
         }
         
         private void Jetpack(Vector2 move)
         {
-            /*
-            Vector3 horizDir = Vector3.zero;
-
-            if (move.sqrMagnitude > 0.01f)
-            {
-                Vector3 local = new Vector3(move.x, 0f, move.y);
-                horizDir = orientation.TransformDirection(local).normalized;
-            }
-            
-            // Apply vertical lift
-            Vector3 finalImpulse = Vector3.up * (jetpackForce * 0.7f); 
-            
-            Vector3 currentHorizVel = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
-          
-            // Apply horizontal thrust **only if below speed limits**
-            if (currentHorizVel.magnitude <= maxAdditionalForwardSpeed)
-                finalImpulse += horizDir * (jetpackForce * 0.3f);
-            
-            // Apply force without normalization to preserve intended thrust balance
-            _predictionRb.AddForce(finalImpulse, ForceMode.Impulse);
-            */
-            float totalThrust = 40f; // Base force from Inspector
-            
             Vector3 directionalThrustComponent = Vector3.zero;
 
                 // Only calculate directional thrust if the player is giving WASD input
@@ -1000,7 +1037,7 @@ namespace _Scripts.Player
                         float falloff = 1f - Mathf.Clamp01(speedInDesiredDirection / 60f); //maxSpeedForDirectionalThrust
                         
                         // The total potential magnitude for directional thrust
-                        float directionalThrustMagnitude = totalThrust * (1f - jetUpliftRatio);
+                        float directionalThrustMagnitude = jetpackForce * (1f - jetUpliftRatio);
 
                         // The final directional thrust is scaled by the falloff
                         directionalThrustComponent = worldMoveDir * (directionalThrustMagnitude * falloff);
@@ -1009,7 +1046,7 @@ namespace _Scripts.Player
                 }
 
                 // 5. Always calculate the upward lift component
-                Vector3 liftThrust = Vector3.up * (totalThrust * jetUpliftRatio);
+                Vector3 liftThrust = Vector3.up * (jetpackForce * jetUpliftRatio);
 
                 // 6. Combine lift and directional forces and apply them to the Rigidbody
                 Vector3 finalJetForce = liftThrust + directionalThrustComponent;
@@ -1020,16 +1057,16 @@ namespace _Scripts.Player
 
         #region Skiing
 
-        private void PerformSkiMovement()
+        private void PerformSkiMovement(Vector2 move)
         {
             //if (!_isGrounded)
               //  return;
-            /*
+            
             Vector3 currentVel = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
             Vector3 baseDir = (currentVel.sqrMagnitude > 0.01f) ? currentVel.normalized : orientation.forward;
 
             // Process input and transform to world space
-            Vector3 rawInput = new Vector3(_horizontalInput, 0f, Mathf.Min(_verticalInput, 0f));
+            Vector3 rawInput = new Vector3(move.x, 0f, Mathf.Min(move.y, 0f));
             Vector3 desiredDir = orientation.TransformDirection(rawInput).normalized;
 
             // Blend input direction smoothly
@@ -1038,7 +1075,7 @@ namespace _Scripts.Player
             // Calculate steering force, proportional to current speed
             Vector3 steeringForce = (steerDir - baseDir) * (currentVel.magnitude * 1f);  // Adjust multiplier if needed
             _predictionRb.AddForce(steeringForce, ForceMode.Force);  // DG - revisit force type here for steering, acceleration is odd
-            */
+            
         }
 
         #endregion
@@ -1078,7 +1115,6 @@ namespace _Scripts.Player
             _state = MovementState.Airborne;
         }
         #endregion
-        
         
         #region respawn
         public void HardResetMovement()
@@ -1145,7 +1181,7 @@ namespace _Scripts.Player
             _energy = Mathf.Max(0f, _energy - amount);
         }
         #endregion
-        
+
         void SetPhysicMaterial(PhysicsMaterial pm)
         {
             if (_col.sharedMaterial != pm)

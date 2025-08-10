@@ -106,7 +106,7 @@ namespace _Scripts.Weapons
 
             /* ---- choose safe spawn position ---- */
             Vector3 spawnPos = ChooseSpawnPos(snap.Position, muzzlePos, fireDir, def.castRadius);
-
+            
             /* ---- final velocity and spawn ---- */
             Vector3 finalVel = fireDir * def.projectileSpeed + snap.Velocity * def.velocityInheritance;
 
@@ -114,7 +114,7 @@ namespace _Scripts.Weapons
             if (nob == null) return;
 
             nob.transform.SetPositionAndRotation(spawnPos, Quaternion.LookRotation(fireDir, muzzle ? muzzle.up : Vector3.up));
-
+            
             if (nob.TryGetComponent(out BaseProjectile proj))
             {
                 proj.Init(spawnPos, finalVel, serverNow, _shooterNO);
