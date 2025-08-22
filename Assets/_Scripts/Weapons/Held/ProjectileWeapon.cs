@@ -84,16 +84,49 @@ namespace _Scripts.Weapons
 
             if (!ServerCanConsume()) return;
 
-            /* ---- latency & rewind ---- */
-            uint serverNow   = TimeManager.Tick;
-            uint pktLocal    = sender.PacketTick.LocalTick;
-            uint oneWayTicks = serverNow - pktLocal;
+            uint serverNow = TimeManager.Tick;
 
-            const uint safety = 0;
-            uint rewindTick   = clientFireTick > oneWayTicks + safety ? clientFireTick - (oneWayTicks + safety) : 0u;
+            // Core: same timeline. Target their shot tick, but don’t look into the future.
+            uint target = clientFireTick;
+            if (target >= serverNow)
+                target = serverNow > 0 ? serverNow - 1 : 0;
 
-            if (!LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, rewindTick, out var snap, 1))
-                return; // miss
+            LagCompensationManager.FireSnapshot snap;
+
+            // 1) Exact tick
+            if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target, out snap, 0))
+            {
+                //Debug.Log("Perfect");
+            }
+            // 2) Neighbor -1
+            else if (target > 0 && LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target - 1, out snap, 0))
+            {
+                // optional: dev log
+                // Debug.LogWarning($"LC fallback: {target-1}");
+            }
+            // 3) Neighbor +1 (the record might land one tick after your handler runs)
+            else if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target + 1, out snap, 0))
+            {
+                // Debug.LogWarning($"LC fallback: {target+1}");
+            }
+            // 4) Small tolerance around target (±1..2 inside LC)
+            else if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target, out snap, 2))
+            {
+                // Debug.LogWarning($"LC tol fallback near {target} -> got {snap.Tick}");
+            }
+            // 5) Last resort: most recent completed tick with small tolerance
+            else
+            {
+                uint last = serverNow > 0 ? serverNow - 1 : 0;
+                if (!LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, last, out snap, 2))
+                {
+                    // Truly no data; drop the shot (can happen right after spawn).
+                    // Consider counting a metric here rather than spamming logs.
+                    //Debug.LogError($"LC miss: no frames near {target} (serverNow={serverNow}).");
+                    return;
+                }
+                //Debug.LogWarning($"LC last-resort -> {snap.Tick}");
+            }
 
             /* ---- aim point ---- */
             Vector3 aimPoint = GetAimPoint(snap.Position, snap.Direction, 1000f);

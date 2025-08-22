@@ -1,83 +1,137 @@
 using UnityEngine;
 using _Scripts.Player;
 
-[RequireComponent(typeof(Camera))]
+[DisallowMultipleComponent]
 public class FpsCameraFollow : MonoBehaviour
 {
-    /* runtime references */
     AdvancedPredictedController target;
     Transform head;
-    Camera   cam;
+    Camera cam;
     InputHandler ih;
-    Renderer[] characterRenderers;
 
-    /* inspector: third-person offset */
+    [Header("Hierarchy")]
+    [SerializeField] Transform effectsRoot;
+
+    [Header("Smoothing (owner)")]
+    [SerializeField] float yawSmoothTime   = 0.008f;
+    [SerializeField] float pitchSmoothTime = 0.008f;
+    float _renderYaw, _renderYawVel;
+    float _renderPitch, _renderPitchVel;
+
     [Header("Third-Person Offset")]
-    [SerializeField] float back  = 10f;   // distance behind
-    [SerializeField] float up    = 2f; // height above head
+    [SerializeField] float back = 10f;
+    [SerializeField] float up   = 2f;
 
     const string FP_LAYER = "FP_Only";
     const string TP_LAYER = "TP_Only";
-
+    int _fpMask, _tpMask;
     bool inThirdPerson;
 
-    /* external setter (called by player) */
+    void Awake()
+    {
+        cam = GetComponentInChildren<Camera>(true);
+        if (!cam)
+        {
+            Debug.LogError("FpsCameraFollow: No child Camera found under CameraGimbal.");
+            enabled = false; return;
+        }
+
+        // cache layer masks early
+        int fpIdx = LayerMask.NameToLayer(FP_LAYER);
+        int tpIdx = LayerMask.NameToLayer(TP_LAYER);
+        if (fpIdx < 0 || tpIdx < 0)
+            Debug.LogWarning($"FpsCameraFollow: Missing layer(s). Ensure layers '{FP_LAYER}' and '{TP_LAYER}' exist.");
+        _fpMask = (fpIdx >= 0) ? (1 << fpIdx) : 0;
+        _tpMask = (tpIdx >= 0) ? (1 << tpIdx) : 0;
+
+        // keep camera/effects at local zero
+        if (effectsRoot && cam.transform.parent != effectsRoot)
+            cam.transform.SetParent(effectsRoot, worldPositionStays:false);
+        if (effectsRoot) { effectsRoot.localPosition = Vector3.zero; effectsRoot.localRotation = Quaternion.identity; }
+        cam.transform.localPosition = Vector3.zero;
+        cam.transform.localRotation = Quaternion.identity;
+    }
+
+    void OnEnable()
+    {
+        // If we get enabled after target is set, ensure culling is correct immediately.
+        if (cam) ApplyCulling(inThirdPerson);
+    }
+
     public void SetTarget(AdvancedPredictedController t)
     {
         target = t;
         head   = t ? t.HeadAnchor : null;
-        ih     = t ? t.GetComponent<InputHandler>() : null;   // ← add this line
-        
-        if (target != null)
-            characterRenderers = target.GetComponentsInChildren<Renderer>(true);
+        ih     = t ? t.GetComponent<InputHandler>() : null;
+
+        if (target)
+        {
+            _renderYaw   = target.transform.eulerAngles.y;
+            _renderPitch = target.CurrentPitch;
+
+            // Force correct initial perspective/culling the moment we have a target.
+            // Start in FP unless you want to restore last choice.
+            inThirdPerson = false;
+            ApplyCulling(inThirdPerson);
+
+            if (head)
+            {
+                transform.position = head.position;
+                transform.rotation = Quaternion.Euler(_renderPitch, _renderYaw, 0f);
+            }
+        }
     }
 
     void Start()
     {
-        cam = GetComponent<Camera>();
-
-        /* auto-find owner if not set */
+        // auto-find local owner if not already set
         if (target == null)
+        {
             foreach (var pc in FindObjectsByType<AdvancedPredictedController>(FindObjectsSortMode.None))
                 if (pc.IsOwner) { SetTarget(pc); break; }
+        }
 
-        ApplyCulling(false);               // start FP
-        if (head) transform.position = head.position;
+        // If target still null, at least ensure culling mask is in FP mode
+        ApplyCulling(false);
     }
 
     void Update()
     {
-        if (ih && ih.ConsumeViewToggle())
+        if (ih != null && ih.ConsumeViewToggle())
         {
             inThirdPerson = !inThirdPerson;
             ApplyCulling(inThirdPerson);
         }
     }
-    
+
     void LateUpdate()
     {
         if (!target || !head) return;
-        
-        float yaw = target.transform.eulerAngles.y;
-        transform.rotation = Quaternion.Euler(target.CurrentPitch, yaw, 0f);
-        
-        if (inThirdPerson)
-        {
-            Vector3 pos = head.position - transform.forward * back + Vector3.up * up;   // use camera’s own forward
-            transform.position = pos;
-        }
-        else
-            transform.position = head.position;
+
+        float targetYaw   = target.transform.eulerAngles.y;
+        float targetPitch = target.CurrentPitch;
+
+        _renderYaw = (yawSmoothTime > 0f)
+            ? Mathf.SmoothDampAngle(_renderYaw, targetYaw, ref _renderYawVel, yawSmoothTime)
+            : targetYaw;
+
+        _renderPitch = (pitchSmoothTime > 0f)
+            ? Mathf.SmoothDampAngle(_renderPitch, targetPitch, ref _renderPitchVel, pitchSmoothTime)
+            : targetPitch;
+
+        transform.rotation = Quaternion.Euler(_renderPitch, _renderYaw, 0f);
+
+        transform.position = inThirdPerson
+            ? head.position - transform.forward * back + Vector3.up * up
+            : head.position;
     }
 
-    /* layer toggle */
     void ApplyCulling(bool tpMode)
     {
-        int fp = 1 << LayerMask.NameToLayer(FP_LAYER);
-        int tp = 1 << LayerMask.NameToLayer(TP_LAYER);
-
+        // masks may be 0 if layer names missing; this still won’t break, just won’t cull.
         cam.cullingMask = tpMode
-            ? (cam.cullingMask | tp) & ~fp   // show TP, hide FP
-            : (cam.cullingMask | fp) & ~tp;   // show FP, hide TP
+            ? (cam.cullingMask | _tpMask) & ~_fpMask   // show TP, hide FP
+            : (cam.cullingMask | _fpMask) & ~_tpMask;  // show FP, hide TP
     }
 }
+

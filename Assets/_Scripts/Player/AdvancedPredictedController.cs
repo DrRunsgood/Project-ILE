@@ -216,12 +216,6 @@ namespace _Scripts.Player
         // MovementData
         private MovementData _md;
         
-        
-        // TESTING
-        float _renderPitch;
-        float _renderPitchVel;
-        [SerializeField] float pitchSmoothTime = 0.025f;
-
         #endregion
 
         #region FishNet Data Structures
@@ -311,8 +305,6 @@ namespace _Scripts.Player
         public override void OnStartClient()
         {
             base.OnStartClient();
-
-            _renderPitch = _currentPitch;
                 
             if (IsOwner)
             {
@@ -321,7 +313,7 @@ namespace _Scripts.Player
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible   = false;
                 
-                FpsCameraFollow cam = Camera.main?.GetComponent<FpsCameraFollow>();
+                FpsCameraFollow cam = FindFirstObjectByType<FpsCameraFollow>();
                 if (cam != null) cam.SetTarget(this);
 
                 SetPhysicMaterial(gripMat);
@@ -419,11 +411,10 @@ namespace _Scripts.Player
             _onSlope = false; // Reset slope check, recheck if on ground
             if(_isGrounded) _onSlope = OnSlope();
             
-            
-            ApplyRotation(look.x, look.y);  // Apply Rotation
+            ApplyRotation(look.x, look.y);
             
             // Check for wall
-            if (Btn(down, InputButtons.WallRun) && _state != MovementState.WallRunning)
+            if (Btn(held, InputButtons.WallRun) && _state != MovementState.WallRunning)
                 CheckForWall();
 
             // Update movement states
@@ -482,19 +473,6 @@ namespace _Scripts.Player
                 LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, viewOrigin.forward, _rb.linearVelocity, TimeManager.Tick);
         }
         #endregion
-        
-        
-        void LateUpdate()
-        {
-            // critically damped smoothing toward authoritative _currentPitch
-            _renderPitch = Mathf.SmoothDampAngle(
-                _renderPitch, _currentPitch, ref _renderPitchVel, pitchSmoothTime
-            );
-            if (headAnchor)
-                headAnchor.localEulerAngles = new Vector3(_renderPitch, 0f, 0f);
-        }
-        
-
 
         #region Quantization and Decompression
         static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out InputButtons down)
@@ -532,7 +510,7 @@ namespace _Scripts.Player
             float n = Mathf.InverseLerp(-90f, 90f, Mathf.Clamp(pitch, -90f, 90f));
             return (ushort)Mathf.Clamp(Mathf.RoundToInt(n * 65535f), 0, 65535);
         }
-// Back to degrees
+
         static float DequantizePitch(ushort q)
         {
             float n = q / 65535f;
@@ -573,7 +551,7 @@ namespace _Scripts.Player
             // PITCH – just track a number; camera uses it every render frame 
             _currentPitch = Mathf.Clamp(_currentPitch - pitchDeltaRaw * pitchSensitivity, minPitch, maxPitch);
 
-            //headAnchor.localEulerAngles = new Vector3(_currentPitch, 0f, 0f); //was cameraTransform.
+            headAnchor.localEulerAngles = new Vector3(_currentPitch, 0f, 0f);
         }
 
         #endregion
@@ -655,6 +633,10 @@ namespace _Scripts.Player
             switch (_state) // Change material if skiing to remove friction
             {
                 case MovementState.Skiing:
+                    SetPhysicMaterial(skiMat);
+                    break;
+                
+                case MovementState.WallRunning:
                     SetPhysicMaterial(skiMat);
                     break;
 
@@ -985,32 +967,100 @@ namespace _Scripts.Player
         
         #region Airborne & Jetpack Control
 
+        // --- Low-speed regime (equal ramp for any direction) ---
+        [SerializeField] float lowTargetSpeed   = 30f;    // desired low-speed cap (m/s)
+        [SerializeField] float blendWidth       = 10f;    // blend range into high-speed steering
+        [SerializeField] float lowBaseAccel     = 10f;    // accel strength while under lowTargetSpeed
+        [SerializeField] float strafeBias       = 1.0f;   // >1 treats wide A/D as pure strafe (removes forward leak)
+
+// --- High-speed steering (momentum-respecting) ---
+        [SerializeField] float airTurnAccel     = 10f;    // lateral steering accel
+        [SerializeField] float airTurnFalloffK  = 0.0045f;// how fast steering weakens with speed
+        [SerializeField] float airTurnMinFactor = 0.5f;   // steering floor at high speed
+        [SerializeField] float airHorizHardCap  = 200f;   // optional horizontal speed clamp
+
+// --- Retro-brake (S to bleed speed when moving forward) ---
+        [SerializeField] float retroBrakeStrength = 10f;  // braking accel magnitude
+        [SerializeField] float retroBrakeMinSpeed = 4f;   // don’t bother braking below this speed
+
+
         private void ApplyAirControl(Vector2 move)
         {
-            
-            if (move.sqrMagnitude < 0.01f) return;
+            if (move.sqrMagnitude < 1e-6f) return;
 
-            // Calculate desired world-space direction from player's WASD input
-            _moveDirection = ((orientation.forward * move.y) + (orientation.right * move.x)).normalized;
+            // Wish vector (camera-relative), horizontal only.
+            Vector3 wish = orientation.forward * move.y + orientation.right * move.x;
+            wish.y = 0f;
+            float wishLen = wish.magnitude;
+            if (wishLen < 1e-6f) return;
+            wish /= wishLen;
 
-            // --- VELOCITY RELATIVE FALLOFF ---
-            Vector3 currentHorizontalVelocity = new Vector3(_rb.linearVelocity.x, 0, _rb.linearVelocity.z);
-            float speedInDesiredDirection = Vector3.Dot(currentHorizontalVelocity, _moveDirection);
+            // Horizontal velocity and speed.
+            Vector3 v   = _rb.linearVelocity;
+            Vector3 vH  = new Vector3(v.x, 0f, v.z);
+            float   s   = vH.magnitude;
+            Vector3 vDir = (s > 1e-6f) ? (vH / s) : wish;
 
-            // Calculate a multiplier based on our speed in the desired direction.
-            // This is 1.0 at 0 speed, and falls off to 0.0 at maxAirControlSpeed.
-            float effectiveness = 1f - Mathf.Clamp01(speedInDesiredDirection / 60f);  // maxAirControlSpeed
-    
-            // If moving backward, we want full power to change direction.
-            if (speedInDesiredDirection < 0)
+            // ---------- LOW-SPEED FORCE (isotropic cap) ----------
+            // If input is mostly strafe, strip forward so A/D doesn’t leak forward speed.
+            Vector3 lowForceDir = wish;
+            if (Mathf.Abs(move.x) > Mathf.Abs(move.y) * strafeBias)
+                lowForceDir -= Vector3.Project(lowForceDir, orientation.forward);
+            if (lowForceDir.sqrMagnitude > 1e-6f) lowForceDir.Normalize();
+            else                                   lowForceDir = wish;
+
+            // Equal ramp toward lowTargetSpeed regardless of direction.
+            float lowEff = Mathf.Clamp01((lowTargetSpeed - s) / Mathf.Max(1e-3f, lowTargetSpeed));
+            Vector3 lowForce = lowForceDir * (lowBaseAccel * lowEff);
+
+            // ---------- HIGH-SPEED FORCE (lateral steering, no speed injection) ----------
+            Vector3 highForce = Vector3.zero;
+            if (s > 1e-4f)
             {
-                effectiveness = 1f;
+                // Lateral component of wish (perpendicular to velocity) bends the path.
+                Vector3 lateral = wish - vDir * Vector3.Dot(wish, vDir);
+                float latMag = lateral.magnitude;
+                if (latMag > 1e-6f)
+                {
+                    lateral /= latMag;
+
+                    // Steering weakens with speed but keeps a floor.
+                    float steerFactor = airTurnMinFactor + (1f - airTurnMinFactor) / (1f + airTurnFalloffK * s);
+                    highForce = lateral * (airTurnAccel * steerFactor);
+                }
             }
 
-            // Apply the force, scaled by its effectiveness.
-            _predictionRb.AddForce(_moveDirection * (effectiveness * 12.5f), ForceMode.Acceleration);
+            // ---------- BLEND BY SPEED ----------
+            float t = Mathf.Clamp01((s - lowTargetSpeed) / Mathf.Max(1e-3f, blendWidth));
+            Vector3 force = Vector3.Lerp(lowForce, highForce, t);
+
+            // ---------- RETRO-BRAKE (S key) ----------
+            // Only when pressing S and actually moving roughly forward relative to S (i.e., wish opposes vDir).
+            if (move.y < -0.2f && s > retroBrakeMinSpeed)
+            {
+                // Opposing factor: 0 when same direction, 1 when perfectly opposite.
+                float oppose = Mathf.Clamp01(-Vector3.Dot(vDir, wish));
+                if (oppose > 1e-3f)
+                {
+                    // Stronger braking as speed rises from min to lowTargetSpeed; above that, already in high-speed regime.
+                    float speedK = Mathf.Clamp01((s - retroBrakeMinSpeed) / Mathf.Max(1e-3f, (lowTargetSpeed - retroBrakeMinSpeed)));
+                    Vector3 brake = -vDir * (retroBrakeStrength * oppose * speedK);
+                    force += brake;
+                }
+            }
+
+            _predictionRb.AddForce(force, ForceMode.Acceleration);
+
+            // Optional safety cap (doesn’t fight terrain-earned speed much; just clamps extremes).
+            if (airHorizHardCap > 0f && s > airHorizHardCap)
+            {
+                Vector3 vNew = vDir * airHorizHardCap;
+                _rb.linearVelocity = new Vector3(vNew.x, v.y, vNew.z);
+            }
         }
-        
+
+
+
         private void Jetpack(Vector2 move)
         {
             Vector3 directionalThrustComponent = Vector3.zero;
@@ -1044,12 +1094,12 @@ namespace _Scripts.Player
                     }
                     // If speedInDesiredDirection >= maxSpeedForDirectionalThrust, directionalThrustComponent remains Vector3.zero
                 }
-
                 // 5. Always calculate the upward lift component
                 Vector3 liftThrust = Vector3.up * (jetpackForce * jetUpliftRatio);
 
                 // 6. Combine lift and directional forces and apply them to the Rigidbody
                 Vector3 finalJetForce = liftThrust + directionalThrustComponent;
+                
                 _predictionRb.AddForce(finalJetForce, ForceMode.Force);
         }
         
@@ -1073,8 +1123,8 @@ namespace _Scripts.Player
             Vector3 steerDir = Vector3.Lerp(baseDir, desiredDir, skiControl).normalized;
 
             // Calculate steering force, proportional to current speed
-            Vector3 steeringForce = (steerDir - baseDir) * (currentVel.magnitude * 1f);  // Adjust multiplier if needed
-            _predictionRb.AddForce(steeringForce, ForceMode.Force);  // DG - revisit force type here for steering, acceleration is odd
+            Vector3 steeringForce = (steerDir - baseDir) * (currentVel.magnitude * 1f);
+            _predictionRb.AddForce(steeringForce, ForceMode.Force);
             
         }
 
@@ -1189,3 +1239,4 @@ namespace _Scripts.Player
         }
     }
 }
+
