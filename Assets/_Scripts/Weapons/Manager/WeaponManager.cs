@@ -260,13 +260,30 @@ namespace _Scripts.Weapons
             WeaponInstance inst = _weapons[idx];
             if (inst.Def == null) { _weapons.RemoveAt(idx); return; }
 
-            // 1) figure out camera position & direction exactly where the client pressed <Drop>
-            uint  clientTick   = TimeManager.Tick;                  // this RPC arrived this tick
-            const uint safety  = 1;                                 // 1‑tick pad
-            uint  rewindTick   = clientTick > safety ? clientTick - safety : 0u;
+             uint serverNow = TimeManager.Tick;
 
-            if (!LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, rewindTick, out var snap, 1))
-                return;
+            LagCompensationManager.FireSnapshot snap;
+            
+            if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow, out snap, 0))
+            {
+            }
+            else if (serverNow > 0 && LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow - 1, out snap, 0))
+            {
+            }
+            else if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow + 1, out snap, 0))
+            {
+            }
+            else if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow, out snap, 2))
+            {
+            }
+            else
+            {
+                uint last = serverNow > 0 ? serverNow - 1 : 0;
+                if (!LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, last, out snap, 2))
+                {
+                    return;
+                }
+            }
 
             Vector3 camPos = snap.Position;
             Vector3 fwd    = snap.Direction;
