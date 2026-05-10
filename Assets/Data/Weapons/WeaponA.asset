@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WeaponA
   m_EditorClassIdentifier: 
   displayName: Rocket Launcher
-  fireRate: 1.2
+  fireRate: 0.8
   usesAmmo: 0
   magazine: 6
   reloadTime: 1.2

@@ -13,7 +13,6 @@ namespace _Scripts.Player
         public Vector2       Move        { get; private set; }   // –1…+1 per axis
         public Vector2       Look        { get; private set; }   // raw mouse delta
         public InputButtons  HeldButtons { get; private set; }   // held this frame
-        public InputButtons  DownButtons { get; private set; }   // went down *this* frame
 
         /* -------------------------------------------------- */
         
@@ -65,8 +64,7 @@ namespace _Scripts.Player
             CaptureKey(ref held, ref down, KeyCode.Mouse0,    InputButtons.Fire);    // LMB
 
             HeldButtons = held;
-            DownButtons = down;
-            
+
             CaptureHotkeys();
         }
     

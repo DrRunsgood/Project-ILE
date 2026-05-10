@@ -17,6 +17,12 @@ namespace _Scripts.Weapons
         [SerializeField] Transform firstPersonAnchor;
         [SerializeField] Transform _anchor;
         [SerializeField] WeaponDefinition[] defaultQuickItems;
+        
+        [Header("Drop Settings")]
+        [SerializeField] float dropOffset = 1.0f;
+        [SerializeField] float dropSafetyRadius = 0.2f;
+        [SerializeField] float dropBackoff = 0.02f;
+        [SerializeField] LayerMask dropBlockMask = ~0;
 
 /* ───────── public API ──────── */
         public Transform WeaponAnchor => _anchor;
@@ -195,6 +201,7 @@ namespace _Scripts.Weapons
             {
                 bool act = w.NetworkObj == want;
                 w.SetActive(act);
+
                 if (IsOwner && _fpViews.TryGetValue(w.NetworkObj, out var fp))
                     fp.SetActive(act);
             }
@@ -289,7 +296,8 @@ namespace _Scripts.Weapons
             Vector3 fwd    = snap.Direction;
 
             // Drop placement
-            Vector3 pos = camPos + fwd;
+            //Vector3 pos = camPos + fwd;
+            Vector3 pos = ResolveSafeDropPosition(camPos, fwd);
 
             // 2) spawn the ground item
             NetworkObject ground = PoolUtil.TakeFromPool(inst.Def.groundPrefab);
@@ -309,6 +317,10 @@ namespace _Scripts.Weapons
             // Arm timer for pickup
             if (ground.TryGetComponent(out WeaponPickup wp))
                 wp.Arm(0.5f);
+            
+            // Despawn timer
+            if (ground.TryGetComponent(out TimedDespawn td))
+                td.Arm(5f);
 
             // bookkeeping
             _weapons.RemoveAt(idx);
@@ -322,7 +334,34 @@ namespace _Scripts.Weapons
             ServerManager.Despawn(inst.NetworkObj, DespawnType.Pool);
         }
 
+        Vector3 ResolveSafeDropPosition(Vector3 origin, Vector3 forward)
+        {
+            forward.Normalize();
 
+            Vector3 desiredPos = origin + forward * dropOffset;
+
+            if (Physics.CheckSphere(origin, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
+                return origin;
+
+            Vector3 finalPos = desiredPos;
+
+            if (Physics.SphereCast(origin, dropSafetyRadius, forward, out RaycastHit hit, dropOffset, dropBlockMask, QueryTriggerInteraction.Ignore))
+            {
+                finalPos = hit.point - forward * dropBackoff;
+            }
+
+            if (Physics.CheckSphere(finalPos, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
+            {
+                Vector3 nearOrigin = origin + forward * Mathf.Min(dropBackoff, dropOffset * 0.25f);
+
+                if (!Physics.CheckSphere(nearOrigin, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
+                    return nearOrigin;
+
+                return origin;
+            }
+
+            return finalPos;
+        }
 
         [Server] public void DropAll()
         {

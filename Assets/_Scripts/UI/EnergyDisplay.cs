@@ -1,10 +1,7 @@
-// _Scripts/UI/EnergyDisplay.cs
-using FishNet;
-using FishNet.Object;
 using TMPro;
 using UnityEngine;
 using _Scripts.Player;
-using _Scripts.Packs;      // PackManager
+using _Scripts.Packs;
 
 [RequireComponent(typeof(TMP_Text))]
 public sealed class EnergyDisplay : MonoBehaviour
@@ -16,49 +13,65 @@ public sealed class EnergyDisplay : MonoBehaviour
     [SerializeField, Range(0.02f, 1f)] float refreshRate = 0.1f;
 
     TMP_Text _label;
-    Color    _baseColour;
+    Color _baseColour;
+
     AdvancedPredictedController _ctrl;
     PackManager _packMgr;
 
     /* ───────────────────────────────────────────── */
+
     void Awake()
     {
-        _label      = GetComponent<TMP_Text>();
-        _baseColour = _label.color;   // whatever the designer set
-        StartCoroutine(FindLocalPlayer());
+        _label = GetComponent<TMP_Text>();
+        _baseColour = _label.color;
+
+        // Subscribe to local player lifecycle
+        LocalPlayerContext.OnLocalPlayerReady += HandleLocalPlayerReady;
+        LocalPlayerContext.OnLocalPlayerCleared += HandleLocalPlayerCleared;
+
+        // In case player already exists (late UI init)
+        if (LocalPlayerContext.IsReady)
+            HandleLocalPlayerReady(LocalPlayerContext.Controller);
     }
 
-    System.Collections.IEnumerator FindLocalPlayer()
+    void HandleLocalPlayerReady(AdvancedPredictedController controller)
     {
-        // Wait until the local player spawns
-        while (_ctrl == null)
-        {
-            NetworkObject local = InstanceFinder.ClientManager.Connection?.FirstObject;
-            if (local && local.TryGetComponent(out AdvancedPredictedController c)) _ctrl = c;
-            if (_ctrl == null) yield return null;     // retry next frame
-        }
+        _ctrl = controller;
+        _packMgr = controller.GetComponent<PackManager>();
 
-        _packMgr = _ctrl.GetComponent<PackManager>();
+        Debug.Log($"[EnergyDisplay] Bound to local player: {_ctrl.name}");
+
         if (_packMgr != null)
         {
-            // Immediate first colour update
-            HandlePackChange(_packMgr.CurrentId, _packMgr.Active);
-            // Subscribe for future changes
+            _packMgr.OnPackChanged -= HandlePackChange;
             _packMgr.OnPackChanged += HandlePackChange;
+
+            HandlePackChange(_packMgr.CurrentId, _packMgr.Active);
         }
 
-        // Start periodic numeric update
+        UpdateEnergyNumeric();
         InvokeRepeating(nameof(UpdateEnergyNumeric), refreshRate, refreshRate);
     }
 
-    /* ---------- numeric value, still on timer ---------- */
+    void HandleLocalPlayerCleared()
+    {
+        CancelInvoke();
+
+        if (_packMgr != null)
+            _packMgr.OnPackChanged -= HandlePackChange;
+
+        _ctrl = null;
+        _packMgr = null;
+    }
+
+    /* ---------- numeric value ---------- */
     void UpdateEnergyNumeric()
     {
         if (_ctrl == null) return;
         _label.text = $"{_ctrl.Energy:0}";
     }
 
-    /* ---------- colour change via event ---------- */
+    /* ---------- colour change ---------- */
     void HandlePackChange(PackId id, bool active)
     {
         bool shieldOn = (id == PackId.Shield) && active;
@@ -67,6 +80,12 @@ public sealed class EnergyDisplay : MonoBehaviour
 
     void OnDestroy()
     {
-        if (_packMgr != null) _packMgr.OnPackChanged -= HandlePackChange;
+        LocalPlayerContext.OnLocalPlayerReady -= HandleLocalPlayerReady;
+        LocalPlayerContext.OnLocalPlayerCleared -= HandleLocalPlayerCleared;
+
+        CancelInvoke();
+
+        if (_packMgr != null)
+            _packMgr.OnPackChanged -= HandlePackChange;
     }
 }

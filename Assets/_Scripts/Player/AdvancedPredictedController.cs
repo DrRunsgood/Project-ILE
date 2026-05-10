@@ -62,9 +62,11 @@ namespace _Scripts.Player
 
         [Header("References")]
         [SerializeField] private Transform orientation;
-        [Tooltip("If you have a separate camera transform, reference it here to apply pitch to the camera only.")]
+        [Tooltip("The parent object of the main character model to be hidden in first person.")]
+        [SerializeField] private GameObject mainBodyObject;
         [SerializeField] private Transform headAnchor;
         [SerializeField] private Transform viewOrigin;
+        [SerializeField] private Transform firePoint;
         public Transform ViewOrigin => viewOrigin;
 
         [Header("Look Settings")]
@@ -145,8 +147,8 @@ namespace _Scripts.Player
         public MovementState State => _state;
         
         public Transform HeadAnchor => headAnchor;
-        public float CurrentPitch => _currentPitch;
-        
+        public float CurrentPitch => _lookModule != null ? _lookModule.CurrentPitch : 0f;
+
         // SyncVar for soft death
         readonly SyncVar<bool> _isFrozen = new(false);
         
@@ -166,12 +168,10 @@ namespace _Scripts.Player
         private Rigidbody _rb;
         private PredictionRigidbody _predictionRb;
         Collider _col;
+        private Renderer[] _mainBodyRenderers;
 
         private float _moveSpeed;
         private float _startYScale;
-        private bool _isGrounded;
-        private bool _onSlope;
-        private RaycastHit _slopeHit;
         
         // Input
         private InputHandler _iH;
@@ -183,17 +183,16 @@ namespace _Scripts.Player
         private Vector3 _moveDirection;
         
         // For camera orientation
-        private float _currentPitch; // we clamp pitch with minPitch, maxPitch
-        private float _yaw;
+        private PlayerLookModule _lookModule;
+        
+        // Surface Probe
+        private PlayerSurfaceProbe _surfaceProbe;
 
         // Wall Running
         private bool _canWallRun;
-        private bool _wallLeft;
-        private bool _wallRight;
         private bool _exitingWall;
         private float _wallRunTimer;
         private float _exitWallTimer;
-        private Vector3 _wallRunNormal = Vector3.zero;
         private Vector3 _wallRunDirection;
         private float _targetWallRunSpeed;
         private Vector3 _storedWallNormal = Vector3.zero;
@@ -201,11 +200,11 @@ namespace _Scripts.Player
         private float _currentWallRunSpeed; // Current speed for wall-running (maintained separately)
         
         // Energy
-        private float _energy;
+        private PlayerEnergyModule _energyModule; // DG - New energy module
         private float _burn;
         
         // Public helpers
-        public float Energy     => _energy;
+        public float Energy => _energyModule?.Energy ?? 0f;
         public bool ShieldActive => _packMgr && _packMgr.Active && _packMgr.CurrentId == PackId.Shield;
         
         // Knockback
@@ -215,6 +214,8 @@ namespace _Scripts.Player
 
         // MovementData
         private MovementData _md;
+        
+        const float LookQuantScale = 1000f;
         
         #endregion
 
@@ -234,17 +235,15 @@ namespace _Scripts.Player
             public  byte MoveXZ;                    // 4 bits
             public  short LookX, LookY;             // deltas
             public  InputButtons Held;              // held-down flags
-            public  InputButtons Down;              // went-down-this-frame flags
 
             /* ctor helper you will call from OnTick() */
-            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, InputButtons down, bool heart)
+            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart)
             {
                 _tick   = tick;
                 MoveXZ  = NetUtils.MoveCodec.Pack(move.x, move.y);
-                LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * 100f), short.MinValue, short.MaxValue);
-                LookY = (short)Mathf.Clamp(Mathf.RoundToInt(look.y * 100f), short.MinValue, short.MaxValue);
+                LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * LookQuantScale), short.MinValue, short.MaxValue);
+                LookY = (short)Mathf.Clamp(Mathf.RoundToInt(look.y * LookQuantScale), short.MinValue, short.MaxValue);
                 Held    = held;
-                Down    = down;
                 Heart  = (byte)(heart ? 1 : 0);
             }
 
@@ -295,26 +294,31 @@ namespace _Scripts.Player
             _packMgr = GetComponent<PackManager>();
             _col = GetComponent<Collider>();
             
+            _energyModule = new PlayerEnergyModule(maxEnergy, energyRegenRate, maxEnergy);
+            _lookModule = new PlayerLookModule(yawSensitivity, pitchSensitivity, minPitch, maxPitch, transform.eulerAngles.y, 0f);
+            _surfaceProbe = new PlayerSurfaceProbe(maxSlopeAngle, slopeCheckDistance, groundMask, feetOffset, feetRadius, whatIsWall, wallCheckDistance, minJumpHeight);
+            
             _startYScale = transform.localScale.y;
-            _yaw = transform.eulerAngles.y;
+            
+            if (mainBodyObject != null)
+                _mainBodyRenderers = mainBodyObject.GetComponentsInChildren<Renderer>(true);
             
             TimeManager.OnTick += OnTick;
             TimeManager.OnPostTick += OnPostTick;
         }
         
+        
         public override void OnStartClient()
         {
             base.OnStartClient();
-                
+            
             if (IsOwner)
             {
+                LocalPlayerContext.Register(this);
                 _iH = GetComponent<InputHandler>();
-                
+
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible   = false;
-                
-                FpsCameraFollow cam = FindFirstObjectByType<FpsCameraFollow>();
-                if (cam != null) cam.SetTarget(this);
 
                 SetPhysicMaterial(gripMat);
             }
@@ -322,7 +326,8 @@ namespace _Scripts.Player
 
         public override void OnStartServer()
         {
-            _energy = maxEnergy;
+            base.OnStartServer();
+            _energyModule.ResetEnergy();
             SetPhysicMaterial(gripMat);
         }
 
@@ -331,6 +336,9 @@ namespace _Scripts.Player
             base.OnStopNetwork();
             TimeManager.OnTick -= OnTick;
             TimeManager.OnPostTick -= OnPostTick;
+            
+            if (IsOwner)
+                LocalPlayerContext.Clear(this);
         }
         
         private void OnTick()
@@ -338,7 +346,7 @@ namespace _Scripts.Player
             if (IsOwner)
             {
                 var ih = _iH;
-                _md = new MovementData(TimeManager.Tick, ih.Move, ih.Look, ih.HeldButtons, ih.DownButtons, _heartBeat);
+                _md = new MovementData(TimeManager.Tick, ih.Move, ih.Look, ih.HeldButtons, _heartBeat);
 
                 Replicate(_md);
             }
@@ -362,9 +370,9 @@ namespace _Scripts.Player
                 _rb.position,
                 _rb.linearVelocity,
                 _state,
-                _yaw,
-                _currentPitch,
-                QuantiseEnergy(_energy)
+                _lookModule.Yaw,
+                _lookModule.CurrentPitch,
+                _energyModule.QuantizeEnergy()
             );
  
             Reconcile(recData);
@@ -373,14 +381,17 @@ namespace _Scripts.Player
         [Reconcile]
         private void Reconcile(ReconciliationData data, Channel channel = Channel.Unreliable)
         {
-            _rb.Move(data.Position, Quaternion.Euler(0f, data.YawQ * (360f / 65535f), 0f));
+            float yaw = data.YawQ * (360f / 65535f);
+            float pitch = DequantizePitch(data.CurrentPitchQ);
+
+            _rb.Move(data.Position, _rb.rotation);
             _rb.linearVelocity = DecodeVelocity(data.Speed, data.Heading, data.Vy);
 
             // Correct movement state
             _state = data.State;
-            _currentPitch = DequantizePitch(data.CurrentPitchQ);
-            _yaw = data.YawQ * (360f / 65535f);
-            _energy = DequantiseEnergy(data.EnergyQ);
+
+            _lookModule.ApplyLookState(yaw, pitch, _rb, headAnchor);
+            _energyModule.ApplyQuantizedEnergy(data.EnergyQ);
         }
         #endregion
 
@@ -393,9 +404,9 @@ namespace _Scripts.Player
             
             float dt = (float)TimeManager.TickDelta;
             
-            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held, out InputButtons down);
+            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held);
             
-            RegenEnergy(dt); // Regen Energy first
+            _energyModule.RegenEnergy(dt); // Regen Energy first
 
             PackLogic(dt); // Check pack logic
             
@@ -406,19 +417,23 @@ namespace _Scripts.Player
                 return;
             }
             
-            _isGrounded = IsGrounded();  // Ground check
-            
-            _onSlope = false; // Reset slope check, recheck if on ground
-            if(_isGrounded) _onSlope = OnSlope();
+            _surfaceProbe.RefreshGrounding(_rb, transform);
             
             ApplyRotation(look.x, look.y);
             
             // Check for wall
             if (Btn(held, InputButtons.WallRun) && _state != MovementState.WallRunning)
-                CheckForWall();
+            {
+                _surfaceProbe.RefreshWallProbe(transform, orientation);
+
+                if (_surfaceProbe.WallNormal != Vector3.zero)
+                    _wallRunGraceTimer = wallRunGraceTime;
+                else
+                    HandleWallLoss();
+            }
 
             // Update movement states
-            UpdateMovementState(down, held);
+            UpdateMovementState(held);
                 
             if (_state == MovementState.WallRunning) // Only update wall run state if actively wall running
                 UpdateWallRunState();
@@ -427,10 +442,11 @@ namespace _Scripts.Player
             
             switch (_state)
             {
+                
                 case MovementState.Jetpacking:
                     ApplyAirControl(move); // optional air-control
 
-                    if (SpendEnergy(_burn * dt))
+                    if (_energyModule.SpendEnergy(_burn * dt))
                     {
                         Jetpack(move); // apply impulses
                     }
@@ -449,7 +465,7 @@ namespace _Scripts.Player
                     break;
 
                 case MovementState.WallRunning:
-                    if (Btn(down, InputButtons.Jump)) WallJump();
+                    if (Btn(held, InputButtons.Jump)) WallJump();
                     else PerformWallRunMovement();
                     break;
 
@@ -458,7 +474,7 @@ namespace _Scripts.Player
                     break;
             }
 
-            if (_isGrounded && Btn(held, InputButtons.Jump))
+            if (_surfaceProbe.IsGrounded && Btn(held, InputButtons.Jump))
                 Jump();
             
             _predictionRb.Simulate();
@@ -470,17 +486,16 @@ namespace _Scripts.Player
             }
             
             if (IsServer && LagCompensationManager.Instance != null) 
-                LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, viewOrigin.forward, _rb.linearVelocity, TimeManager.Tick);
+                LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, firePoint.forward, _rb.linearVelocity, TimeManager.Tick);
         }
         #endregion
 
         #region Quantization and Decompression
-        static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out InputButtons down)
+        static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held)
         {
             move = NetUtils.MoveCodec.Unpack(md.MoveXZ);
-            look = new Vector2(md.LookX * 0.01f, md.LookY * 0.01f);
+            look = new Vector2(md.LookX / LookQuantScale, md.LookY / LookQuantScale);
             held = md.Held;
-            down = md.Down;
         }
         
         // ─── Velocity polar helpers ───────────────────────────────
@@ -501,10 +516,6 @@ namespace _Scripts.Player
             return new Vector3(horiz.x, vy * 0.01f, horiz.z);
         }
 
-        // ─── Energy quantiser ─────────────────────────────────────
-        byte QuantiseEnergy(float e) => (byte)Mathf.Clamp(Mathf.RoundToInt(e / maxEnergy * 255f), 0, 255);
-        float DequantiseEnergy(byte b) => b / 255f * maxEnergy;
-        
         static ushort QuantizePitch(float pitch)
         {
             float n = Mathf.InverseLerp(-90f, 90f, Mathf.Clamp(pitch, -90f, 90f));
@@ -534,7 +545,7 @@ namespace _Scripts.Player
             {
                 float shieldActiveDrain = _packMgr.CurrentDef.shieldDrainPerSec * dt;
 
-                if (!SpendEnergy(shieldActiveDrain) && IsServer)
+                if (!_energyModule.SpendEnergy(shieldActiveDrain) && IsServer)
                     _packMgr.ForceActive(false);
             }
         }
@@ -544,14 +555,7 @@ namespace _Scripts.Player
 
         private void ApplyRotation(float yawDeltaRaw, float pitchDeltaRaw)
         {
-            
-            _yaw += yawDeltaRaw * yawSensitivity;
-            _rb.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));
-
-            // PITCH – just track a number; camera uses it every render frame 
-            _currentPitch = Mathf.Clamp(_currentPitch - pitchDeltaRaw * pitchSensitivity, minPitch, maxPitch);
-
-            headAnchor.localEulerAngles = new Vector3(_currentPitch, 0f, 0f);
+            _lookModule.ApplyRotation(yawDeltaRaw, pitchDeltaRaw, _rb, headAnchor);
         }
 
         #endregion
@@ -570,18 +574,26 @@ namespace _Scripts.Player
         #endregion
 
         #region Movement Methods
-        private bool IsGrounded()
+        
+        private void OnDrawGizmosSelected()
         {
-            Vector3 checkPos = _rb.position + feetOffset;
-            return Physics.CheckSphere(checkPos, feetRadius, groundMask);
+            if (_rb == null)
+                _rb = GetComponent<Rigidbody>();
+
+            Gizmos.color = Color.yellow;
+
+            if (_surfaceProbe != null)
+                _surfaceProbe.DrawGroundGizmo(_rb);
+            else if (_rb != null)
+                Gizmos.DrawWireSphere(_rb.position + feetOffset, feetRadius);
         }
     
-        private void UpdateMovementState(InputButtons down, InputButtons held)
+        private void UpdateMovementState(InputButtons held)
         {
             if (Btn(held, InputButtons.Jetpack))
             {
                 /* Already jet-packing? → keep going, Not jet-packing yet? → need at least jetpackFuelCutoff to ignite. */
-                if (_state == MovementState.Jetpacking ? _energy > 0f : _energy >= jetpackFuelCutoff)
+                if (_state == MovementState.Jetpacking ? Energy > 0f : Energy >= jetpackFuelCutoff)
                 {
                     // If we started jet-packing this frame, stop wall-run etc.
                     if (_state != MovementState.Jetpacking && _state == MovementState.WallRunning)
@@ -591,12 +603,12 @@ namespace _Scripts.Player
                     return;                     // jetpack overrides all other states
                 }
             }
-
+            
             // If not already wall running, check for wall run initiation using the wall run key.
             if (_state != MovementState.WallRunning)
             {
                 _canWallRun = CanWallRun();
-                if (Btn(down, InputButtons.WallRun) && _canWallRun)
+                if (Btn(held, InputButtons.WallRun) && _canWallRun)
                 {
                     StartWallRun();
                     _state = MovementState.WallRunning;
@@ -605,7 +617,7 @@ namespace _Scripts.Player
                 else if (Btn(held, InputButtons.Ski))
                     _state = MovementState.Skiing;
                 
-                else if (_isGrounded)
+                else if (_surfaceProbe.IsGrounded)
                 {
                     if (Btn(held, InputButtons.Crouch))
                     {
@@ -647,47 +659,40 @@ namespace _Scripts.Player
             
         }
 
-// --------------- MOVE PLAYER -----------------------------------------------        
+// --------------- MOVE PLAYER -----------------------------------------------       
+
         private void MovePlayer(Vector2 move)
         {
             transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z); // reset crouch
-            
-            if (_state == MovementState.Walking) _moveSpeed = walkSpeed; // Apply walk speed if walking
-            else if (_state == MovementState.Sprinting) _moveSpeed = sprintSpeed; // Apply sprint speed if sprinting
+
+            if (_state == MovementState.Walking) _moveSpeed = walkSpeed;
+            else if (_state == MovementState.Sprinting) _moveSpeed = sprintSpeed;
             else if (_state == MovementState.Crouching)
             {
                 transform.localScale = new Vector3(transform.localScale.x, crouchYScale, transform.localScale.z);
-                _moveSpeed = crouchSpeed; // Apply crouch speed if crouching
+                _moveSpeed = crouchSpeed;
             }
 
-            // Calculate move direction
             _moveDirection = (orientation.forward * move.y) + (orientation.right * move.x);
             _moveDirection.Normalize();
-            
-            Vector3 currentVelocity = _rb.linearVelocity;
 
-            if (_onSlope && _state != MovementState.Skiing && _state != MovementState.Jetpacking && _rb.linearVelocity.magnitude <= _moveSpeed)
+            Vector3 currentVelocity = _rb.linearVelocity;
+            Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0f, currentVelocity.z);
+
+            float moveSpeedSq = _moveSpeed * _moveSpeed;
+            float horizontalSpeedSq = horizontalVelocity.sqrMagnitude;
+
+            if (_surfaceProbe.IsOnSlope && _state != MovementState.Skiing && _state != MovementState.Jetpacking && horizontalSpeedSq <= moveSpeedSq)
             {
-                Vector3 slopeMoveDir = Vector3.ProjectOnPlane(_moveDirection, _slopeHit.normal).normalized * _moveSpeed;
+                Vector3 slopeMoveDir = Vector3.ProjectOnPlane(_moveDirection, _surfaceProbe.SlopeHit.normal).normalized * _moveSpeed;
                 _predictionRb.Velocity(new Vector3(slopeMoveDir.x, currentVelocity.y, slopeMoveDir.z));
             }
-            else if (_isGrounded && _rb.linearVelocity.magnitude <= _moveSpeed)
+            else if (_surfaceProbe.IsGrounded && horizontalSpeedSq <= moveSpeedSq)
             {
-                // Normal movement on flat ground
-                _predictionRb.Velocity(new Vector3(_moveDirection.x * _moveSpeed, _rb.linearVelocity.y, _moveDirection.z * _moveSpeed));
+                _predictionRb.Velocity(new Vector3(_moveDirection.x * _moveSpeed, currentVelocity.y, _moveDirection.z * _moveSpeed));
             }
         }
 
-        private bool OnSlope()
-        {
-            if (Physics.Raycast(transform.position, Vector3.down, out _slopeHit, slopeCheckDistance, groundMask))
-            {
-                float angle = Vector3.Angle(Vector3.up, _slopeHit.normal);
-                return (angle < maxSlopeAngle && angle != 0f);
-            }
-            return false;
-        }
-        
         private void ControlEnv()
         {
             float drag;
@@ -714,38 +719,7 @@ namespace _Scripts.Player
 
         #region Wall Run
 
-        private void CheckForWall()
-        {
-            Vector3 rayOrigin = transform.position;
-            Vector3 rayDirection = orientation.forward;
-
-            if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, wallCheckDistance, whatIsWall))
-            {
-                // Ensure the detected surface is a valid wall (not floor/ceiling)
-                if (Mathf.Abs(Vector3.Dot(hit.normal, Vector3.up)) < 0.1f)
-                {
-                    _wallRunNormal = hit.normal;
-
-                    // Determine if the wall is to the left or right
-                    float side = Vector3.Dot(orientation.right, _wallRunNormal);
-                    _wallRight = side > 0;
-                    _wallLeft  = side <= 0;
-
-                    _wallRunGraceTimer = wallRunGraceTime;
-                }
-                else
-                {
-                    _wallRunNormal = Vector3.zero; // Reset wall normal
-                    HandleWallLoss();
-                }
-            }
-            else
-            {
-                _wallRunNormal = Vector3.zero; // Reset wall normal
-                HandleWallLoss();
-            }
-        }
-
+       
         private void HandleWallLoss()
         {
             if (_state == MovementState.WallRunning)
@@ -761,24 +735,19 @@ namespace _Scripts.Player
             }
             else
             {
-                if (_wallLeft || _wallRight) // Only reset if necessary
+                if (_surfaceProbe.WallLeft || _surfaceProbe.WallRight)
                 {
-                    _wallLeft = false;
-                    _wallRight = false;
+                    _surfaceProbe.ClearWallProbe();
                 }
             }
         }
-
-        private bool IsAboveMinJumpHeight()
-        {
-            return !Physics.Raycast(transform.position, Vector3.down, minJumpHeight, groundMask);
-        }
-
+        
         private bool CanWallRun()
         {
-            if (!(_wallLeft || _wallRight)) return false; // Skip unnecessary checks
+            if (!(_surfaceProbe.WallLeft || _surfaceProbe.WallRight))
+                return false;
 
-            return IsAboveMinJumpHeight() && !_exitingWall;
+            return _surfaceProbe.IsAboveMinJumpHeight(transform) && !_exitingWall;
         }
 
         private void StartWallRun()
@@ -788,7 +757,7 @@ namespace _Scripts.Player
             _exitWallTimer= exitWallTime;
             _wallRunGraceTimer = wallRunGraceTime;
             
-            _storedWallNormal = _wallRunNormal;
+            _storedWallNormal = _surfaceProbe.WallNormal;
             
             Vector3 playerVelocity = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
             float speed = playerVelocity.magnitude;
@@ -940,11 +909,9 @@ namespace _Scripts.Player
         private void StopWallRun()
         {
             _exitingWall   = false;
-            _wallLeft      = false;
-            _wallRight     = false;
+            _surfaceProbe.ClearWallProbe();
             _canWallRun    = false;
             _storedWallNormal = Vector3.zero;
-            _wallRunNormal = Vector3.zero;
             _wallRunDirection = Vector3.zero;
             _state = MovementState.Airborne;
             _currentWallRunSpeed = 0f;
@@ -965,21 +932,160 @@ namespace _Scripts.Player
 
         #endregion
         
+       
         #region Airborne & Jetpack Control
 
+        // Low-speed “get moving” push
+        [SerializeField] float lowTargetSpeed   = 30f;   // forward-ish cap the low-speed push aims for
+        [SerializeField] float blendWidth       = 10f;   // range to blend into high-speed steering
+        [SerializeField] float lowBaseAccel     = 10f;   // strength of the low-speed push
+        [SerializeField] float strafeBias       = 1.0f;  // >1 treats wide A/D as pure strafe (removes forward leak)
+
+// High-speed steering (no speed injection)
+        [SerializeField] float airTurnAccel     = 10f;
+        [SerializeField] float airTurnFalloffK  = 0.0045f;
+        [SerializeField] float airTurnMinFactor = 1f;
+        [SerializeField] float airHorizHardCap  = 200f;
+
+// Retro-brake
+        [SerializeField] float retroBrakeStrength = 8f;
+        [SerializeField] float retroBrakeMinSpeed = 4f;
+
+// Jetpack shaping
+        [SerializeField] float jpForwardCruise   = 32f;  // forward cruise target while jetting
+        [SerializeField] float jpForwardAccel    = 14f;  // forward accel toward the cruise
+        [SerializeField] float jpLateralAccel    = 10f;  // lateral (direction change) accel
+        [SerializeField] float jpLateralFalloffK = 0.006f; // weaken lateral at high speed
+
+        
+        private void ApplyAirControl(Vector2 move)
+        {
+            if (move.sqrMagnitude < 1e-6f) return;
+
+            // Wish (camera-relative), horizontal
+            Vector3 wish = orientation.forward * move.y + orientation.right * move.x;
+            wish.y = 0f;
+            float wishLen = wish.magnitude;
+            if (wishLen < 1e-6f) return;
+            wish /= wishLen;
+
+            // Horizontal velocity state
+            Vector3 v   = _rb.linearVelocity;
+            Vector3 vH  = new Vector3(v.x, 0f, v.z);
+            float   s   = vH.magnitude;
+            Vector3 vDir = (s > 1e-6f) ? (vH / s) : wish;
+
+            // ---- LOW-SPEED: forward-friendly push (no strafe speed juicing) ----
+            Vector3 lowForceDir = wish;
+            if (Mathf.Abs(move.x) > Mathf.Abs(move.y) * strafeBias)
+                lowForceDir -= Vector3.Project(lowForceDir, orientation.forward);
+            if (lowForceDir.sqrMagnitude > 1e-6f) lowForceDir.Normalize(); else lowForceDir = wish;
+
+            // Only accelerate strongly if input aligns with current direction.
+            // Use ALONG speed for the ramp, not total s → strafing won’t “win”.
+            float along = Mathf.Max(0f, Vector3.Dot(vH, wish)); // forward-ish component only
+            float lowEff = Mathf.Clamp01((lowTargetSpeed - along) / Mathf.Max(1e-3f, lowTargetSpeed));
+
+            // Slight analog feel: scale by raw input magnitude (pre-normalize)
+            float inputMag = Mathf.Clamp01(wishLen); // (already 1 for WASD; keep for pads)
+            Vector3 lowForce = lowForceDir * (lowBaseAccel * lowEff * inputMag);
+
+            // ---- HIGH-SPEED: lateral-only steering, no speed injection ----
+            Vector3 highForce = Vector3.zero;
+            if (s > 1e-4f)
+            {
+                Vector3 lateral = wish - vDir * Vector3.Dot(wish, vDir);
+                float latMag = lateral.magnitude;
+                if (latMag > 1e-6f)
+                {
+                    lateral /= latMag;
+                    float steerFactor = airTurnMinFactor + (1f - airTurnMinFactor) / (1f + airTurnFalloffK * s);
+                    highForce = lateral * (airTurnAccel * steerFactor);
+                }
+            }
+
+            // Blend by speed
+            float t = Mathf.Clamp01((s - lowTargetSpeed) / Mathf.Max(1e-3f, blendWidth));
+            Vector3 force = Vector3.Lerp(lowForce, highForce, t);
+
+            // ---- RETRO-BRAKE (S) ----
+            if (move.y < -0.2f && s > retroBrakeMinSpeed)
+            {
+                float oppose = Mathf.Clamp01(-Vector3.Dot(vDir, wish)); // 0..1, 1 when opposite
+                if (oppose > 1e-3f)
+                {
+                    float speedK = Mathf.Clamp01((s - retroBrakeMinSpeed) / Mathf.Max(1e-3f, (lowTargetSpeed - retroBrakeMinSpeed)));
+                    force += -vDir * (retroBrakeStrength * oppose * speedK);
+                }
+            }
+
+            _predictionRb.AddForce(force, ForceMode.Acceleration);
+
+            // Optional safety cap
+            if (airHorizHardCap > 0f && s > airHorizHardCap)
+            {
+                Vector3 vNew = vDir * airHorizHardCap;
+                _rb.linearVelocity = new Vector3(vNew.x, v.y, vNew.z);
+            }
+        }
+
+        private void Jetpack(Vector2 move)
+        {
+            // Horizontal state
+            Vector3 v   = _rb.linearVelocity;
+            Vector3 vH  = new Vector3(v.x, 0f, v.z);
+            float   s   = vH.magnitude;
+            Vector3 vDir = (s > 1e-6f) ? (vH / s) : orientation.forward;
+
+            // Wish, horizontal
+            Vector3 wish = orientation.forward * move.y + orientation.right * move.x;
+            wish.y = 0f;
+            float wLen = wish.magnitude;
+            if (wLen > 1e-6f) wish /= wLen;
+
+            Vector3 jetForce = Vector3.zero;
+
+            // 1) Forward thrust toward cruise (only from the forward-aligned component)
+            if (wLen > 1e-6f)
+            {
+                float align = Mathf.Max(0f, Vector3.Dot(wish, vDir)); // 0..1, forward-ish only
+                float along = Mathf.Max(0f, Vector3.Dot(vH, vDir));   // current forward speed
+                float need  = Mathf.Max(0f, jpForwardCruise - along);
+                float fwdPush = Mathf.Min(jpForwardAccel * align, need);
+                jetForce += vDir * fwdPush;
+
+                // 2) Lateral bend (no speed injection; fades with speed)
+                Vector3 lateral = wish - vDir * Vector3.Dot(wish, vDir);
+                float latMag = lateral.magnitude;
+                if (latMag > 1e-6f)
+                {
+                    lateral /= latMag;
+                    float latFactor = 1f / (1f + jpLateralFalloffK * s);
+                    jetForce += lateral * (jpLateralAccel * latFactor);
+                }
+            }
+
+            // 3) Lift (keep your existing ratio if you like)
+            Vector3 lift = Vector3.up * (jetpackForce * jetUpliftRatio);
+
+            _predictionRb.AddForce(lift + jetForce, ForceMode.Force);
+        }
+
+        
+        /*
         // --- Low-speed regime (equal ramp for any direction) ---
         [SerializeField] float lowTargetSpeed   = 30f;    // desired low-speed cap (m/s)
         [SerializeField] float blendWidth       = 10f;    // blend range into high-speed steering
         [SerializeField] float lowBaseAccel     = 10f;    // accel strength while under lowTargetSpeed
         [SerializeField] float strafeBias       = 1.0f;   // >1 treats wide A/D as pure strafe (removes forward leak)
 
-// --- High-speed steering (momentum-respecting) ---
+        // --- High-speed steering (momentum-respecting) ---
         [SerializeField] float airTurnAccel     = 10f;    // lateral steering accel
         [SerializeField] float airTurnFalloffK  = 0.0045f;// how fast steering weakens with speed
         [SerializeField] float airTurnMinFactor = 0.5f;   // steering floor at high speed
         [SerializeField] float airHorizHardCap  = 200f;   // optional horizontal speed clamp
 
-// --- Retro-brake (S to bleed speed when moving forward) ---
+        // --- Retro-brake (S to bleed speed when moving forward) ---
         [SerializeField] float retroBrakeStrength = 10f;  // braking accel magnitude
         [SerializeField] float retroBrakeMinSpeed = 4f;   // don’t bother braking below this speed
 
@@ -1102,8 +1208,10 @@ namespace _Scripts.Player
                 
                 _predictionRb.AddForce(finalJetForce, ForceMode.Force);
         }
+        */
         
         #endregion
+        
 
         #region Skiing
 
@@ -1152,13 +1260,11 @@ namespace _Scripts.Player
         
         private void ApplyKnockback()
         {
-            float oldDrag = _rb.linearDamping;
             if (_pendingTempDrag.HasValue)
                 _rb.linearDamping = _pendingTempDrag.Value;
 
             _predictionRb.AddForce(_pendingKnockback.Value, ForceMode.Impulse);
-
-            _rb.linearDamping  = oldDrag;          // restore
+            
             _pendingKnockback  = null;
             _pendingTempDrag   = null;
                 
@@ -1177,34 +1283,17 @@ namespace _Scripts.Player
             // 4) misc state
             _state              = MovementState.Airborne;
             _pendingKnockback   = null;
-            _onSlope            = false;
-            _currentPitch       = 0f;
+            
+            _lookModule.ResetLook(_rb, headAnchor, 0f, 0f);
         }
         
         public void ResetEnergy()
         {
-            _energy = maxEnergy;
+            _energyModule.ResetEnergy();
         }
         #endregion
         
         #region energy
-        bool SpendEnergy(float amount)
-        {
-            if (_energy <= 0.17f)
-                return false;                      // totally empty
-
-            float consumed = Mathf.Min(amount, _energy);
-            _energy -= consumed;                   // burn what we have
-            return true;                           // there *was* energy this tick
-        }
-
-
-        void RegenEnergy(float dt)
-        {
-            if (_energy < maxEnergy)
-                _energy = Mathf.Min(maxEnergy, _energy + energyRegenRate * dt);
-        }
-        
         /*  Server-side helpers       */
         [Server] public int AbsorbDamageWithShield(int incoming)
         {
@@ -1213,13 +1302,13 @@ namespace _Scripts.Player
                 return incoming;
 
             // How much can we pay?
-            int absorb = Mathf.Min(incoming, Mathf.CeilToInt(_energy));
+            int absorb = Mathf.Min(incoming, Mathf.CeilToInt(Energy));
 
             // Burn that energy
-            _energy -= absorb;
+            _energyModule.ConsumeForced(absorb);
 
             // Drop shield immediately if empty
-            if (_energy <= 0f) _packMgr.ForceActive(false);
+            if (Energy <= 0f) _packMgr.ForceActive(false);
 
             // Return un-absorbed remainder (may be zero)
             return incoming - absorb;
@@ -1228,7 +1317,7 @@ namespace _Scripts.Player
         [Server]
         public void ServerSpendEnergy(float amount)
         {
-            _energy = Mathf.Max(0f, _energy - amount);
+            _energyModule.ConsumeForced(amount);
         }
         #endregion
 
@@ -1237,6 +1326,17 @@ namespace _Scripts.Player
             if (_col.sharedMaterial != pm)
                 _col.sharedMaterial = pm;
         }
+        
+        #region Public API
+        public void SetMainBodyVisibility(bool isVisible)
+        {
+            if (_mainBodyRenderers == null) return;
+        
+            foreach (Renderer rend in _mainBodyRenderers)
+            {
+                rend.enabled = isVisible;
+            }
+        }
+        #endregion
     }
 }
-

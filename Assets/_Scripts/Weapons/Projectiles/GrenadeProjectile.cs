@@ -28,6 +28,7 @@ public sealed class GrenadeProjectile : BaseProjectile
     {
         public Vector3 Pos;
         public Vector3 Vel;
+        public uint Tick;
         public bool IsSleeping;
     }
 
@@ -56,9 +57,31 @@ public sealed class GrenadeProjectile : BaseProjectile
     void RpcCorrectBounce(BounceState s)
     {
         if (IsServer) return;
-        transform.position = s.Pos;
+
+        // Preserve current visual position so LateUpdate can blend into the correction.
+        Vector3 currentVisualPos = transform.position;
+
+        _spawnTick = s.Tick;
+        _initPos = s.Pos;
+        _initVel = s.Vel;
         _velocity = s.Vel;
         _sleeping = s.IsSleeping;
+
+        _prev = currentVisualPos;
+        _next = s.Pos;
+
+        // Snap only if error is huge; otherwise let LateUpdate smooth it.
+        float snapDistSqr = (currentVisualPos - s.Pos).sqrMagnitude;
+        const float hardSnapDist = 2.0f; // tune if needed
+
+        if (snapDistSqr > hardSnapDist * hardSnapDist)
+        {
+            transform.position = s.Pos;
+            _prev = _next = s.Pos;
+        }
+
+        _tickDt = (float)TimeManager.TickDelta;
+        _timer = 0f;
     }
 
     protected override void ServerTick()
@@ -118,7 +141,7 @@ public sealed class GrenadeProjectile : BaseProjectile
                 _sleeping = true;
             }
 
-            RpcCorrectBounce(new BounceState { Pos = transform.position, Vel = _velocity, IsSleeping = isNowSleeping });
+            RpcCorrectBounce(new BounceState { Pos = transform.position, Vel = _velocity, Tick = TimeManager.Tick, IsSleeping = isNowSleeping });
         }
         else
         {

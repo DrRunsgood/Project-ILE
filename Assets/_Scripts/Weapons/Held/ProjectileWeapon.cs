@@ -12,65 +12,78 @@ namespace _Scripts.Weapons
     {
         /* ───────── inspector ───────── */
         [SerializeField] protected WeaponDefinition def;
-        [SerializeField] protected Transform        muzzle;
 
-        /* ───────── quick-item hook ─────── */
-        // Normal weapons return false            (default).
-        // GrenadeThrower overrides to true.
+        [Header("Spawn Settings")]
+        [Tooltip("How far in front of the camera the projectile should appear (roughly barrel length from camera).")]
+        [SerializeField] float spawnOffset = 1.5f;
+        
+        [Header("Spawn Safety")]
+        [SerializeField] float spawnSafetyRadiusOverride = -1f;
+        [SerializeField] float spawnBackoff = 0.02f;
+        [SerializeField] LayerMask spawnBlockMask = ~0;
+        
         public virtual bool isHiddenQuickItem => def && def.hiddenQuickItem;
-
-        /* ───────── cached refs ───────── */
+        
+        /* ───────── cached refs ─────── */
         protected WeaponManager _wm;
         protected InputHandler  _ih;
-        protected NetworkObject _shooterNO;  // for lag-comp snapshots
+        protected NetworkObject _shooterNO;
 
-        public   WeaponDefinition Definition => def;
+        public WeaponDefinition Definition => def;
 
         /* ───────── runtime ───────── */
         public bool IsActive { get; set; }
-        float _nextFireTime;
-        
-        static readonly RaycastHit[] _rayHits = new RaycastHit[8];
-        float _fireInterval;
+        bool _fireTimingInitialized;
+        uint _nextFireTick;
+        uint _fireIntervalTicks;
+        uint _nextServerFireTick;
 
         /* ================================================================= */
-        #region Wiring from WeaponManager
+        #region Wiring
 
         public virtual void CachePlayerRefs(WeaponManager wm, InputHandler ih)
         {
             _wm        = wm;
             _ih        = ih;
             _shooterNO = wm.NetworkObject;
-
-            if (!muzzle) muzzle = transform.Find("FirePoint");
         }
 
         #endregion
         /* ================================================================= */
 
-        void Awake()
-        {
-            _fireInterval = def.fireRate > 0f ? 1f / def.fireRate : 0.1f;
-        }
-        
         void Update()
         {
             if (!IsOwner || _wm == null || _ih == null) return;
             if (!isHiddenQuickItem && !IsActive)        return;
-            if (!CanFire())                             return;
+            EnsureFireTimingInitialized();
+            if (!CanFire()) return;
+            
+            uint nowTick = TimeManager.Tick;
+            _nextFireTick = nowTick + _fireIntervalTicks;
 
-            _nextFireTime = Time.time + _fireInterval;
-            Server_RequestFire(TimeManager.Tick);
+            Server_RequestFire(nowTick);
+        }
+        
+        void EnsureFireTimingInitialized()
+        {
+            if (_fireTimingInitialized)
+                return;
+
+            float fireIntervalSeconds = (def != null && def.fireRate > 0f) ? 1f / def.fireRate : 0.1f;
+            float tickDelta = (float)TimeManager.TickDelta;
+
+            _fireIntervalTicks = (uint)Mathf.Max(1, Mathf.RoundToInt(fireIntervalSeconds / tickDelta));
+            _nextFireTick = 0;
+            _fireTimingInitialized = true;
         }
 
-        /* ---------- fire-eligibility ---------- */
         protected virtual bool CanFire()
         {
             if (isHiddenQuickItem) // Hidden quick-items never use LMB; subclasses decide themselves.
                 return false;
 
             bool triggerHeld = (_ih.HeldButtons & InputButtons.Fire) != 0;
-            return triggerHeld && Time.time >= _nextFireTime;
+            return triggerHeld && TimeManager.Tick >= _nextFireTick;
         }
 
         /* ================================================================= */
@@ -85,75 +98,46 @@ namespace _Scripts.Weapons
             if (!ServerCanConsume()) return;
 
             uint serverNow = TimeManager.Tick;
+            
+            if (serverNow < _nextServerFireTick)
+                return;
 
-            // Core: same timeline. Target their shot tick, but don’t look into the future.
-            uint target = clientFireTick;
+            _nextServerFireTick = serverNow + _fireIntervalTicks;
+            
+            uint target    = clientFireTick;
             if (target >= serverNow)
                 target = serverNow > 0 ? serverNow - 1 : 0;
 
             LagCompensationManager.FireSnapshot snap;
 
-            // 1) Exact tick
-            if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target, out snap, 0))
-            {
-                //Debug.Log("Perfect");
-            }
-            // 2) Neighbor -1
-            else if (target > 0 && LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target - 1, out snap, 0))
-            {
-                // optional: dev log
-                // Debug.LogWarning($"LC fallback: {target-1}");
-            }
-            // 3) Neighbor +1 (the record might land one tick after your handler runs)
-            else if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target + 1, out snap, 0))
-            {
-                // Debug.LogWarning($"LC fallback: {target+1}");
-            }
-            // 4) Small tolerance around target (±1..2 inside LC)
-            else if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target, out snap, 2))
-            {
-                // Debug.LogWarning($"LC tol fallback near {target} -> got {snap.Tick}");
-            }
-            // 5) Last resort: most recent completed tick with small tolerance
-            else
+            // Robust snapshot lookup: exact → -1 → +1 → small tolerance → last-resort recent
+            if (!LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target, out snap, 0) &&
+                !(target > 0 && LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target - 1, out snap, 0)) &&
+                !(LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target + 1, out snap, 0)) &&
+                !LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, target, out snap, 2))
             {
                 uint last = serverNow > 0 ? serverNow - 1 : 0;
                 if (!LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, last, out snap, 2))
-                {
-                    // Truly no data; drop the shot (can happen right after spawn).
-                    // Consider counting a metric here rather than spamming logs.
-                    //Debug.LogError($"LC miss: no frames near {target} (serverNow={serverNow}).");
-                    return;
-                }
-                //Debug.LogWarning($"LC last-resort -> {snap.Tick}");
+                    return; // no snapshots available; drop the shot
             }
-
-            /* ---- aim point ---- */
-            Vector3 aimPoint = GetAimPoint(snap.Position, snap.Direction, 1000f);
             
-            /* ---- compute direction first ---- */
-            Vector3 muzzlePos = muzzle.position;
-            Vector3 fireDir   = aimPoint - muzzlePos;
-            if (fireDir.sqrMagnitude < 0.0001f) fireDir = muzzle ? muzzle.forward : transform.forward;
-            fireDir = fireDir.normalized;
+            Vector3 fireDir = snap.Direction.normalized;   // camera forward at shot time
+            Vector3 shotOrigin = snap.Position;
+            Vector3 spawnPos = ResolveSafeSpawnPosition(shotOrigin, fireDir);
 
-            /* ---- choose safe spawn position ---- */
-            Vector3 spawnPos = ChooseSpawnPos(snap.Position, muzzlePos, fireDir, def.castRadius);
-            
-            /* ---- final velocity and spawn ---- */
+            // Final velocity: own projectile speed + inherited player velocity
             Vector3 finalVel = fireDir * def.projectileSpeed + snap.Velocity * def.velocityInheritance;
 
+            // Spawn projectile
             var nob = InstanceFinder.NetworkManager.GetPooledInstantiated(def.projectilePrefab, true);
             if (nob == null) return;
 
-            nob.transform.SetPositionAndRotation(spawnPos, Quaternion.LookRotation(fireDir, muzzle ? muzzle.up : Vector3.up));
-            
+            nob.transform.SetPositionAndRotation(spawnPos, Quaternion.LookRotation(fireDir, Vector3.up));
+
             if (nob.TryGetComponent(out BaseProjectile proj))
             {
                 proj.Init(spawnPos, finalVel, serverNow, _shooterNO);
                 ServerManager.Spawn(nob);
-
-                // immutable spawn state to clients
                 proj.RpcInit(spawnPos, finalVel, serverNow);
             }
             else
@@ -162,43 +146,55 @@ namespace _Scripts.Weapons
             }
         }
         
-        /* ----------------------------- aim helper --------------------------------- */
-        Vector3 GetAimPoint(Vector3 origin, Vector3 dir, float range)
+        protected virtual float GetSpawnSafetyRadius()
         {
-            int hitCnt = Physics.RaycastNonAlloc(origin, dir, _rayHits, range, def.hitMask, QueryTriggerInteraction.Ignore);
+            if (spawnSafetyRadiusOverride > 0f)
+                return spawnSafetyRadiusOverride;
 
-            float closest = range + 0.01f;
-            Vector3 best  = origin + dir * range;
+            if (def != null)
+                return def.castRadius;
 
-            for (int i = 0; i < hitCnt; ++i)
-            {
-                if (_rayHits[i].collider.transform.root == _wm.transform.root)
-                    continue;                         // ignore self
-
-                if (_rayHits[i].distance < closest)
-                {
-                    closest = _rayHits[i].distance;
-                    best    = _rayHits[i].point;      // nearest non‑self
-                }
-            }
-            return best;
+            return 0.25f; // safe fallback
         }
-        
-        /* ----------------------------- spawn point --------------------------------- */
-        Vector3 ChooseSpawnPos(Vector3 camPos, Vector3 muzzlePos, Vector3 dir, float radius)
+
+        protected virtual Vector3 ResolveSafeSpawnPosition(Vector3 shotOrigin, Vector3 fireDir)
         {
-            // Is there an obstacle between camera and muzzle?
-            if (Physics.Linecast(camPos, muzzlePos, out RaycastHit hit,def.hitMask, QueryTriggerInteraction.Ignore))
+            fireDir.Normalize();
+
+            float radius = GetSpawnSafetyRadius();
+            Vector3 desiredSpawn = shotOrigin + fireDir * spawnOffset;
+
+            // If origin is already obstructed, keep it here and let projectile immediately collide/explode.
+            if (Physics.CheckSphere(shotOrigin, radius, spawnBlockMask, QueryTriggerInteraction.Ignore))
+                return shotOrigin;
+
+            Vector3 finalSpawn = desiredSpawn;
+
+            if (Physics.SphereCast(shotOrigin, radius, fireDir, out RaycastHit hit, spawnOffset, spawnBlockMask, QueryTriggerInteraction.Ignore))
             {
-                // Put spawn point just in front of the surface.
-                return hit.point + dir * (radius + 0.01f);
+                finalSpawn = hit.point - fireDir * spawnBackoff;
             }
-            // Otherwise spawn at the muzzle (slightly forward so we don't self‑hit).
-            return muzzlePos + dir * radius;
+
+            if (Physics.CheckSphere(finalSpawn, radius, spawnBlockMask, QueryTriggerInteraction.Ignore))
+            {
+                Vector3 nearOrigin = shotOrigin + fireDir * Mathf.Min(spawnBackoff, spawnOffset * 0.25f);
+
+                if (!Physics.CheckSphere(nearOrigin, radius, spawnBlockMask, QueryTriggerInteraction.Ignore))
+                    return nearOrigin;
+
+                return shotOrigin;
+            }
+
+            return finalSpawn;
         }
 
         #endregion
         /* ================================================================= */
+        
+        public virtual void ResetRuntime()
+        {
+            _nextFireTick = 0;
+        }
 
         protected virtual bool ServerCanConsume() => true;
     }

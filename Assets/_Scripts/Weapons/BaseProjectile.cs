@@ -12,8 +12,8 @@ public abstract class BaseProjectile : NetworkBehaviour
     protected bool _smoothVisual = true;
 
     /* ─── deterministic spawn state (NO SyncVars!) ──────────────────── */
-    Vector3 _initPos;
-    Vector3 _initVel;
+    protected Vector3 _initPos;
+    protected Vector3 _initVel;
     protected uint    _spawnTick;
 
     /* ─── runtime ------------------------------------------------------ */
@@ -201,8 +201,16 @@ public abstract class BaseProjectile : NetworkBehaviour
     /* ───────── explosion & knock-back ───────── */
     protected virtual void Explode(Vector3 pos, Vector3 normal, Collider directHitCol = null)
     {
-        ApplyExplosion(pos, _velocity.normalized, directHitCol);
-        if (def.knockbackForce > 0f) RpcSpawnImpact(pos, normal);
+        Vector3 explodePos = pos;
+
+        if (def.castRadius > 0f)
+            explodePos = pos - (_velocity.normalized * def.castRadius);
+
+        ApplyExplosion(explodePos, _velocity.normalized, directHitCol);
+
+        if (def.knockbackForce > 0f)
+            RpcSpawnImpact(explodePos, normal);
+
         DespawnSelf();
     }
     
@@ -227,7 +235,11 @@ public abstract class BaseProjectile : NetworkBehaviour
             if (Physics.Raycast(origin, dir, out RaycastHit hit, dist - 0.01f, def.hitMask, QueryTriggerInteraction.Ignore))
             {
                 Transform root = hit.collider.transform.root;
-                if (root == target.transform.root || (_shooterRoot != null && root == _shooterRoot))
+                
+                // ignore ALL players as blockers
+                if (root.TryGetComponent<AdvancedPredictedController>(out _))
+                    return true;             
+                if (root == target.transform.root || (_shooterRoot != null && root == _shooterRoot))  //redundant if we keep the first if
                     return true;
             }
             else
@@ -237,8 +249,7 @@ public abstract class BaseProjectile : NetworkBehaviour
         }
         return false;
     }
-
-    // ───── modified ApplyExplosion
+    
     protected virtual void ApplyExplosion(Vector3 centre, Vector3 shotDir, Collider directHitCol)
     {
         int cnt = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.playerMask, QueryTriggerInteraction.Ignore);
@@ -284,18 +295,10 @@ public abstract class BaseProjectile : NetworkBehaviour
         {
             Vector3 imp = dir * (def.knockbackForce * pwr);
             ctrl.ReceiveKnockback(imp);
-            RpcApplyKnockback(ctrl.NetworkObject, imp);
         }
         return true;
     }
-
-    [ObserversRpc(BufferLast = false, ExcludeOwner = false)]
-    void RpcApplyKnockback(NetworkObject target, Vector3 impulse)
-    {
-        if (target.TryGetComponent(out AdvancedPredictedController ctrl))
-            ctrl.ReceiveKnockback(impulse);
-    }
-
+    
     [ObserversRpc(BufferLast = false)]
     protected void RpcSpawnImpact(Vector3 pos, Vector3 normal)
     {

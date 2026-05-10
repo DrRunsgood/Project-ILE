@@ -21,7 +21,7 @@ MonoBehaviour:
   requiresEnergyPack: 0
   projectilePrefab: {fileID: 8766701267539982643, guid: a184955b35dd708459f8a77ca92e00e8, type: 3}
   projectileSpeed: 400
-  velocityInheritance: 1
+  velocityInheritance: 0.5
   gravityScale: 0
   lifeTime: 3
   castMode: 0

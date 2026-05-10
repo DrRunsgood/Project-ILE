@@ -1,54 +1,62 @@
-using System.Collections;
-using FishNet;
-using FishNet.Object;
 using TMPro;
 using UnityEngine;
-using _Scripts.Player;     // where PlayerHealth lives
+using _Scripts.Player;
 
 [RequireComponent(typeof(TMP_Text))]
 public sealed class HealthDisplay : MonoBehaviour
 {
-    TMP_Text      _label;
-    PlayerHealth  _health;          // cached once we find it
+    [Header("Refresh")]
+    [SerializeField, Range(0.02f, 1f)] float refreshRate = 0.1f;
+
+    TMP_Text _label;
+    PlayerHealth _health;
 
     void Awake()
     {
         _label = GetComponent<TMP_Text>();
-        StartCoroutine(FindLocalPlayer());
+
+        LocalPlayerContext.OnLocalPlayerReady += HandleLocalPlayerReady;
+        LocalPlayerContext.OnLocalPlayerCleared += HandleLocalPlayerCleared;
+
+        if (LocalPlayerContext.IsReady)
+            HandleLocalPlayerReady(LocalPlayerContext.Controller);
     }
 
-    IEnumerator FindLocalPlayer()
+    void HandleLocalPlayerReady(AdvancedPredictedController controller)
     {
-        while (_health == null)
-        {
-            /* first NetworkObject that belongs to *our* connection */
-            NetworkObject me =
-                InstanceFinder.ClientManager.Connection?.FirstObject;
+        _health = LocalPlayerContext.Health;
 
-            if (me != null && me.TryGetComponent(out PlayerHealth ph))
-            {
-                /* guard-check – we only want the object we OWN */
-                if (ph.IsOwner)
-                {
-                    _health = ph;
-                    _health.OnHealthChanged += UpdateLabel;
-                    UpdateLabel(_health.Current, _health.Max);   // initial draw
-                    yield break;
-                }
-            }
-            yield return null;        // wait one frame, then try again
+        if (_health == null)
+        {
+            Debug.LogWarning("[HealthDisplay] Local player registered but PlayerHealth was not found.");
+            return;
         }
+
+        Debug.Log($"[HealthDisplay] Bound to local player health: {_health.name}");
+
+        UpdateHealthDisplay();
+        InvokeRepeating(nameof(UpdateHealthDisplay), refreshRate, refreshRate);
+    }
+
+    void HandleLocalPlayerCleared()
+    {
+        CancelInvoke();
+        _health = null;
+    }
+
+    void UpdateHealthDisplay()
+    {
+        if (_health == null)
+            return;
+
+        _label.text = $"{_health.Current:0}";
     }
 
     void OnDestroy()
     {
-        if (_health != null)
-            _health.OnHealthChanged -= UpdateLabel;
-    }
+        LocalPlayerContext.OnLocalPlayerReady -= HandleLocalPlayerReady;
+        LocalPlayerContext.OnLocalPlayerCleared -= HandleLocalPlayerCleared;
 
-    void UpdateLabel(int current, int max)
-    {
-        _label.text = $"{current}";
-        // or $"{current}/{max}"  if you want both numbers
+        CancelInvoke();
     }
 }
