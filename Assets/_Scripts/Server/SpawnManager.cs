@@ -5,67 +5,135 @@ using FishNet.Connection;
 
 public class SpawnManager : NetworkBehaviour
 {
-    /* ───── singleton ───── */
     public static SpawnManager Instance { get; private set; }
 
-    /* ───── inspector ───── */
-    [SerializeField] List<Transform> spawnPoints = new List<Transform>();
+    readonly List<Transform> _spawnPoints = new();
+    readonly Dictionary<NetworkConnection, NetworkObject> _spawnedPlayers = new();
 
-    /* connection → player */
-    readonly Dictionary<NetworkConnection, NetworkObject> spawnedPlayers = new ();
-
-    /* ───────────────────── */
-    #region Unity
-    void Awake()  => Instance = this;
+    void Awake()
+    {
+        Instance = this;
+    }
 
     void OnDestroy()
     {
-        if (Instance == this) Instance = null;
+        if (Instance == this)
+            Instance = null;
     }
-    #endregion
-    /* ───────────────────── */
 
-    /* ------------------------------------------------------------ */
-    #region Spawn-point list helpers
-    public void AddSpawnPoint   (Transform t) { if (!spawnPoints.Contains(t)) spawnPoints.Add(t); }
-    public void RemoveSpawnPoint(Transform t) {               spawnPoints.Remove(t);              }
+    public void AddSpawnPoint(Transform t)
+    {
+        if (t == null)
+            return;
+
+        if (!_spawnPoints.Contains(t))
+            _spawnPoints.Add(t);
+    }
+
+    public void RemoveSpawnPoint(Transform t)
+    {
+        if (t == null)
+            return;
+
+        _spawnPoints.Remove(t);
+    }
 
     public Transform GetRandomSpawn()
     {
-        return spawnPoints.Count == 0
-             ? null
-             : spawnPoints[Random.Range(0, spawnPoints.Count)];
-    }
-    #endregion
-    /* ------------------------------------------------------------ */
+        _spawnPoints.RemoveAll(sp => sp == null);
 
-    #region Player life-cycle
-    public void SpawnPlayer(NetworkConnection conn, GameObject prefab)
+        if (_spawnPoints.Count == 0)
+            return null;
+
+        return _spawnPoints[Random.Range(0, _spawnPoints.Count)];
+    }
+
+    [Server]
+    public bool TryMovePlayerToSpawn(NetworkObject player)
     {
-        if (!IsServerStarted || prefab == null) return;
+        if (player == null)
+            return false;
 
         Transform sp = GetRandomSpawn();
-        Vector3   pos = sp ? sp.position : Vector3.zero;
+        if (sp == null)
+            return false;
+
+        player.transform.SetPositionAndRotation(sp.position, sp.rotation);
+        return true;
+    }
+
+    public void SpawnPlayer(NetworkConnection conn, GameObject prefab)
+    {
+        if (!IsServerStarted || prefab == null)
+            return;
+
+        Transform sp = GetRandomSpawn();
+        Vector3 pos = sp ? sp.position : Vector3.zero;
         Quaternion rot = sp ? sp.rotation : Quaternion.identity;
 
         NetworkObject nob = Instantiate(prefab, pos, rot).GetComponent<NetworkObject>();
-        Spawn(nob, conn);                       // Fish-Net call
-        spawnedPlayers[conn] = nob;
+        Spawn(nob, conn);
+
+        _spawnedPlayers[conn] = nob;
     }
 
     public void DespawnPlayer(NetworkConnection conn)
     {
-        if (!IsServerStarted || !spawnedPlayers.TryGetValue(conn, out var nob)) return;
+        if (!IsServerStarted)
+            return;
+
+        if (!_spawnedPlayers.TryGetValue(conn, out NetworkObject nob))
+            return;
+
         Despawn(nob);
-        spawnedPlayers.Remove(conn);
+        _spawnedPlayers.Remove(conn);
     }
 
     public void DespawnAllPlayers()
     {
-        if (!IsServerStarted) return;
-        foreach (var nob in spawnedPlayers.Values)
-            Despawn(nob);
-        spawnedPlayers.Clear();
+        if (!IsServerStarted)
+            return;
+
+        foreach (NetworkObject nob in _spawnedPlayers.Values)
+        {
+            if (nob != null)
+                Despawn(nob);
+        }
+
+        _spawnedPlayers.Clear();
     }
-    #endregion
+    
+    [Server]
+    public void RespawnAllPlayers()
+    {
+        if (!IsServerStarted)
+            return;
+
+        foreach (NetworkObject nob in _spawnedPlayers.Values)
+        {
+            if (nob == null)
+                continue;
+
+            if (nob.TryGetComponent(out PlayerHealth hp))
+                hp.RespawnNow();
+            else
+                TryMovePlayerToSpawn(nob);
+        }
+    }
+
+    [Server]
+    public void SetAllPlayersFrozen(bool frozen)
+    {
+        if (!IsServerStarted)
+            return;
+
+        foreach (NetworkObject nob in _spawnedPlayers.Values)
+        {
+            if (nob == null)
+                continue;
+
+            if (nob.TryGetComponent(out _Scripts.Player.AdvancedPredictedController ctrl))
+                ctrl.IsFrozen = frozen;
+        }
+    }
 }

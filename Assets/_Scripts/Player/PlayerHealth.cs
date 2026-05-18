@@ -1,12 +1,13 @@
 // _Scripts/Player/PlayerHealth.cs
 using System;
 using System.Collections;
-using _Scripts.Packs;
+using _Scripts.Game;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Player;    // AdvancedPredictedController
 using _Scripts.Weapons;   // WeaponManager
+using _Scripts.Packs;
 
 [DisallowMultipleComponent]
 public sealed class PlayerHealth : NetworkBehaviour
@@ -19,6 +20,8 @@ public sealed class PlayerHealth : NetworkBehaviour
     public int  Current => _hp.Value;
     public int  Max     => maxHp;
     public bool IsDead  => _hp.Value == 0;
+    
+    public bool CanPickup => !IsDead;
 
     /* ───── gameplay events ──── */
     public event Action<int,int> OnHealthChanged;
@@ -112,46 +115,65 @@ public sealed class PlayerHealth : NetworkBehaviour
     /* ─── death ───────────────── */
     [Server] void HandleDeath(NetworkObject killer)
     {
-        // 1) freeze authoritative physics
-        rb.isKinematic      = true;
-        rb.linearVelocity   = Vector3.zero;
-        rb.angularVelocity  = Vector3.zero;
+        // Stop gameplay control, but do not freeze/stutter physics manually.
+        SetPlayable(false);
 
-        // 2) disable control + visuals + colliders for every peer
-        RpcSetAlive(false);
-        SetPlayable(false);          // owner logic only
-
-        // 3) drop held weapons and pack
+        // Drop held weapons and pack.
         wm?.DropAll();
         pm?.Server_Drop();
 
+        // Hide player / disable hitboxes.
+        RpcSetAlive(false);
+
+        // Later: play death explosion/VFX here.
+        // RpcPlayDeathFx(transform.position);
+
         OnDied?.Invoke();
 
-        // 4) schedule respawn
-        StartCoroutine(RespawnAfter(respawnDelay));
+        GameModeManager.Instance?.NotifyPlayerDied(this, killer);
+
+        float delay = GameModeManager.Instance != null
+            ? GameModeManager.Instance.GetRespawnDelay(this)
+            : respawnDelay;
+
+        StartCoroutine(RespawnAfter(delay));
     }
+    
 
     /* ─── respawn ─────────────── */
-    [Server] IEnumerator RespawnAfter(float delay)
+    [Server]
+    IEnumerator RespawnAfter(float delay)
     {
         yield return new WaitForSeconds(delay);
 
-        // teleport to spawn
-        Transform sp = SpawnManager.Instance?.GetRandomSpawn();
-        if (sp != null)
-            transform.SetPositionAndRotation(sp.position, sp.rotation);
+        // Game mode decides if this player is allowed to respawn now.
+        if (GameModeManager.Instance != null &&
+            !GameModeManager.Instance.CanPlayerRespawn(this))
+        {
+            yield break;
+        }
 
-        // full physics + gameplay reset
-        rb.isKinematic      = false;
-        rb.linearVelocity   = Vector3.zero;
-        rb.angularVelocity  = Vector3.zero;
+        RespawnNow();
+    }
+    
+    [Server]
+    public void RespawnNow()
+    {
+        SpawnManager.Instance?.TryMovePlayerToSpawn(NetworkObject);
+
+        rb.isKinematic = false;
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+
         ctrl?.HardResetMovement();
         ctrl?.ResetEnergy();
 
-        _hp.Value = maxHp;           // fires Ui callback
-        
+        _hp.Value = maxHp;
+
         SetPlayable(true);
         RpcSetAlive(true);
+
+        GameModeManager.Instance?.NotifyPlayerRespawned(this);
         OnRespawned?.Invoke();
     }
     
@@ -194,5 +216,12 @@ public sealed class PlayerHealth : NetworkBehaviour
     {
         foreach (var r in rends) r.enabled = alive;
         foreach (var c in cols)  c.enabled = alive;
+        
+        if (IsOwner)
+        {
+            FpsCameraFollow cam = FindFirstObjectByType<FpsCameraFollow>();
+            if (cam != null)
+                cam.SetTargetAlive(alive);
+        }
     }
 }

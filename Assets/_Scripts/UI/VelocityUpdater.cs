@@ -1,5 +1,3 @@
-using FishNet;
-using FishNet.Object;
 using TMPro;
 using UnityEngine;
 using _Scripts.Player;
@@ -8,36 +6,60 @@ using _Scripts.Player;
 public sealed class VelocityUpdater : MonoBehaviour
 {
     [SerializeField, Range(0.01f, 1f)]
-    float refreshRate = 0.2f;          // seconds
+    float refreshRate = 0.2f;
 
-    TMP_Text  _label;
-    Rigidbody _myRb;
+    TMP_Text _label;
+    Rigidbody _rb;
 
     void Awake()
     {
         _label = GetComponent<TMP_Text>();
-        StartCoroutine(FindRb());
+
+        LocalPlayerContext.OnLocalPlayerReady += HandleLocalPlayerReady;
+        LocalPlayerContext.OnLocalPlayerCleared += HandleLocalPlayerCleared;
+
+        if (LocalPlayerContext.IsReady)
+            HandleLocalPlayerReady(LocalPlayerContext.Controller);
     }
-    System.Collections.IEnumerator FindRb()
+
+    void OnDestroy()
     {
-        // Wait until the local connection and player exist
-        while (_myRb == null)
-        {
-            NetworkObject local = InstanceFinder.ClientManager.Connection?.FirstObject;
-            if (local != null && local.TryGetComponent(out AdvancedPredictedController ctrl))
-                _myRb = ctrl.GetComponent<Rigidbody>();
+        LocalPlayerContext.OnLocalPlayerReady -= HandleLocalPlayerReady;
+        LocalPlayerContext.OnLocalPlayerCleared -= HandleLocalPlayerCleared;
 
-            if (_myRb == null)
-                yield return null;      // try again next frame
-        }
+        CancelInvoke(nameof(UpdateVelocity));
+    }
 
-        // Now we have the rigidbody – start the repeated update
+    void HandleLocalPlayerReady(AdvancedPredictedController controller)
+    {
+        if (controller == null)
+            return;
+
+        _rb = controller.GetComponent<Rigidbody>();
+
+        CancelInvoke(nameof(UpdateVelocity));
         InvokeRepeating(nameof(UpdateVelocity), refreshRate, refreshRate);
+
+        UpdateVelocity();
+
+        Debug.Log($"[VelocityUpdater] Bound to local player: {controller.name}");
+    }
+
+    void HandleLocalPlayerCleared()
+    {
+        _rb = null;
+        CancelInvoke(nameof(UpdateVelocity));
+
+        if (_label != null)
+            _label.text = "0.0 m/s";
     }
 
     void UpdateVelocity()
     {
-        float speedMps = _myRb.linearVelocity.magnitude;
-        _label.text    = $"{speedMps:F1} m/s";
+        if (_rb == null)
+            return;
+
+        float speedMps = _rb.linearVelocity.magnitude;
+        _label.text = $"{speedMps:F1} m/s";
     }
 }

@@ -27,6 +27,7 @@ public class FpsCameraFollow : MonoBehaviour
     const string TP_LAYER = "TP_Only";
     int _fpMask, _tpMask;
     bool inThirdPerson;
+    bool _targetAlive = true;
 
     void Awake()
     {
@@ -133,7 +134,7 @@ public class FpsCameraFollow : MonoBehaviour
     
     void LateUpdate()
     {
-        if (!target || !head)
+        if (!target || !head || !_targetAlive)
             return;
 
         float targetYaw = target.transform.eulerAngles.y;
@@ -166,5 +167,10 @@ public class FpsCameraFollow : MonoBehaviour
         cam.cullingMask = tpMode
             ? (cam.cullingMask | _tpMask) & ~_fpMask
             : (cam.cullingMask | _fpMask) & ~_tpMask;
+    }
+    
+    public void SetTargetAlive(bool alive)
+    {
+        _targetAlive = alive;
     }
 }

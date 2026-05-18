@@ -63,6 +63,9 @@ namespace _Scripts.Packs
             if (!IsServer) return;
             if (!other.TryGetComponent(out PackManager pm)) return;
             if (pm.HasPack) return;
+            
+            if (other.TryGetComponent(out PlayerHealth hp) && !hp.CanPickup)
+                return;
 
             if (pm.Server_GivePack(definition))
                 ServerManager.Despawn(gameObject, DespawnType.Pool);
@@ -73,6 +76,9 @@ namespace _Scripts.Packs
         {
             if (!player.TryGetComponent(out PackManager pm)) return;
             if (pm.HasPack) return;
+            
+            if (player.TryGetComponent(out PlayerHealth hp) && !hp.CanPickup)
+                return;
 
             if (pm.Server_GivePack(definition))
                 ServerManager.Despawn(gameObject, DespawnType.Pool);

@@ -14,6 +14,9 @@ public sealed class ItemPickup : NetworkBehaviour
     void OnTriggerEnter(Collider other)
     {
         if (!other.TryGetComponent(out ItemManager im)) return;
+        
+        if (other.TryGetComponent(out PlayerHealth hp) && !hp.CanPickup)
+            return;
 
         if (IsServer)
             GiveAndDespawn(im);
@@ -22,8 +25,13 @@ public sealed class ItemPickup : NetworkBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)]
-    void Server_RequestPickup(NetworkObject player) =>
+    void Server_RequestPickup(NetworkObject player)
+    {
+        if (player.TryGetComponent(out PlayerHealth hp) && !hp.CanPickup)
+            return;
+
         GiveAndDespawn(player.GetComponent<ItemManager>());
+    }
 
     [Server] void GiveAndDespawn(ItemManager im)
     {

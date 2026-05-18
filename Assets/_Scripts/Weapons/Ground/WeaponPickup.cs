@@ -69,6 +69,9 @@ namespace _Scripts.Weapons
             /* ---------------- SERVER PATH ---------------- */
             if (!IsServer) return;
             if (!other.TryGetComponent(out WeaponManager wm)) return;
+            
+            if (other.TryGetComponent(out PlayerHealth hp) && !hp.CanPickup)
+                return;
 
             /* Energy‑pack gate (if required) */
             if (definition.requiresEnergyPack)
@@ -88,6 +91,9 @@ namespace _Scripts.Weapons
         void Server_RequestPickup(NetworkObject playerObj)
         {
             if (!playerObj.TryGetComponent(out WeaponManager wm)) return;
+            
+            if (playerObj.TryGetComponent(out PlayerHealth hp) && !hp.CanPickup)
+                return;
 
             if (definition.requiresEnergyPack)
             {

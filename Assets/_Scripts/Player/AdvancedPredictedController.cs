@@ -221,12 +221,6 @@ namespace _Scripts.Player
 
         #region FishNet Data Structures
         // Replication struct
-        
-        #region helpers – 2-bit Move encoder
-        
-        #endregion
-
-        #region replicate payload -------------------------------------------
         public struct MovementData : IReplicateData
         {
             public byte Heart;
@@ -252,8 +246,8 @@ namespace _Scripts.Player
             public void  SetTick(uint value)  => _tick = value;
             public void  Dispose()            { }
         }
-        #endregion
         
+        // Reconciliation
         private struct ReconciliationData : IReconcileData
         {
             uint _tick;
@@ -486,7 +480,7 @@ namespace _Scripts.Player
             }
             
             if (IsServer && LagCompensationManager.Instance != null) 
-                LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, firePoint.forward, _rb.linearVelocity, TimeManager.Tick);
+                LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, viewOrigin.forward, _rb.linearVelocity, TimeManager.Tick);
         }
         #endregion
 
