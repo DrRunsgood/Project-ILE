@@ -386,6 +386,34 @@ namespace _Scripts.Weapons
 #endregion
 
 /* ═════════════════════════════ */
+
+#region Clear/Rest
+
+[Server]
+public void Server_ClearWeaponsForRoundReset()
+{
+    for (int i = _weapons.Count - 1; i >= 0; i--)
+    {
+        NetworkObject nob = _weapons[i].NetworkObj;
+
+        RpcRemoveHeld(nob);
+
+        if (nob != null)
+        {
+            nob.transform.SetParent(null, false);
+            ServerManager.Despawn(nob, DespawnType.Pool);
+        }
+    }
+
+    _weapons.Clear();
+    SetActiveWeapon(null);
+
+    // Re-add hidden/default quick items if needed.
+    GiveDefaultQuickItems();
+}
+
+#endregion
+
 #region Helper class
         sealed class WeaponInstance
         {

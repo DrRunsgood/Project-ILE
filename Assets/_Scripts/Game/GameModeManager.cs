@@ -26,39 +26,49 @@ namespace _Scripts.Game
     {
         public static GameModeManager Instance { get; private set; }
 
+        #region Inspector Fields
+
         [Header("Mode")]
-        [SerializeField] GameModeType mode = GameModeType.Deathmatch;
+        [SerializeField] GameModeType startingMode = GameModeType.Deathmatch;
 
         [Header("Timing")]
         [SerializeField] float warmupSeconds = 5f;
         [SerializeField] float matchSeconds = 600f;
         [SerializeField] float postMatchSeconds = 10f;
-        
+
         [Header("Arena")]
         [SerializeField] int roundsToWin = 3;
         [SerializeField] float postRoundSeconds = 5f;
 
+        [Header("Deathmatch")]
+        [SerializeField] int killLimit = 25;
+
+        #endregion
+
+        #region SyncVars / Public State
+
+        readonly SyncVar<GameModeType> _mode = new(GameModeType.Deathmatch);
+        readonly SyncVar<MatchState> _state = new(MatchState.Waiting);
+        readonly SyncVar<uint> _stateEndTick = new(0);
+
         readonly SyncVar<int> _currentRound = new(0);
         readonly SyncVar<int> _teamAScore = new(0);
         readonly SyncVar<int> _teamBScore = new(0);
-        
-        [Header("Deathmatch")]
-        [SerializeField] int killLimit = 25;
-        
 
-        readonly SyncVar<MatchState> _state = new(MatchState.Waiting);
-        readonly SyncVar<uint> _stateEndTick = new(0);
-        
-        public GameModeType Mode => mode;
+        public GameModeType Mode => _mode.Value;
         public MatchState State => _state.Value;
-        
         public uint StateEndTick => _stateEndTick.Value;
+
         public int CurrentRound => _currentRound.Value;
         public int TeamAScore => _teamAScore.Value;
         public int TeamBScore => _teamBScore.Value;
 
         public bool IsLive => _state.Value == MatchState.Live;
-        
+
+        #endregion
+
+        #region Unity / FishNet Lifecycle
+
         void Awake()
         {
             Instance = this;
@@ -77,10 +87,19 @@ namespace _Scripts.Game
         {
             base.OnStartServer();
 
+            _mode.Value = startingMode;
+
             if (CanStartWarmup())
-                StartWarmup();
+            {
+                if (_mode.Value == GameModeType.Arena)
+                    StartArenaPreRound();
+                else
+                    StartWarmup();
+            }
             else
+            {
                 StartWaiting();
+            }
         }
 
         void Update()
@@ -88,7 +107,7 @@ namespace _Scripts.Game
             if (!IsServerStarted)
                 return;
 
-            switch (mode)
+            switch (_mode.Value)
             {
                 case GameModeType.Deathmatch:
                     TickDeathmatch();
@@ -103,8 +122,71 @@ namespace _Scripts.Game
                     break;
             }
         }
-        
-        // Mode Specific Handlers
+
+        #endregion
+
+        #region State Entry Methods
+
+        [Server]
+        public void StartWaiting()
+        {
+            SetState(MatchState.Waiting, 1f);
+        }
+
+        [Server]
+        public void StartWarmup()
+        {
+            if (_mode.Value == GameModeType.Arena)
+            {
+                StartArenaPreRound();
+                return;
+            }
+
+            SpawnManager.Instance?.RespawnAllPlayers();
+            SetState(MatchState.Warmup, warmupSeconds);
+        }
+
+        [Server]
+        public void StartMatch()
+        {
+            SetState(MatchState.Live, matchSeconds);
+
+            // Later:
+            // - reset scores
+            // - respawn players
+            // - reset pickups
+            // - announce match start
+        }
+
+        [Server]
+        public void EndMatch()
+        {
+            SetState(MatchState.PostMatch, postMatchSeconds);
+
+            // Later:
+            // - freeze scoring
+            // - show winner
+            // - prepare map/mode rotation
+        }
+
+        [Server]
+        void SetState(MatchState next, float duration)
+        {
+            _state.Value = next;
+
+            uint durationTicks = TimeManager.TimeToTicks(Mathf.Max(0f, duration));
+            _stateEndTick.Value = TimeManager.Tick + durationTicks;
+        }
+
+        void OnStateChanged(MatchState prev, MatchState next, bool asServer)
+        {
+            Debug.Log($"[GameModeManager] Match state changed: {prev} -> {next}");
+        }
+
+        #endregion
+
+        #region Tick / Mode Flow
+
         [Server]
         void TickDeathmatch()
         {
@@ -127,7 +209,9 @@ namespace _Scripts.Game
                         StartMatch();
                     }
                     else
+                    {
                         StartWaiting();
+                    }
                     break;
 
                 case MatchState.Live:
@@ -139,14 +223,7 @@ namespace _Scripts.Game
                     break;
             }
         }
-        
-        [Server]
-        void TickCTF()
-        {
-            // Same as Deathmatch for now.
-            TickDeathmatch();
-        }
-        
+
         [Server]
         void TickArena()
         {
@@ -186,22 +263,33 @@ namespace _Scripts.Game
                     break;
             }
         }
-        
-        // ARENA
+
+        [Server]
+        void TickCTF()
+        {
+            // Same as Deathmatch for now.
+            TickDeathmatch();
+        }
+
+        #endregion
+
+        #region Arena Logic
+
         [Server]
         void StartArenaPreRound()
         {
+            RoundResetManager.Instance?.ResetForArenaRound();
+
             SpawnManager.Instance?.RespawnAllPlayers();
             SpawnManager.Instance?.SetAllPlayersFrozen(true);
 
             SetState(MatchState.Warmup, warmupSeconds);
 
             // Later:
-            // - reset pickups
             // - clear projectiles
             // - reset round-only state
         }
-        
+
         [Server]
         void StartArenaRound()
         {
@@ -214,7 +302,7 @@ namespace _Scripts.Game
             // - enable scoring
             // - announce round start
         }
-        
+
         [Server]
         void EndArenaRound(TeamId winner)
         {
@@ -237,13 +325,14 @@ namespace _Scripts.Game
             SpawnManager.Instance?.SetAllPlayersFrozen(true);
             SetState(MatchState.PostRound, postRoundSeconds);
         }
-        
+
         [Server]
         bool HasArenaMatchWinner()
         {
-            return _teamAScore.Value >= roundsToWin || _teamBScore.Value >= roundsToWin;
+            return _teamAScore.Value >= roundsToWin ||
+                   _teamBScore.Value >= roundsToWin;
         }
-        
+
         [Server]
         void ResetArenaMatch()
         {
@@ -251,7 +340,7 @@ namespace _Scripts.Game
             _teamAScore.Value = 0;
             _teamBScore.Value = 0;
         }
-        
+
         [Server]
         void ResolveArenaRoundByTimer()
         {
@@ -271,185 +360,7 @@ namespace _Scripts.Game
             else
                 EndArenaRound(TeamId.None);
         }
-        
-        // DEATHMATCH
-        
-        [Server]
-        void HandleDeathmatchDeath(PlayerHealth victim, NetworkObject killer)
-        {
-            if (_state.Value != MatchState.Live)
-                return;
 
-            if (victim.TryGetComponent(out _Scripts.Player.PlayerStats victimStats))
-                victimStats.AddDeath();
-
-            if (killer != null &&
-                killer != victim.NetworkObject &&
-                killer.TryGetComponent(out _Scripts.Player.PlayerStats killerStats))
-            {
-                killerStats.AddKill();
-
-                if (killerStats.Kills >= killLimit)
-                    EndMatch();
-            }
-        }
-        
-        
-        [Server]
-        public void StartWaiting()
-        {
-            SetState(MatchState.Waiting, 1f);
-        }
-
-        [Server]
-        public void StartWarmup()
-        {
-            if (mode != GameModeType.Arena)
-                SpawnManager.Instance?.RespawnAllPlayers();
-
-            SetState(MatchState.Warmup, warmupSeconds);
-        }
-
-        [Server]
-        public void StartMatch()
-        {
-            SetState(MatchState.Live, matchSeconds);
-
-            // Later:
-            // - reset scores
-            // - respawn players
-            // - reset pickups
-            // - announce match start
-        }
-
-        [Server]
-        public void EndMatch()
-        {
-            SetState(MatchState.PostMatch, postMatchSeconds);
-
-            // Later:
-            // - freeze scoring
-            // - show winner
-            // - prepare map/mode rotation
-        }
-
-        [Server]
-        void SetState(MatchState next, float duration)
-        {
-            _state.Value = next;
-
-            uint durationTicks = TimeManager.TimeToTicks(Mathf.Max(0f, duration));
-
-            _stateEndTick.Value = TimeManager.Tick + durationTicks;
-        }
-
-        void OnStateChanged(MatchState prev, MatchState next, bool asServer)
-        {
-            Debug.Log($"[GameModeManager] Match state changed: {prev} -> {next}");
-        }
-        
-        [Server]
-        bool CanStartWarmup()
-        {
-            return mode switch
-            {
-                GameModeType.Deathmatch => ConnectedPlayerCount() >= 1,
-                GameModeType.Arena => ConnectedPlayerCount() >= 2,
-                GameModeType.CTF => ConnectedPlayerCount() >= 2,
-                _ => true
-            };
-        }
-
-        [Server]
-        bool CanStartMatch()
-        {
-            return mode switch
-            {
-                GameModeType.Deathmatch => ConnectedPlayerCount() >= 1,
-                GameModeType.Arena => ConnectedPlayerCount() >= 2,
-                GameModeType.CTF => ConnectedPlayerCount() >= 2,
-                _ => true
-            };
-        }
-
-        [Server]
-        int ConnectedPlayerCount()
-        {
-            return base.ServerManager.Clients.Count;
-        }
-
-        [Server]
-        public bool CanPlayerRespawn(PlayerHealth player)
-        {
-            if (player == null)
-                return false;
-
-            switch (mode)
-            {
-                case GameModeType.Deathmatch:
-                    return _state.Value == MatchState.Live || _state.Value == MatchState.Warmup;
-
-                case GameModeType.Arena:
-                    // Arena usually no mid-round respawn.
-                    return _state.Value == MatchState.Warmup;
-
-                case GameModeType.CTF:
-                    return _state.Value == MatchState.Live || _state.Value == MatchState.Warmup;
-
-                default:
-                    return true;
-            }
-        }
-        
-        [Server]
-        public float GetRespawnDelay(PlayerHealth player)
-        {
-            return mode switch
-            {
-                GameModeType.Deathmatch => 3f,
-
-                GameModeType.CTF => 5f,
-
-                GameModeType.Arena =>
-                    _state.Value == MatchState.Warmup
-                        ? 2f
-                        : 0f,
-
-                _ => 3f
-            };
-        }
-        
-        [Server]
-        public void NotifyPlayerDied(PlayerHealth victim, NetworkObject killer)
-        {
-            if (victim == null)
-                return;
-
-            switch (mode)
-            {
-                case GameModeType.Deathmatch:
-                    HandleDeathmatchDeath(victim, killer);
-                    break;
-
-                case GameModeType.Arena:
-                    if (_state.Value == MatchState.Live)
-                        CheckArenaEliminationWin();
-                    break;
-
-                case GameModeType.CTF:
-                    // Later.
-                    break;
-            }
-        }
-
-        [Server]
-        public void NotifyPlayerRespawned(PlayerHealth player)
-        {
-            // Later:
-            // - update HUD/state
-            // - reset spawn protection
-        }
-        
         [Server]
         void CheckArenaEliminationWin()
         {
@@ -472,13 +383,128 @@ namespace _Scripts.Game
             }
 
             if (aliveB <= 0)
-            {
                 EndArenaRound(TeamId.TeamA);
+        }
+
+        #endregion
+
+        #region Deathmatch Logic
+
+        [Server]
+        void HandleDeathmatchDeath(PlayerHealth victim, NetworkObject killer)
+        {
+            if (_state.Value != MatchState.Live)
+                return;
+
+            RecordKillDeath(victim, killer);
+
+            if (killer != null &&
+                killer != victim.NetworkObject &&
+                killer.TryGetComponent(out Player.PlayerStats killerStats) &&
+                killerStats.Kills >= killLimit)
+            {
+                EndMatch();
             }
         }
-        
-        
-        
+
+        #endregion
+
+        #region Player Death / Respawn Rules
+
+        [Server]
+        public void NotifyPlayerDied(PlayerHealth victim, NetworkObject killer)
+        {
+            if (victim == null)
+                return;
+
+            switch (_mode.Value)
+            {
+                case GameModeType.Deathmatch:
+                    HandleDeathmatchDeath(victim, killer);
+                    break;
+
+                case GameModeType.Arena:
+                    if (_state.Value == MatchState.Live)
+                    {
+                        RecordKillDeath(victim, killer);
+                        CheckArenaEliminationWin();
+                    }
+                    break;
+
+                case GameModeType.CTF:
+                    // Later.
+                    break;
+            }
+        }
+
+        [Server]
+        public void NotifyPlayerRespawned(PlayerHealth player)
+        {
+            // Later:
+            // - update HUD/state
+            // - reset spawn protection
+        }
+
+        [Server]
+        public bool CanPlayerRespawn(PlayerHealth player)
+        {
+            if (player == null)
+                return false;
+
+            switch (_mode.Value)
+            {
+                case GameModeType.Deathmatch:
+                    return _state.Value == MatchState.Live ||
+                           _state.Value == MatchState.Warmup;
+
+                case GameModeType.Arena:
+                    return _state.Value == MatchState.Warmup;
+
+                case GameModeType.CTF:
+                    return _state.Value == MatchState.Live ||
+                           _state.Value == MatchState.Warmup;
+
+                default:
+                    return true;
+            }
+        }
+
+        [Server]
+        public float GetRespawnDelay(PlayerHealth player)
+        {
+            return _mode.Value switch
+            {
+                GameModeType.Deathmatch => 3f,
+
+                GameModeType.CTF => 5f,
+
+                GameModeType.Arena =>
+                    _state.Value == MatchState.Warmup
+                        ? 2f
+                        : 0f,
+
+                _ => 3f
+            };
+        }
+
+        #endregion
+
+        #region Stats
+
+        [Server]
+        void RecordKillDeath(PlayerHealth victim, NetworkObject killer)
+        {
+            if (victim.TryGetComponent(out Player.PlayerStats victimStats))
+                victimStats.AddDeath();
+
+            if (killer != null &&
+                killer != victim.NetworkObject &&
+                killer.TryGetComponent(out Player.PlayerStats killerStats))
+            {
+                killerStats.AddKill();
+            }
+        }
+
         [Server]
         void ResetAllPlayerStats()
         {
@@ -490,16 +516,54 @@ namespace _Scripts.Game
                 if (id == null)
                     continue;
 
-                if (id.TryGetComponent(out _Scripts.Player.PlayerStats stats))
+                if (id.TryGetComponent(out Player.PlayerStats stats))
                     stats.ResetStats();
             }
         }
-        
+
+        #endregion
+
+        #region Match Start Conditions
+
+        [Server]
+        bool CanStartWarmup()
+        {
+            return _mode.Value switch
+            {
+                GameModeType.Deathmatch => ConnectedPlayerCount() >= 1,
+                GameModeType.Arena => ConnectedPlayerCount() >= 2,
+                GameModeType.CTF => ConnectedPlayerCount() >= 2,
+                _ => true
+            };
+        }
+
+        [Server]
+        bool CanStartMatch()
+        {
+            return _mode.Value switch
+            {
+                GameModeType.Deathmatch => ConnectedPlayerCount() >= 1,
+                GameModeType.Arena => ConnectedPlayerCount() >= 2,
+                GameModeType.CTF => ConnectedPlayerCount() >= 2,
+                _ => true
+            };
+        }
+
+        [Server]
+        int ConnectedPlayerCount()
+        {
+            return ServerManager.Clients.Count;
+        }
+
+        #endregion
+
+        #region Timer Helpers
+
         bool HasStateTimerExpired()
         {
             return TimeManager.Tick >= _stateEndTick.Value;
         }
-        
+
         public float GetStateTimeRemaining()
         {
             if (TimeManager == null)
@@ -513,5 +577,7 @@ namespace _Scripts.Game
 
             return (float)TimeManager.TicksToTime(end - now);
         }
+
+        #endregion
     }
 }

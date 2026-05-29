@@ -136,4 +136,26 @@ public class SpawnManager : NetworkBehaviour
                 ctrl.IsFrozen = frozen;
         }
     }
+    
+    [Server]
+    public void ResetAllPlayerInventoriesForRound()
+    {
+        if (!IsServerStarted)
+            return;
+
+        foreach (NetworkObject nob in _spawnedPlayers.Values)
+        {
+            if (nob == null)
+                continue;
+
+            if (nob.TryGetComponent(out _Scripts.Weapons.WeaponManager wm))
+                wm.Server_ClearWeaponsForRoundReset();
+
+            if (nob.TryGetComponent(out _Scripts.Packs.PackManager pm))
+                pm.Server_ClearPackForRoundReset();
+
+            if (nob.TryGetComponent(out _Scripts.Items.ItemManager im))
+                im.Server_ClearItemsForRoundReset();
+        }
+    }
 }

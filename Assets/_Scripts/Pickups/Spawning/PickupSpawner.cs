@@ -11,6 +11,14 @@ namespace _Scripts.Pickups.Spawning
         Item,
         Pack
     }
+    
+    public enum PickupRespawnMode : byte
+    {
+        Timed,          // respawn after pickup/despawn delay
+        RoundResetOnly, // only respawn when round reset calls it
+        MatchStartOnly, // spawn once at match/start reset, no timed respawn
+        Manual          // only external systems spawn/reset it
+    }
 
     public struct PickupSpawnPayload
     {
@@ -39,6 +47,7 @@ namespace _Scripts.Pickups.Spawning
         [SerializeField] int itemCount = 1;
 
         [Header("Respawn")]
+        [SerializeField] PickupRespawnMode respawnMode = PickupRespawnMode.Timed;
         [SerializeField] bool spawnOnServerStart = true;
         [SerializeField] float respawnDelay = 30f;
 
@@ -62,6 +71,9 @@ namespace _Scripts.Pickups.Spawning
         void Update()
         {
             if (!IsServerStarted || !_respawnPending)
+                return;
+
+            if (respawnMode != PickupRespawnMode.Timed)
                 return;
 
             if (Time.time < _respawnAt)
@@ -108,10 +120,10 @@ namespace _Scripts.Pickups.Spawning
             if (nob.TryGetComponent(out ISpawnInitialized initialized))
                 initialized.ServerInitializeFromSpawner(payload);
 
-            if (nob.TryGetComponent(out _Scripts.Weapons.WeaponPickup weaponPickup))
+            if (nob.TryGetComponent(out Weapons.WeaponPickup weaponPickup))
                 weaponPickup.Arm(pickupArmDelay);
 
-            if (nob.TryGetComponent(out _Scripts.Packs.PackPickup packPickup))
+            if (nob.TryGetComponent(out Packs.PackPickup packPickup))
                 packPickup.Arm(pickupArmDelay);
         }
 
@@ -122,21 +134,50 @@ namespace _Scripts.Pickups.Spawning
                 return;
 
             _currentSpawned = null;
-            _respawnPending = true;
-            _respawnAt = Time.time + Mathf.Max(0.01f, respawnDelay);
+
+            switch (respawnMode)
+            {
+                case PickupRespawnMode.Timed:
+                    _respawnPending = true;
+                    _respawnAt = Time.time + Mathf.Max(0.01f, respawnDelay);
+                    break;
+
+                case PickupRespawnMode.RoundResetOnly:
+                case PickupRespawnMode.MatchStartOnly:
+                case PickupRespawnMode.Manual:
+                    _respawnPending = false;
+                    break;
+            }
         }
 
         [Server]
         public void ForceRespawnNow()
         {
-            if (_currentSpawned != null)
-            {
-                ServerManager.Despawn(_currentSpawned, DespawnType.Pool);
-                _currentSpawned = null;
-            }
+            DespawnCurrent();
 
             _respawnPending = false;
             SpawnNow();
+        }
+        
+        [Server]
+        public void DespawnCurrent()
+        {
+            if (_currentSpawned == null)
+                return;
+
+            NetworkObject current = _currentSpawned;
+            _currentSpawned = null;
+
+            ServerManager.Despawn(current, DespawnType.Pool);
+        }
+        
+        [Server]
+        public void ResetForRound()
+        {
+            if (respawnMode != PickupRespawnMode.RoundResetOnly)
+                return;
+
+            ForceRespawnNow();
         }
     }
 }

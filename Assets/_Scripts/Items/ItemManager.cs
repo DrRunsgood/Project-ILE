@@ -249,5 +249,17 @@ namespace _Scripts.Items
             public ItemDefinition Def;
             public byte           Count;
         }
+    /* ═══════════════════════════════════════════════════════════════ */        
+    #region Clear/Reset
+        
+        [Server]
+        public void Server_ClearItemsForRoundReset()
+        {
+            for (int i = 0; i < MaxSlots; i++)
+                _slots[i] = default;
+
+            PackBits();
+        }
+    #endregion
     }
 }

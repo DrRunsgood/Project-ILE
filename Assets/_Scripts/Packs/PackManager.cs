@@ -238,5 +238,21 @@ namespace _Scripts.Packs
         }
 
         #endregion
+        
+        #region Clear/Reset
+        [Server]
+        public void Server_ClearPackForRoundReset()
+        {
+            if (heldNob)
+            {
+                heldNob.transform.SetParent(null, false);
+                ServerManager.Despawn(heldNob, DespawnType.Pool);
+            }
+        
+            heldNob = null;
+            CurrentDef = null;
+            _packByte.Value = 0;
+        }
+        #endregion
     }
 }
