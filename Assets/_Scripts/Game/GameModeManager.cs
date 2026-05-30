@@ -9,6 +9,7 @@ namespace _Scripts.Game
     {
         Waiting,
         Warmup,
+        PreRound,
         Live,
         PostRound,
         PostMatch
@@ -231,6 +232,7 @@ namespace _Scripts.Game
             {
                 if (CanStartWarmup())
                     StartArenaPreRound();
+
                 return;
             }
 
@@ -239,7 +241,7 @@ namespace _Scripts.Game
 
             switch (_state.Value)
             {
-                case MatchState.Warmup:
+                case MatchState.PreRound:
                     if (CanStartMatch())
                         StartArenaRound();
                     else
@@ -280,10 +282,11 @@ namespace _Scripts.Game
         {
             RoundResetManager.Instance?.ResetForArenaRound();
 
+            SpawnManager.Instance?.SpawnPendingPlayers();
             SpawnManager.Instance?.RespawnAllPlayers();
             SpawnManager.Instance?.SetAllPlayersFrozen(true);
 
-            SetState(MatchState.Warmup, warmupSeconds);
+            SetState(MatchState.PreRound, warmupSeconds);
 
             // Later:
             // - clear projectiles
@@ -458,7 +461,8 @@ namespace _Scripts.Game
                            _state.Value == MatchState.Warmup;
 
                 case GameModeType.Arena:
-                    return _state.Value == MatchState.Warmup;
+                    return _state.Value == MatchState.Waiting ||
+                           _state.Value == MatchState.PreRound;
 
                 case GameModeType.CTF:
                     return _state.Value == MatchState.Live ||
@@ -479,11 +483,29 @@ namespace _Scripts.Game
                 GameModeType.CTF => 5f,
 
                 GameModeType.Arena =>
-                    _state.Value == MatchState.Warmup
+                    _state.Value == MatchState.Waiting ||
+                    _state.Value == MatchState.PreRound
                         ? 2f
                         : 0f,
 
                 _ => 3f
+            };
+        }
+        
+        [Server]
+        public bool ShouldSpawnPlayerImmediately()
+        {
+            return _mode.Value switch
+            {
+                GameModeType.Deathmatch => true,
+
+                GameModeType.CTF => true,
+
+                GameModeType.Arena =>
+                    _state.Value == MatchState.Waiting ||
+                    _state.Value == MatchState.PreRound,
+
+                _ => true
             };
         }
 

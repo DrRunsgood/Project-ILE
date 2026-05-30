@@ -1,0 +1,36 @@
+Enviro 3 - Terrain Shader
+
+v1.0.0
+Release Version
+
+------------------------------------------------------------------------
+v 1.1.0
+* Added "per layer" controls.
+* Improved overall layer blending (height -> linear).
+* Improved and optimized overall shader.
+* Fixed texture array generation in builds. (For example for runtime generated terrains)
+* Fixed all gc-allocation from Terrain Manager.
+* Fixed reversed UVs issue.
+* Fixed per-pixel normal in instanced rendering.
+* Fixed terrain holes in HDRP.
+
+v1.1.1
+* Fixed possible null error when creating new materials though the inspector.
+* Fixed 8+ splat support.
+
+v1.1.2
+* Fixed texture array generation when a layer has a missing albedo texture.
+* Fixed Enviro 3 rain intensity sync feature.
+* Fixed missing snow/wetness/puddle issues in builds.
+
+v1.2.0
+* Added per layer snow/wetness/puddle intensity sliders
+* Fixed first shader load times in built-in.
+* Fixed deferred rendering in URP 17.2+
+* Fixed puddle noise tiling in HDRP 17+
+* Fixed smaller issue in the sample scene.
+
+v1.2.1
+* Fixed builds stripped out certain shader variants and features.
+* Fixed instanced per pixel normal feature in non tesselation version of the shaders.
+* Fixed some lighting issues in latest URP/HDRP versions.

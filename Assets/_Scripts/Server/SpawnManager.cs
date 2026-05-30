@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using FishNet.Object;
 using FishNet.Connection;
+using _Scripts.Game;
 
 public class SpawnManager : NetworkBehaviour
 {
@@ -9,6 +10,7 @@ public class SpawnManager : NetworkBehaviour
 
     readonly List<Transform> _spawnPoints = new();
     readonly Dictionary<NetworkConnection, NetworkObject> _spawnedPlayers = new();
+    readonly Dictionary<NetworkConnection, GameObject> _pendingSpawnPlayers = new();
 
     void Awake()
     {
@@ -64,7 +66,23 @@ public class SpawnManager : NetworkBehaviour
 
     public void SpawnPlayer(NetworkConnection conn, GameObject prefab)
     {
-        if (!IsServerStarted || prefab == null)
+        if (!IsServerStarted || prefab == null || conn == null)
+            return;
+
+        if (GameModeManager.Instance != null &&
+            !GameModeManager.Instance.ShouldSpawnPlayerImmediately())
+        {
+            _pendingSpawnPlayers[conn] = prefab;
+            return;
+        }
+
+        SpawnPlayerNow(conn, prefab);
+    }
+    
+    [Server]
+    void SpawnPlayerNow(NetworkConnection conn, GameObject prefab)
+    {
+        if (!IsServerStarted || prefab == null || conn == null)
             return;
 
         Transform sp = GetRandomSpawn();
@@ -75,12 +93,55 @@ public class SpawnManager : NetworkBehaviour
         Spawn(nob, conn);
 
         _spawnedPlayers[conn] = nob;
+
+        ApplyCurrentGameModeSpawnState(nob);
+    }
+    
+    [Server]
+    void ApplyCurrentGameModeSpawnState(NetworkObject nob)
+    {
+        if (nob == null || GameModeManager.Instance == null)
+            return;
+
+        if (!nob.TryGetComponent(out _Scripts.Player.AdvancedPredictedController ctrl))
+            return;
+
+        bool shouldFreeze =
+            GameModeManager.Instance.Mode == GameModeType.Arena &&
+            GameModeManager.Instance.State == MatchState.PreRound;
+
+        ctrl.IsFrozen = shouldFreeze;
+    }
+    
+    [Server]
+    public void SpawnPendingPlayers()
+    {
+        if (!IsServerStarted || _pendingSpawnPlayers.Count == 0)
+            return;
+
+        foreach (var kvp in _pendingSpawnPlayers)
+        {
+            NetworkConnection conn = kvp.Key;
+            GameObject prefab = kvp.Value;
+
+            if (conn == null || !conn.IsValid || prefab == null)
+                continue;
+
+            if (_spawnedPlayers.ContainsKey(conn))
+                continue;
+
+            SpawnPlayerNow(conn, prefab);
+        }
+
+        _pendingSpawnPlayers.Clear();
     }
 
     public void DespawnPlayer(NetworkConnection conn)
     {
         if (!IsServerStarted)
             return;
+
+        _pendingSpawnPlayers.Remove(conn);
 
         if (!_spawnedPlayers.TryGetValue(conn, out NetworkObject nob))
             return;

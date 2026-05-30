@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: b92f740733fe425409ef61cc77b41c3e
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 285621
+  packageName: Enviro 3 - Terrain Shader
+  packageVersion: 1.2.1
+  assetPath: Assets/zPlugins/Enviro 3 - Terrain/Shader/URP/URP17_3.unitypackage
+  uploadId: 874430
