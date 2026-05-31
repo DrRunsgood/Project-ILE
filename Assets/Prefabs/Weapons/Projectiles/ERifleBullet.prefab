@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 3731921180239083331}
   - component: {fileID: 8766701267539982643}
   - component: {fileID: 6550858206905530399}
+  - component: {fileID: 2382796389320222714}
   m_Layer: 0
   m_Name: ERifleBullet
   m_TagString: Untagged
@@ -194,3 +195,19 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 8766701267539982643}
   def: {fileID: 11400000, guid: d383feca8e1f0eb4db549813be653155, type: 2}
   projectileTrail: {fileID: 0}
+--- !u!114 &2382796389320222714
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3249243439519315288}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0577af9cfba0c524f8711e329caca2a8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Game.RoundScopedObject
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 8766701267539982643}
+  _networkObjectCache: {fileID: 0}
+  scope: 0

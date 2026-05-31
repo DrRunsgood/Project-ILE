@@ -8,6 +8,7 @@ using UnityEngine;
 using _Scripts.Player;    // AdvancedPredictedController
 using _Scripts.Weapons;   // WeaponManager
 using _Scripts.Packs;
+using _Scripts.Game.CTF;
 
 [DisallowMultipleComponent]
 public sealed class PlayerHealth : NetworkBehaviour
@@ -118,6 +119,8 @@ public sealed class PlayerHealth : NetworkBehaviour
         // Stop gameplay control, but do not freeze/stutter physics manually.
         SetPlayable(false);
 
+        Debug.Log($"[PlayerHealth] {name} died. Checking for carried flag.");
+        GetComponent<FlagCarrier>()?.Server_DropCarriedFlagOnDeath(); // Drop flag if carrier
         // Drop held weapons and pack.
         wm?.DropAll();
         pm?.Server_Drop();
@@ -162,10 +165,7 @@ public sealed class PlayerHealth : NetworkBehaviour
         SpawnManager.Instance?.TryMovePlayerToSpawn(NetworkObject);
 
         rb.isKinematic = false;
-        rb.linearVelocity = Vector3.zero;
-        rb.angularVelocity = Vector3.zero;
 
-        ctrl?.HardResetMovement();
         ctrl?.ResetEnergy();
 
         _hp.Value = maxHp;

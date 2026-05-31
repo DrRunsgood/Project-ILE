@@ -1267,18 +1267,29 @@ namespace _Scripts.Player
         #endregion
         
         #region respawn
-        public void HardResetMovement()
+        public void HardResetMovement(Vector3 position, Quaternion rotation)
         {
-            // 1) clear physics
-            _rb.Move(_rb.position, Quaternion.identity);
-            _rb.linearVelocity    = Vector3.zero;
+            // Reset physics.
+            _rb.position = position;
+            _rb.rotation = rotation;
+
+            _rb.linearVelocity = Vector3.zero;
             _rb.angularVelocity = Vector3.zero;
 
-            // 4) misc state
-            _state              = MovementState.Airborne;
-            _pendingKnockback   = null;
-            
-            _lookModule.ResetLook(_rb, headAnchor, 0f, 0f);
+            // Reset prediction wrapper.
+            _predictionRb.Velocity(Vector3.zero);
+
+            // Reset gameplay state.
+            _state = MovementState.Airborne;
+            _pendingKnockback = null;
+
+            // Apply yaw from spawn rotation.
+            float yaw = rotation.eulerAngles.y;
+
+            _lookModule.ResetLook(_rb, headAnchor, yaw, 0f);
+
+            // Force transform alignment.
+            transform.SetPositionAndRotation(position, rotation);
         }
         
         public void ResetEnergy()

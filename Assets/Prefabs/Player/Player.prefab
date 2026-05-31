@@ -21,6 +21,7 @@ GameObject:
   - component: {fileID: -2565893807731604051}
   - component: {fileID: -5001881930451287172}
   - component: {fileID: 4467132549693816983}
+  - component: {fileID: 3370746286946904150}
   m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
@@ -381,6 +382,22 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerIFFTarget
   iffAnchor: {fileID: 9097628081026700281}
+--- !u!114 &3370746286946904150
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246683354149957449}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0fd1774f37bcd044588155f60f6db247, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FlagCarrier
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 6832439599154668905}
+  _networkObjectCache: {fileID: 0}
+  carryAnchor: {fileID: 7098417995176220013}
 --- !u!1 &2590475052856025425
 GameObject:
   m_ObjectHideFlags: 0
@@ -438,6 +455,37 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.1, z: -0.5}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3808739038604411282}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &3510740651554330422
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7098417995176220013}
+  m_Layer: 6
+  m_Name: FlagCarryAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7098417995176220013
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3510740651554330422}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: -0.25, z: -0.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -726,6 +774,7 @@ Transform:
   - {fileID: 9097628081026700281}
   - {fileID: 8854438168527651508}
   - {fileID: 2388324582239347131}
+  - {fileID: 7098417995176220013}
   - {fileID: 448569795313915978}
   m_Father: {fileID: 5541322204877821614}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}

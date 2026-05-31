@@ -3,12 +3,16 @@ using UnityEngine;
 using FishNet.Object;
 using FishNet.Connection;
 using _Scripts.Game;
+using _Scripts.Player;
+using _Scripts.Game.Teams;
+using FishNet.Transporting;
 
 public class SpawnManager : NetworkBehaviour
 {
     public static SpawnManager Instance { get; private set; }
 
-    readonly List<Transform> _spawnPoints = new();
+    readonly List<PlayerSpawnPoint> _spawnPoints = new();
+    readonly HashSet<PlayerSpawnPoint> _usedSpawnPointsThisWave = new();
     readonly Dictionary<NetworkConnection, NetworkObject> _spawnedPlayers = new();
     readonly Dictionary<NetworkConnection, GameObject> _pendingSpawnPlayers = new();
 
@@ -23,31 +27,132 @@ public class SpawnManager : NetworkBehaviour
             Instance = null;
     }
 
-    public void AddSpawnPoint(Transform t)
+    public override void OnStartServer()
     {
-        if (t == null)
-            return;
+        base.OnStartServer();
 
-        if (!_spawnPoints.Contains(t))
-            _spawnPoints.Add(t);
+        ServerManager.OnRemoteConnectionState += HandleRemoteConnectionState;
     }
 
-    public void RemoveSpawnPoint(Transform t)
+    public override void OnStopServer()
     {
-        if (t == null)
-            return;
+        base.OnStopServer();
 
-        _spawnPoints.Remove(t);
+        ServerManager.OnRemoteConnectionState -= HandleRemoteConnectionState;
     }
 
-    public Transform GetRandomSpawn()
+    [Server]
+    void HandleRemoteConnectionState(NetworkConnection conn, RemoteConnectionStateArgs args)
+    {
+        if (args.ConnectionState != RemoteConnectionState.Stopped)
+            return;
+
+        DespawnPlayer(conn);
+    }
+    
+    public void AddSpawnPoint(PlayerSpawnPoint sp)
+    {
+        if (sp == null)
+            return;
+
+        if (!_spawnPoints.Contains(sp))
+            _spawnPoints.Add(sp);
+    }
+
+    public void RemoveSpawnPoint(PlayerSpawnPoint sp)
+    {
+        if (sp == null)
+            return;
+
+        _spawnPoints.Remove(sp);
+        _usedSpawnPointsThisWave.Remove(sp);
+    }
+
+    PlayerSpawnPoint GetSpawnPoint(SpawnTeam team)
     {
         _spawnPoints.RemoveAll(sp => sp == null);
 
-        if (_spawnPoints.Count == 0)
+        GameModeType currentMode =
+            GameModeManager.Instance != null
+                ? GameModeManager.Instance.Mode
+                : GameModeType.Deathmatch;
+
+        List<PlayerSpawnPoint> valid = new();
+
+        foreach (PlayerSpawnPoint sp in _spawnPoints)
+        {
+            if (sp == null)
+                continue;
+
+            bool modeMatch =
+                sp.AllowAnyMode ||
+                sp.Mode == currentMode;
+
+            if (!modeMatch)
+                continue;
+
+            bool teamMatch =
+                sp.AllowAnyTeam ||
+                sp.Team == team;
+
+            if (!teamMatch)
+                continue;
+
+            if (_usedSpawnPointsThisWave.Contains(sp))
+                continue;
+
+            valid.Add(sp);
+        }
+
+        if (valid.Count == 0)
+        {
+            foreach (PlayerSpawnPoint sp in _spawnPoints)
+            {
+                if (sp == null)
+                    continue;
+
+                bool modeMatch =
+                    sp.AllowAnyMode ||
+                    sp.Mode == currentMode;
+
+                if (!modeMatch)
+                    continue;
+
+                bool teamMatch =
+                    sp.AllowAnyTeam ||
+                    sp.Team == team;
+
+                if (!teamMatch)
+                    continue;
+
+                valid.Add(sp);
+            }
+        }
+
+        if (valid.Count == 0)
             return null;
 
-        return _spawnPoints[Random.Range(0, _spawnPoints.Count)];
+        PlayerSpawnPoint chosen = valid[Random.Range(0, valid.Count)];
+
+        _usedSpawnPointsThisWave.Add(chosen);
+
+        return chosen;
+    }
+    
+    SpawnTeam ResolveSpawnTeam(NetworkObject nob)
+    {
+        if (nob == null)
+            return SpawnTeam.Any;
+
+        if (!nob.TryGetComponent(out PlayerIdentity identity))
+            return SpawnTeam.Any;
+
+        return identity.Team switch
+        {
+            TeamId.TeamA => SpawnTeam.TeamA,
+            TeamId.TeamB => SpawnTeam.TeamB,
+            _ => SpawnTeam.Any
+        };
     }
 
     [Server]
@@ -56,11 +161,26 @@ public class SpawnManager : NetworkBehaviour
         if (player == null)
             return false;
 
-        Transform sp = GetRandomSpawn();
+        SpawnTeam team = ResolveSpawnTeam(player);
+
+        PlayerSpawnPoint sp = GetSpawnPoint(team);
+
         if (sp == null)
             return false;
 
-        player.transform.SetPositionAndRotation(sp.position, sp.rotation);
+        if (player.TryGetComponent(out AdvancedPredictedController ctrl))
+        {
+            ctrl.HardResetMovement(
+                sp.transform.position,
+                sp.transform.rotation);
+        }
+        else
+        {
+            player.transform.SetPositionAndRotation(
+                sp.transform.position,
+                sp.transform.rotation);
+        }
+
         return true;
     }
 
@@ -85,14 +205,25 @@ public class SpawnManager : NetworkBehaviour
         if (!IsServerStarted || prefab == null || conn == null)
             return;
 
-        Transform sp = GetRandomSpawn();
-        Vector3 pos = sp ? sp.position : Vector3.zero;
-        Quaternion rot = sp ? sp.rotation : Quaternion.identity;
+        // Prevent duplicate live player objects for same connection.
+        if (_spawnedPlayers.TryGetValue(conn, out NetworkObject existing) && existing != null)
+        {
+            Despawn(existing);
+            _spawnedPlayers.Remove(conn);
+        }
 
-        NetworkObject nob = Instantiate(prefab, pos, rot).GetComponent<NetworkObject>();
+        NetworkObject nob = Instantiate(prefab, Vector3.zero, Quaternion.identity)
+            .GetComponent<NetworkObject>();
+
         Spawn(nob, conn);
 
         _spawnedPlayers[conn] = nob;
+
+        // Now PlayerIdentity should exist and TeamManager should have assigned team.
+        if (!TryMovePlayerToSpawn(nob))
+        {
+            Debug.LogWarning($"[SpawnManager] Failed to find valid spawn for {nob.name}. Leaving at fallback.");
+        }
 
         ApplyCurrentGameModeSpawnState(nob);
     }
@@ -118,6 +249,8 @@ public class SpawnManager : NetworkBehaviour
     {
         if (!IsServerStarted || _pendingSpawnPlayers.Count == 0)
             return;
+
+        BeginSpawnWave();
 
         foreach (var kvp in _pendingSpawnPlayers)
         {
@@ -169,6 +302,8 @@ public class SpawnManager : NetworkBehaviour
     {
         if (!IsServerStarted)
             return;
+        
+        BeginSpawnWave();
 
         foreach (NetworkObject nob in _spawnedPlayers.Values)
         {
@@ -180,6 +315,12 @@ public class SpawnManager : NetworkBehaviour
             else
                 TryMovePlayerToSpawn(nob);
         }
+    }
+    
+    [Server]
+    void BeginSpawnWave()
+    {
+        _usedSpawnPointsThisWave.Clear();
     }
 
     [Server]

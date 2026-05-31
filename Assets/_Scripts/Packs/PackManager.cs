@@ -3,7 +3,8 @@ using System;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
-using _Scripts.Player;          // for InputHandler / PackId
+using _Scripts.Player;
+using _Scripts.Game;
 
 namespace _Scripts.Packs
 {
@@ -144,6 +145,7 @@ namespace _Scripts.Packs
             {
                 ground.transform.SetPositionAndRotation(pos, rot);
                 ServerManager.Spawn(ground);
+                RoundScopedUtil.MarkRoundScoped(ground);
 
                 if (ground.TryGetComponent(out _Scripts.GamePhysics.KinematicMover km))
                 {

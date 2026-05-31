@@ -7,6 +7,7 @@ using UnityEngine;
 using _Scripts.Data;
 using _Scripts.GamePhysics;
 using _Scripts.Player;
+using _Scripts.Game;
 
 namespace _Scripts.Weapons
 {
@@ -574,6 +575,7 @@ namespace _Scripts.Weapons
 
             ground.transform.SetPositionAndRotation(pos, Quaternion.identity);
             ServerManager.Spawn(ground);
+            RoundScopedUtil.MarkRoundScoped(ground);
 
             if (ground.TryGetComponent(out KinematicMover km))
             {

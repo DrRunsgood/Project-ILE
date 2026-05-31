@@ -52,12 +52,19 @@ namespace _Scripts.Game
         [Server]
         void ClearRoundObjects()
         {
-            // Later:
-            // - clear active projectiles
-            // - clear dropped weapons
-            // - clear dropped packs
-            // - clear dropped items
-            // - clear grenades/explosives
+            RoundScopedObject[] objects =
+                FindObjectsByType<RoundScopedObject>(FindObjectsInactive.Exclude);
+
+            foreach (RoundScopedObject obj in objects)
+            {
+                if (obj == null)
+                    continue;
+
+                if (obj.Scope != RoundScopedObject.CleanupScope.Round)
+                    continue;
+
+                ServerManager.Despawn(obj.gameObject, DespawnType.Pool);
+            }
         }
 
         [Server]
