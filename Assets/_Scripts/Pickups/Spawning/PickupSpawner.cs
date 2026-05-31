@@ -1,5 +1,7 @@
 using FishNet.Object;
 using UnityEngine;
+using _Scripts.Data;
+using _Scripts.Weapons;
 
 namespace _Scripts.Pickups.Spawning
 {
@@ -11,19 +13,20 @@ namespace _Scripts.Pickups.Spawning
         Item,
         Pack
     }
-    
+
     public enum PickupRespawnMode : byte
     {
-        Timed,          // respawn after pickup/despawn delay
-        RoundResetOnly, // only respawn when round reset calls it
-        MatchStartOnly, // spawn once at match/start reset, no timed respawn
-        Manual          // only external systems spawn/reset it
+        Timed,
+        RoundResetOnly,
+        MatchStartOnly,
+        Manual
     }
 
     public struct PickupSpawnPayload
     {
         public PickupSpawnType Type;
         public int StartingAmmo;
+        public AmmoType AmmoType;
         public int AmmoAmount;
         public int ItemCount;
     }
@@ -42,7 +45,8 @@ namespace _Scripts.Pickups.Spawning
 
         [Header("Spawn Metadata")]
         [SerializeField] PickupSpawnType spawnType = PickupSpawnType.Generic;
-        [SerializeField] int startingAmmo = -1; // -1 = prefab/default
+        [SerializeField] int startingAmmo = -1;
+        [SerializeField] AmmoType ammoType = AmmoType.None;
         [SerializeField] int ammoAmount = 0;
         [SerializeField] int itemCount = 1;
 
@@ -86,10 +90,7 @@ namespace _Scripts.Pickups.Spawning
         [Server]
         void SpawnNow()
         {
-            if (pickupPrefab == null)
-                return;
-
-            if (_currentSpawned != null)
+            if (pickupPrefab == null || _currentSpawned != null)
                 return;
 
             Transform t = SpawnTransform;
@@ -100,7 +101,7 @@ namespace _Scripts.Pickups.Spawning
 
             nob.transform.SetPositionAndRotation(t.position, t.rotation);
 
-            var link = nob.GetComponent<SpawnedPickupLink>();
+            SpawnedPickupLink link = nob.GetComponent<SpawnedPickupLink>();
             if (link == null)
                 link = nob.gameObject.AddComponent<SpawnedPickupLink>();
 
@@ -109,10 +110,11 @@ namespace _Scripts.Pickups.Spawning
             ServerManager.Spawn(nob);
             _currentSpawned = nob;
 
-            var payload = new PickupSpawnPayload
+            PickupSpawnPayload payload = new()
             {
                 Type = spawnType,
                 StartingAmmo = startingAmmo,
+                AmmoType = ammoType,
                 AmmoAmount = ammoAmount,
                 ItemCount = itemCount
             };
@@ -120,8 +122,11 @@ namespace _Scripts.Pickups.Spawning
             if (nob.TryGetComponent(out ISpawnInitialized initialized))
                 initialized.ServerInitializeFromSpawner(payload);
 
-            if (nob.TryGetComponent(out Weapons.WeaponPickup weaponPickup))
+            if (nob.TryGetComponent(out WeaponPickup weaponPickup))
                 weaponPickup.Arm(pickupArmDelay);
+
+            if (nob.TryGetComponent(out AmmoPickup ammoPickup))
+                ammoPickup.Arm(pickupArmDelay);
 
             if (nob.TryGetComponent(out Packs.PackPickup packPickup))
                 packPickup.Arm(pickupArmDelay);
@@ -154,11 +159,10 @@ namespace _Scripts.Pickups.Spawning
         public void ForceRespawnNow()
         {
             DespawnCurrent();
-
             _respawnPending = false;
             SpawnNow();
         }
-        
+
         [Server]
         public void DespawnCurrent()
         {
@@ -170,7 +174,7 @@ namespace _Scripts.Pickups.Spawning
 
             ServerManager.Despawn(current, DespawnType.Pool);
         }
-        
+
         [Server]
         public void ResetForRound()
         {

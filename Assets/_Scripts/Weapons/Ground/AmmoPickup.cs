@@ -1,50 +1,27 @@
-// _Scripts/Weapons/Ground/WeaponPickup.cs
 using FishNet.Object;
 using UnityEngine;
 using _Scripts.Data;
-using _Scripts.Packs;
+using _Scripts.Pickups.Spawning;
 
 namespace _Scripts.Weapons
 {
     [RequireComponent(typeof(Collider))]
-    public sealed class WeaponPickup : NetworkBehaviour
+    public sealed class AmmoPickup : NetworkBehaviour, ISpawnInitialized
     {
         [Header("Pickup")]
         [SerializeField] float defaultArmDelay = 0.15f;
-        [SerializeField] WeaponDefinition definition;
 
-        [Header("Runtime Ammo")]
-        [SerializeField] int runtimeAmmo = -1; // -1 = use definition.spawnAmmo
+        [Header("Ammo")]
+        [SerializeField] AmmoType ammoType = AmmoType.None;
+        [SerializeField] int amount = 5;
 
         double _pickupEnableTime;
 
-        public WeaponDefinition Definition => definition;
-
-        public int RuntimeAmmo =>
-            definition != null && definition.usesAmmo
-                ? ResolveAmmo(runtimeAmmo)
-                : 0;
-
-        static int ResolveAmmo(int value) => Mathf.Max(0, value);
-
         [Server]
-        public void ServerSetRuntimeAmmo(int ammo)
+        public void ServerConfigure(AmmoType type, int ammoAmount)
         {
-            runtimeAmmo = ammo;
-        }
-
-        [Server]
-        public void ServerInitializeAmmoFromSpawner(int startingAmmo)
-        {
-            if (definition == null || !definition.usesAmmo)
-            {
-                runtimeAmmo = 0;
-                return;
-            }
-
-            runtimeAmmo = startingAmmo >= 0
-                ? Mathf.Clamp(startingAmmo, 0, definition.maxAmmo)
-                : Mathf.Clamp(definition.spawnAmmo, 0, definition.maxAmmo);
+            ammoType = type;
+            amount = Mathf.Max(0, ammoAmount);
         }
 
         [Server]
@@ -58,9 +35,6 @@ namespace _Scripts.Weapons
         public override void OnStartServer()
         {
             base.OnStartServer();
-
-            if (definition != null && definition.usesAmmo && runtimeAmmo < 0)
-                runtimeAmmo = Mathf.Clamp(definition.spawnAmmo, 0, definition.maxAmmo);
 
             if (_pickupEnableTime == 0)
             {
@@ -107,10 +81,7 @@ namespace _Scripts.Weapons
             if (other.TryGetComponent(out PlayerHealth hp) && !hp.CanPickup)
                 return;
 
-            if (!CanPlayerPickup(other))
-                return;
-
-            if (wm.Server_AddOrMergeWeapon(definition, RuntimeAmmo))
+            if (wm.Server_AddAmmo(ammoType, amount))
                 ServerManager.Despawn(gameObject, DespawnType.Pool);
         }
 
@@ -123,23 +94,15 @@ namespace _Scripts.Weapons
             if (playerObj.TryGetComponent(out PlayerHealth hp) && !hp.CanPickup)
                 return;
 
-            if (!CanPlayerPickup(playerObj.transform))
-                return;
-
-            if (wm.Server_AddOrMergeWeapon(definition, RuntimeAmmo))
+            if (wm.Server_AddAmmo(ammoType, amount))
                 ServerManager.Despawn(gameObject, DespawnType.Pool);
         }
-
-        bool CanPlayerPickup(Component player)
+        
+        [Server]
+        public void ServerInitializeFromSpawner(PickupSpawnPayload payload)
         {
-            if (definition == null)
-                return false;
-
-            if (!definition.requiresEnergyPack)
-                return true;
-
-            return player.TryGetComponent(out PackManager pm) &&
-                   pm.CurrentId == PackId.Energy;
+            ammoType = payload.AmmoType;
+            amount = Mathf.Max(0, payload.AmmoAmount);
         }
     }
 }

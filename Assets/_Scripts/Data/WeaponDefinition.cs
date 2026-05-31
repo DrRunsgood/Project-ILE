@@ -5,6 +5,17 @@ using FishNet.Object;                       // NetworkObject
 namespace _Scripts.Data
 {
     public enum CastMode { Sphere, Capsule, Ray }
+    
+    public enum AmmoType : byte
+    {
+        None,
+        Disc,
+        Bullet,
+        Grenade,
+        Mortar,
+        Rocket,
+        Special
+    }
 
     [CreateAssetMenu(menuName = "Weapons/Weapon Definition",
                      fileName   = "NewWeapon")]
@@ -14,13 +25,18 @@ namespace _Scripts.Data
         [Header("Weapon Info")]
         public string displayName   = "Rocket-Launcher";
         [Min(0.01f)] public float fireRate      = 1f;   // shots / second
-        public bool  usesAmmo       = false;
-        public int   magazine       = 6;
-        public float reloadTime     = 1.2f;             // seconds
-        
+
         [Header("Energy weapon")]
         public float energyPerShot = 4f;  // cost in “energy units”
         public bool  requiresEnergyPack;      // true  ⇒ can only be picked up
+        
+    /* ───────── Ammo ───────── */    
+        [Header("Ammo")]
+        public bool usesAmmo = false;
+        public AmmoType ammoType = AmmoType.None;
+        public int spawnAmmo = 10;
+        public int maxAmmo = 15;
+        public int ammoPerShot = 1;
         
     /* ───────── Projectile flight ───────── */
         [Header("Projectile")]

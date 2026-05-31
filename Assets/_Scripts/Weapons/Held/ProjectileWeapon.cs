@@ -101,8 +101,17 @@ namespace _Scripts.Weapons
             
             if (serverNow < _nextServerFireTick)
                 return;
+            
+            if (_wm != null && !_wm.Server_CanConsumeAmmo(def, def.ammoPerShot))
+                return;
+
+            if (!ServerCanConsume())
+                return;
 
             _nextServerFireTick = serverNow + _fireIntervalTicks;
+            
+            if (_wm != null && !_wm.Server_TryConsumeAmmo(def, def.ammoPerShot))
+                return;
             
             uint target    = clientFireTick;
             if (target >= serverNow)

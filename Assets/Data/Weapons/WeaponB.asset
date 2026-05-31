@@ -14,11 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   displayName: Grenade Launcher
   fireRate: 1
-  usesAmmo: 0
-  magazine: 6
-  reloadTime: 1.2
   energyPerShot: 4
   requiresEnergyPack: 0
+  usesAmmo: 1
+  ammoType: 3
+  spawnAmmo: 10
+  maxAmmo: 10
+  ammoPerShot: 1
   projectilePrefab: {fileID: 1938724514370874692, guid: a92775eb364dda849b8968eef5b72b1b, type: 3}
   projectileSpeed: 120
   velocityInheritance: 0.7
