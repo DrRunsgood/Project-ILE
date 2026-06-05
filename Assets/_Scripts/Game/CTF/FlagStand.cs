@@ -37,6 +37,24 @@ namespace _Scripts.Game.CTF
             if (_flagInstance != null)
                 return;
 
+            if (team != TeamId.TeamA && team != TeamId.TeamB)
+            {
+                Debug.LogError($"[FlagStand] {name} has invalid team: {team}");
+                return;
+            }
+
+            if (homePoint == null)
+            {
+                Debug.LogError($"[FlagStand] {name} has no home point assigned.");
+                return;
+            }
+
+            if (flagPrefab == null)
+            {
+                Debug.LogError($"[FlagStand] {name} has no flag prefab assigned.");
+                return;
+            }
+
             FlagObject flag = Instantiate(
                 flagPrefab,
                 homePoint.position,

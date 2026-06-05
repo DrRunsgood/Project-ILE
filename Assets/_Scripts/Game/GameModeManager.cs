@@ -2,6 +2,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Game.Teams;
+using _Scripts.Game.CTF;
 
 namespace _Scripts.Game
 {
@@ -43,6 +44,10 @@ namespace _Scripts.Game
 
         [Header("Deathmatch")]
         [SerializeField] int killLimit = 25;
+        
+        [Header("CTF")]
+        [SerializeField] int captureLimit = 5;
+        [SerializeField] float ctfRespawnDelay = 5f;
 
         #endregion
 
@@ -269,8 +274,40 @@ namespace _Scripts.Game
         [Server]
         void TickCTF()
         {
-            // Same as Deathmatch for now.
-            TickDeathmatch();
+            if (_state.Value == MatchState.Waiting)
+            {
+                if (CanStartWarmup())
+                    StartWarmup();
+
+                return;
+            }
+
+            if (!HasStateTimerExpired())
+                return;
+
+            switch (_state.Value)
+            {
+                case MatchState.Warmup:
+                    if (CanStartMatch())
+                    {
+                        ResetAllPlayerStats();
+                        StartCTFMatch();
+                    }
+                    else
+                    {
+                        StartWaiting();
+                    }
+                    break;
+
+                case MatchState.Live:
+                    EndMatch();
+                    break;
+
+                case MatchState.PostMatch:
+                    ResetCTFMatch();
+                    StartWarmup();
+                    break;
+            }
         }
 
         #endregion
@@ -411,6 +448,49 @@ namespace _Scripts.Game
         }
 
         #endregion
+        
+        #region CTF Logic
+        
+        [Server]
+        void StartCTFMatch()
+        {
+            ResetAllPlayerStats();
+
+            CTFManager.Instance?.Server_ResetForMatchStart();
+
+            RoundResetManager.Instance?.ResetForArenaRound(); // Optional but useful if this clears world objects/inventories.
+            SpawnManager.Instance?.SpawnPendingPlayers();
+            SpawnManager.Instance?.RespawnAllPlayers();
+            SpawnManager.Instance?.SetAllPlayersFrozen(false);
+
+            SetState(MatchState.Live, matchSeconds);
+        }
+        
+        [Server]
+        void ResetCTFMatch()
+        {
+            ResetAllPlayerStats();
+
+            CTFManager.Instance?.Server_ResetForMatchStart();
+
+            SpawnManager.Instance?.SpawnPendingPlayers();
+            SpawnManager.Instance?.RespawnAllPlayers();
+        }
+        
+        [Server]
+        public void NotifyCTFCapture(TeamId scoringTeam, int teamAScore, int teamBScore)
+        {
+            if (_mode.Value != GameModeType.CTF)
+                return;
+
+            if (_state.Value != MatchState.Live)
+                return;
+
+            if (teamAScore >= captureLimit || teamBScore >= captureLimit)
+                EndMatch();
+        }
+        
+        #endregion
 
         #region Player Death / Respawn Rules
 
@@ -435,7 +515,8 @@ namespace _Scripts.Game
                     break;
 
                 case GameModeType.CTF:
-                    // Later.
+                    if (_state.Value == MatchState.Live || _state.Value == MatchState.Warmup)
+                        RecordKillDeath(victim, killer);
                     break;
             }
         }
@@ -480,7 +561,7 @@ namespace _Scripts.Game
             {
                 GameModeType.Deathmatch => 3f,
 
-                GameModeType.CTF => 5f,
+                GameModeType.CTF => ctfRespawnDelay,
 
                 GameModeType.Arena =>
                     _state.Value == MatchState.Waiting ||

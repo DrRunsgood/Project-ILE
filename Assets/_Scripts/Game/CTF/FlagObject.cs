@@ -40,6 +40,7 @@ namespace _Scripts.Game.CTF
         FlagCarrier _localCarrier;
         FlagMover _mover;
         NetworkObject _ignoredPickupNob;
+        Collider _pickupCollider;
         float _ignoredPickupUntil;
         float _returnTimer;
 
@@ -51,12 +52,16 @@ namespace _Scripts.Game.CTF
         {
             _rb = GetComponent<Rigidbody>();
             _mover = GetComponent<FlagMover>();
+            _pickupCollider = GetComponent<Collider>();
+
             _carrierNob.OnChange += OnCarrierChanged;
+            _state.OnChange += OnStateChanged;
         }
 
         void OnDestroy()
         {
             _carrierNob.OnChange -= OnCarrierChanged;
+            _state.OnChange -= OnStateChanged;
         }
         
         void OnCarrierChanged(NetworkObject prev, NetworkObject next, bool asServer)
@@ -65,6 +70,19 @@ namespace _Scripts.Game.CTF
 
             if (next != null)
                 next.TryGetComponent(out _localCarrier);
+        }
+        
+        void OnStateChanged(FlagState prev, FlagState next, bool asServer)
+        {
+            RefreshColliderState(next);
+        }
+
+        void RefreshColliderState(FlagState state)
+        {
+            if (_pickupCollider == null)
+                return;
+
+            _pickupCollider.enabled = state != FlagState.Carried;
         }
 
         [Server]
@@ -77,6 +95,7 @@ namespace _Scripts.Game.CTF
             _homeRotation.Value = stand.HomePoint.rotation;
 
             Server_ReturnHome();
+            RefreshColliderState(_state.Value);
         }
 
         void Update()
@@ -115,19 +134,13 @@ namespace _Scripts.Game.CTF
         [Server]
         void Server_Update()
         {
-            switch (_state.Value)
-            {
-                case FlagState.Carried:
-                    UpdateCarriedPosition();
-                    break;
+            if (_state.Value != FlagState.Dropped)
+                return;
 
-                case FlagState.Dropped:
-                    _returnTimer -= Time.deltaTime;
+            _returnTimer -= Time.deltaTime;
 
-                    if (_returnTimer <= 0f)
-                        Server_ReturnHome();
-                    break;
-            }
+            if (_returnTimer <= 0f)
+                Server_ReturnHome();
         }
 
         [Server]
@@ -171,6 +184,9 @@ namespace _Scripts.Game.CTF
         public void Server_DropFromCarrier()
         {
             Debug.Log($"[FlagObject] DropFromCarrier called for {Team} flag. Carrier={_carrier?.name}");
+            
+            if (_carrier == null)
+                return;
 
             Transform anchor = _carrier.CarryAnchor;
 
@@ -214,9 +230,11 @@ namespace _Scripts.Game.CTF
             _returnTimer = autoReturnTime;
             
             IgnorePickupFrom(previousCarrierNob, pickupLockoutAfterDrop);
+            
+            uint startTick = TimeManager.Tick;
 
             _mover?.Server_BeginMove(dropPos, initialVelocity);
-            RpcBeginDropped(dropPos, initialVelocity);
+            RpcBeginDropped(dropPos, initialVelocity, startTick);
 
             Debug.Log($"[FlagObject] {Team} flag dropped. State={_state.Value}, Pos={dropPos}, Vel={initialVelocity}");
         }
@@ -249,12 +267,12 @@ namespace _Scripts.Game.CTF
         }
         
         [ObserversRpc(BufferLast = true)]
-        void RpcBeginDropped(Vector3 position, Vector3 velocity)
+        void RpcBeginDropped(Vector3 position, Vector3 velocity, uint startTick)
         {
             if (IsServer)
                 return;
 
-            _mover?.Client_BeginMove(position, velocity);
+            _mover?.Client_BeginMove(position, velocity, startTick);
         }
 
         [ObserversRpc(BufferLast = true)]
@@ -335,9 +353,11 @@ namespace _Scripts.Game.CTF
 
             _returnTimer = autoReturnTime;
             IgnorePickupFrom(previousCarrierNob, pickupLockoutAfterDrop);
+            
+            uint startTick = TimeManager.Tick;
 
             _mover?.Server_BeginMove(startPos, initialVelocity);
-            RpcBeginDropped(startPos, initialVelocity);
+            RpcBeginDropped(startPos, initialVelocity, startTick);
 
             Debug.Log($"[FlagObject] {Team} flag thrown. Pos={startPos}, Vel={initialVelocity}");
         }
@@ -391,14 +411,14 @@ namespace _Scripts.Game.CTF
         {
             if (!IsServer)
                 return;
-            
+
             if (_state.Value == FlagState.Carried)
                 return;
-            
+
             PlayerIdentity identity = other.GetComponentInParent<PlayerIdentity>();
             if (identity == null)
                 return;
-            
+
             if (IsIgnoredPickup(identity.NetworkObject))
                 return;
 
@@ -410,9 +430,8 @@ namespace _Scripts.Game.CTF
             if (carrier == null)
                 return;
 
-            if (!carrier.Server_CanCarryFlag())
-                return;
-
+            // Same-team interaction: return own dropped flag.
+            // This must happen BEFORE checking whether the player can carry another flag.
             if (identity.Team == Team)
             {
                 if (_state.Value == FlagState.Dropped)
@@ -420,6 +439,10 @@ namespace _Scripts.Game.CTF
 
                 return;
             }
+
+            // Enemy flag interaction: only now do we care whether player can carry.
+            if (!carrier.Server_CanCarryFlag())
+                return;
 
             Server_Pickup(carrier);
         }

@@ -27,6 +27,7 @@ namespace _Scripts.Player
         bool _grenadeUseRequested;
         bool _medkitUseRequested;
         bool _beaconUseRequested;
+        bool _flagThrowRequested;
         
         void Update()
         {
@@ -95,7 +96,7 @@ namespace _Scripts.Player
             if (Input.GetKeyDown(KeyCode.G)) _grenadeUseRequested = true;   // Grenade
             if (Input.GetKeyDown(KeyCode.H)) _medkitUseRequested  = true;   // Med-kit
             if (Input.GetKeyDown(KeyCode.B)) _beaconUseRequested  = true;   // Beacon
-
+            if (Input.GetKeyDown(KeyCode.T)) _flagThrowRequested  = true;   // Flag toss
         }
 
         /* ================================================================ */
@@ -125,6 +126,13 @@ namespace _Scripts.Player
         {
             bool v = _viewToggleRequested;
             _viewToggleRequested = false;
+            return v;
+        }
+        
+        public bool ConsumeFlagThrow()
+        {
+            bool v = _flagThrowRequested;
+            _flagThrowRequested = false;
             return v;
         }
         

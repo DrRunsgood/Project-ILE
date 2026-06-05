@@ -180,12 +180,21 @@ namespace _Scripts.Game.CTF
             }
         }
         
-        public void Client_BeginMove(Vector3 position, Vector3 velocity)
+        public void Client_BeginMove(Vector3 position, Vector3 velocity, uint startTick)
         {
             transform.position = position;
             _velocity = velocity;
             ApplyUprightRotation();
             _moving = true;
+
+            uint now = TimeManager.Tick;
+            uint ticksBehind = now > startTick ? now - startTick : 0;
+
+            int catchupTicks = Mathf.Min((int)ticksBehind, 8);
+            float dt = (float)TimeManager.TickDelta;
+
+            for (int i = 0; i < catchupTicks; i++)
+                Simulate(dt);
         }
 
         public void Client_Stop()

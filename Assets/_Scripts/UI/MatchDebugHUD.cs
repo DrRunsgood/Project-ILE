@@ -3,6 +3,7 @@ using UnityEngine;
 using _Scripts.Game;
 using _Scripts.Game.Teams;
 using _Scripts.Player;
+using _Scripts.Game.CTF;
 
 [RequireComponent(typeof(TMP_Text))]
 public sealed class MatchDebugHUD : MonoBehaviour
@@ -73,11 +74,20 @@ public sealed class MatchDebugHUD : MonoBehaviour
         int kills = _stats != null ? _stats.Kills : 0;
         int deaths = _stats != null ? _stats.Deaths : 0;
 
+        int teamAScore = gm.TeamAScore;
+        int teamBScore = gm.TeamBScore;
+
+        if (gm.Mode == GameModeType.CTF && CTFManager.Instance != null)
+        {
+            teamAScore = CTFManager.Instance.TeamAScore;
+            teamBScore = CTFManager.Instance.TeamBScore;
+        }
+
         _label.text =
             $"Mode: {gm.Mode}\n" +
             $"State: {gm.State}  {minutes:00}:{seconds:00}\n" +
             $"Round: {gm.CurrentRound}\n" +
-            $"Team A: {gm.TeamAScore} | Team B: {gm.TeamBScore}\n" +
+            $"Team A: {teamAScore} | Team B: {teamBScore}\n" +
             $"{playerName} [{team}]\n" +
             $"K/D: {kills}/{deaths}";
     }

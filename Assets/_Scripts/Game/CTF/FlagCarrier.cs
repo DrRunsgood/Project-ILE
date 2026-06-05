@@ -1,6 +1,7 @@
 using FishNet.Object;
 using UnityEngine;
 using FishNet.Connection;
+using _Scripts.Player;
 
 namespace _Scripts.Game.CTF
 {
@@ -9,11 +10,10 @@ namespace _Scripts.Game.CTF
     {
         [Header("References")]
         [SerializeField] Transform carryAnchor;
-        
-        [Header("Throw")]
-        [SerializeField] KeyCode throwKey = KeyCode.E;
 
         FlagObject _carriedFlag;
+        
+        InputHandler _ih;
 
         public bool HasFlag => _carriedFlag != null;
 
@@ -21,16 +21,18 @@ namespace _Scripts.Game.CTF
 
         public Transform CarryAnchor => carryAnchor;
         
+        void Awake()
+        {
+            _ih = GetComponent<InputHandler>();
+        }
+        
         void Update()
         {
-            if (!IsOwner)
+            if (!IsOwner || _ih == null)
                 return;
 
-            if (Input.GetKeyDown(throwKey))
-            {
-                Debug.Log($"[FlagCarrier] Throw key pressed by {name}");
+            if (_ih.ConsumeFlagThrow())
                 Server_RequestThrowFlag(TimeManager.Tick);
-            }
         }
 
         [Server]
