@@ -99,11 +99,9 @@ namespace _Scripts.Weapons
 
             if (!IsOwner)
                 return;
-
-            Transform cam = Camera.main.transform;
-            firstPersonAnchor = cam.Find("FirstPersonItems") ?? new GameObject("FirstPersonItems").transform;
-            firstPersonAnchor.SetParent(cam, false);
         }
+        
+        
 
         public override void OnSpawnServer(NetworkConnection conn)
         {
@@ -175,6 +173,7 @@ namespace _Scripts.Weapons
 
             if (IsOwner && !_fpViews.ContainsKey(nob) && pw.Definition?.fpViewPrefab)
             {
+                Debug.Log("hi");
                 GameObject fp = Instantiate(pw.Definition.fpViewPrefab, firstPersonAnchor);
                 ResetLocal(fp.transform);
                 fp.transform.localScale = Vector3.one * 2f;
@@ -732,5 +731,41 @@ namespace _Scripts.Weapons
         }
 
         #endregion
+        
+        public void SetFirstPersonAnchor(Transform anchor)
+        {
+            if (!IsOwner)
+                return;
+
+            if (anchor == null)
+                return;
+
+            firstPersonAnchor = anchor;
+
+            foreach (WeaponInstance w in _weapons)
+            {
+                if (w.NetworkObj == null)
+                    continue;
+
+                if (_fpViews.ContainsKey(w.NetworkObj))
+                    continue;
+
+                if (!w.NetworkObj.TryGetComponent(out ProjectileWeapon pw))
+                    continue;
+
+                if (pw.isHiddenQuickItem)
+                    continue;
+
+                if (pw.Definition == null || pw.Definition.fpViewPrefab == null)
+                    continue;
+
+                GameObject fp = Instantiate(pw.Definition.fpViewPrefab, firstPersonAnchor);
+                ResetLocal(fp.transform);
+                fp.transform.localScale = Vector3.one * 2f;
+                _fpViews[w.NetworkObj] = fp;
+            }
+
+            RefreshActive();
+        }
     }
 }

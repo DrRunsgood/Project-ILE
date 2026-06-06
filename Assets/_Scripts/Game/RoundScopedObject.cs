@@ -4,7 +4,7 @@ using UnityEngine;
 namespace _Scripts.Game
 {
     [DisallowMultipleComponent]
-    public sealed class RoundScopedObject : NetworkBehaviour
+    public sealed class RoundScopedObject : MonoBehaviour
     {
         public enum CleanupScope : byte
         {

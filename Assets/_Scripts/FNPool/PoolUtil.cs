@@ -14,10 +14,15 @@ public static class PoolUtil
     public static NetworkObject TakeFromPool(NetworkObject prefab)
     {
         NetworkObject nob = InstanceFinder.NetworkManager.GetPooledInstantiated(prefab, true);
-        if (nob == null) return null;
+        if (nob == null)
+            return null;
 
         // Important: reset hierarchy so callers decide where to parent it.
         nob.transform.SetParent(null, false);
+
+        // Reasonable generic baseline.
+        nob.transform.localScale = prefab.transform.localScale;
+
         return nob;
     }
 }

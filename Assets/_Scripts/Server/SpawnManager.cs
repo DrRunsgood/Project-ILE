@@ -205,24 +205,44 @@ public class SpawnManager : NetworkBehaviour
         if (!IsServerStarted || prefab == null || conn == null)
             return;
 
-        // Prevent duplicate live player objects for same connection.
         if (_spawnedPlayers.TryGetValue(conn, out NetworkObject existing) && existing != null)
         {
-            Despawn(existing);
             _spawnedPlayers.Remove(conn);
+
+            if (existing.IsSpawned)
+                Despawn(existing);
         }
 
-        NetworkObject nob = Instantiate(prefab, Vector3.zero, Quaternion.identity)
+        SpawnTeam spawnTeam = SpawnTeam.Any;
+
+        if (GameModeManager.Instance != null &&
+            (GameModeManager.Instance.Mode == GameModeType.Arena ||
+             GameModeManager.Instance.Mode == GameModeType.CTF) &&
+            TeamManager.Instance != null)
+        {
+            spawnTeam = ToSpawnTeam(TeamManager.Instance.GetBalancedTeamForNewPlayer());
+        }
+
+        PlayerSpawnPoint sp = GetSpawnPoint(spawnTeam);
+
+        Vector3 spawnPos = sp != null ? sp.transform.position : Vector3.zero;
+        Quaternion spawnRot = sp != null ? sp.transform.rotation : Quaternion.identity;
+
+        NetworkObject nob = Instantiate(prefab, spawnPos, spawnRot)
             .GetComponent<NetworkObject>();
 
         Spawn(nob, conn);
 
         _spawnedPlayers[conn] = nob;
 
-        // Now PlayerIdentity should exist and TeamManager should have assigned team.
-        if (!TryMovePlayerToSpawn(nob))
+        // Safety: force controller/prediction state to match the spawn transform too.
+        if (nob.TryGetComponent(out AdvancedPredictedController ctrl))
         {
-            Debug.LogWarning($"[SpawnManager] Failed to find valid spawn for {nob.name}. Leaving at fallback.");
+            ctrl.HardResetMovement(spawnPos, spawnRot);
+        }
+        else
+        {
+            nob.transform.SetPositionAndRotation(spawnPos, spawnRot);
         }
 
         ApplyCurrentGameModeSpawnState(nob);
@@ -269,9 +289,10 @@ public class SpawnManager : NetworkBehaviour
         _pendingSpawnPlayers.Clear();
     }
 
+    [Server]
     public void DespawnPlayer(NetworkConnection conn)
     {
-        if (!IsServerStarted)
+        if (!IsServerStarted || conn == null)
             return;
 
         _pendingSpawnPlayers.Remove(conn);
@@ -279,10 +300,13 @@ public class SpawnManager : NetworkBehaviour
         if (!_spawnedPlayers.TryGetValue(conn, out NetworkObject nob))
             return;
 
-        Despawn(nob);
         _spawnedPlayers.Remove(conn);
+
+        if (nob != null && nob.IsSpawned)
+            Despawn(nob);
     }
 
+    [Server]
     public void DespawnAllPlayers()
     {
         if (!IsServerStarted)
@@ -290,7 +314,7 @@ public class SpawnManager : NetworkBehaviour
 
         foreach (NetworkObject nob in _spawnedPlayers.Values)
         {
-            if (nob != null)
+            if (nob != null && nob.IsSpawned)
                 Despawn(nob);
         }
 
@@ -359,5 +383,15 @@ public class SpawnManager : NetworkBehaviour
             if (nob.TryGetComponent(out _Scripts.Items.ItemManager im))
                 im.Server_ClearItemsForRoundReset();
         }
+    }
+    
+    SpawnTeam ToSpawnTeam(TeamId team)
+    {
+        return team switch
+        {
+            TeamId.TeamA => SpawnTeam.TeamA,
+            TeamId.TeamB => SpawnTeam.TeamB,
+            _ => SpawnTeam.Any
+        };
     }
 }

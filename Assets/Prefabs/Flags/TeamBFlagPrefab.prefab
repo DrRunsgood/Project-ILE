@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 5812814056166645216}
   - component: {fileID: 425929368045604666}
   - component: {fileID: 7205361826969263397}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: FlagPole
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -342,7 +342,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1894595670773995772}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: VisualRoot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -379,7 +379,7 @@ GameObject:
   - component: {fileID: 5011279673065761044}
   - component: {fileID: 1831989888600615885}
   - component: {fileID: 8508640664255755397}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: Flag
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -713,7 +713,8 @@ GameObject:
   - component: {fileID: 8273573396315223171}
   - component: {fileID: -8482913978584138209}
   - component: {fileID: 2444292903707813696}
-  m_Layer: 0
+  - component: {fileID: 8348706752447220200}
+  m_Layer: 8
   m_Name: TeamBFlagPrefab
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -793,7 +794,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584212464890373504
+  _initializedTimestamp: -8584209393136193585
 --- !u!54 &3046719699274969371
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -845,6 +846,12 @@ MonoBehaviour:
   throwVelocityInheritance: 0.65
   throwSpawnOffset: 0.8
   pickupLockoutAfterDrop: 0.25
+  playerTouchMask:
+    serializedVersion: 2
+    m_Bits: 64
+  playerTouchRadius: 0.75
+  maxPlayerTouchHits: 8
+  maxImpulseSpeed: 45
 --- !u!114 &-8482913978584138209
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -896,3 +903,18 @@ CapsuleCollider:
   m_Height: 4.2
   m_Direction: 1
   m_Center: {x: 0, y: 2.1, z: 0}
+--- !u!114 &8348706752447220200
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8409761309026858834}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 708d1f8e856b95a4e88252c815f14743, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Game.CTF.FlagVisualSmoother
+  visualRoot: {fileID: 1894595670773995772}
+  positionSharpness: 0.35
+  rotationSharpness: 0.35

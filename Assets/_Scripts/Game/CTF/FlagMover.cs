@@ -27,6 +27,7 @@ namespace _Scripts.Game.CTF
 
         Vector3 _velocity;
         bool _moving;
+        FlagObject _flagObject;
 
         public Vector3 Velocity => _velocity;
         public bool IsMoving => _moving;
@@ -41,6 +42,11 @@ namespace _Scripts.Game.CTF
         {
             base.OnStopNetwork();
             TimeManager.OnTick -= HandleTick;
+        }
+        
+        void Awake()
+        {
+            _flagObject = GetComponent<FlagObject>();
         }
 
         void HandleTick()
@@ -68,10 +74,26 @@ namespace _Scripts.Game.CTF
         }
 
         [Server]
-        public void Server_AddImpulse(Vector3 impulse)
+        public void Server_AddImpulse(Vector3 impulse, float maxSpeed)
         {
             _velocity += impulse;
+
+            if (maxSpeed > 0f && _velocity.magnitude > maxSpeed)
+                _velocity = _velocity.normalized * maxSpeed;
+
             _moving = true;
+        }
+        
+        public void Client_AddImpulse(Vector3 impulse, float maxSpeed, uint impulseTick)
+        {
+            _velocity += impulse;
+
+            if (maxSpeed > 0f && _velocity.magnitude > maxSpeed)
+                _velocity = _velocity.normalized * maxSpeed;
+
+            _moving = true;
+
+            // Later: use impulseTick for catch-up/correction if needed.
         }
 
         [Server]
@@ -86,6 +108,7 @@ namespace _Scripts.Game.CTF
                 return;
 
             Vector3 pos = transform.position;
+            Vector3 previousPos = transform.position;
 
             // Gravity.
             _velocity += Physics.gravity * gravityMultiplier * dt;
@@ -160,6 +183,9 @@ namespace _Scripts.Game.CTF
             transform.position = pos;
             
             ApplyUprightRotation();
+            
+            if (IsServer && _flagObject != null)
+                _flagObject.Server_CheckPlayerTouchAlongPath(previousPos, pos, radius);
 
             if (_velocity.magnitude <= sleepSpeed)
             {

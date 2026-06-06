@@ -25,6 +25,14 @@ namespace _Scripts.Game.CTF
 
         [Header("Pickup Lockout")]
         [SerializeField] float pickupLockoutAfterDrop = 0.25f;
+        
+        [Header("Player Touch Sweep")]
+        [SerializeField] LayerMask playerTouchMask = ~0;
+        [SerializeField] float playerTouchRadius = 0.6f;
+        [SerializeField] int maxPlayerTouchHits = 8;
+        
+        [Header("Impulse")]
+        [SerializeField] float maxImpulseSpeed = 45f;
 
 
         readonly SyncVar<FlagState> _state = new();
@@ -41,9 +49,11 @@ namespace _Scripts.Game.CTF
         FlagMover _mover;
         NetworkObject _ignoredPickupNob;
         Collider _pickupCollider;
+        Collider[] _playerTouchHits;
         float _ignoredPickupUntil;
         float _returnTimer;
-
+        FlagVisualSmoother _visualSmoother;
+        
         public FlagState State => _state.Value;
 
         public TeamId Team => _team.Value;
@@ -53,6 +63,8 @@ namespace _Scripts.Game.CTF
             _rb = GetComponent<Rigidbody>();
             _mover = GetComponent<FlagMover>();
             _pickupCollider = GetComponent<Collider>();
+            _playerTouchHits = new Collider[maxPlayerTouchHits];
+            _visualSmoother = GetComponent<FlagVisualSmoother>();
 
             _carrierNob.OnChange += OnCarrierChanged;
             _state.OnChange += OnStateChanged;
@@ -75,6 +87,9 @@ namespace _Scripts.Game.CTF
         void OnStateChanged(FlagState prev, FlagState next, bool asServer)
         {
             RefreshColliderState(next);
+
+            if (_visualSmoother != null)
+                _visualSmoother.SetSmoothing(next == FlagState.Dropped);
         }
 
         void RefreshColliderState(FlagState state)
@@ -144,22 +159,6 @@ namespace _Scripts.Game.CTF
         }
 
         [Server]
-        void UpdateCarriedPosition()
-        {
-            if (_carrier == null)
-                return;
-
-            Transform anchor = _carrier.CarryAnchor;
-
-            if (anchor == null)
-                return;
-
-            transform.SetPositionAndRotation(
-                anchor.position,
-                anchor.rotation);
-        }
-
-        [Server]
         public void Server_Pickup(FlagCarrier carrier)
         {
             if (carrier == null)
@@ -174,17 +173,17 @@ namespace _Scripts.Game.CTF
             carrier.Server_SetFlag(this);
 
             _state.Value = FlagState.Carried;
+            
+            RefreshColliderState(_state.Value);
 
-            _rb.isKinematic = true;
-            _rb.linearVelocity = Vector3.zero;
-            _rb.angularVelocity = Vector3.zero;
+            SetKinematicFlagBody();
+            
+            _visualSmoother?.Snap();
         }
 
         [Server]
         public void Server_DropFromCarrier()
         {
-            Debug.Log($"[FlagObject] DropFromCarrier called for {Team} flag. Carrier={_carrier?.name}");
-            
             if (_carrier == null)
                 return;
 
@@ -220,10 +219,10 @@ namespace _Scripts.Game.CTF
             _carrierNob.Value = null;
 
             _state.Value = FlagState.Dropped;
+            
+            RefreshColliderState(_state.Value);
 
-            _rb.isKinematic = true;
-            _rb.linearVelocity = Vector3.zero;
-            _rb.angularVelocity = Vector3.zero;
+            SetKinematicFlagBody();
 
             transform.SetPositionAndRotation(dropPos, dropRot);
 
@@ -235,8 +234,6 @@ namespace _Scripts.Game.CTF
 
             _mover?.Server_BeginMove(dropPos, initialVelocity);
             RpcBeginDropped(dropPos, initialVelocity, startTick);
-
-            Debug.Log($"[FlagObject] {Team} flag dropped. State={_state.Value}, Pos={dropPos}, Vel={initialVelocity}");
         }
 
         [Server]
@@ -250,13 +247,13 @@ namespace _Scripts.Game.CTF
 
             _carrierNob.Value = null;
             _state.Value = FlagState.Home;
+            
+            RefreshColliderState(_state.Value);
 
             _mover?.Server_Stop();
             RpcStopDropped();
 
-            _rb.isKinematic = true;
-            _rb.linearVelocity = Vector3.zero;
-            _rb.angularVelocity = Vector3.zero;
+            SetKinematicFlagBody();
 
             Vector3 pos = _homePosition.Value;
             Quaternion rot = _homeRotation.Value;
@@ -264,6 +261,7 @@ namespace _Scripts.Game.CTF
             _rb.position = pos;
             _rb.rotation = rot;
             transform.SetPositionAndRotation(pos, rot);
+            _visualSmoother?.Snap();
         }
         
         [ObserversRpc(BufferLast = true)]
@@ -282,6 +280,7 @@ namespace _Scripts.Game.CTF
                 return;
 
             _mover?.Client_Stop();
+            _visualSmoother?.Snap();
         }
         
         [Server]
@@ -344,10 +343,10 @@ namespace _Scripts.Game.CTF
             _carrierNob.Value = null;
 
             _state.Value = FlagState.Dropped;
+            
+            RefreshColliderState(_state.Value);
 
-            _rb.isKinematic = true;
-            _rb.linearVelocity = Vector3.zero;
-            _rb.angularVelocity = Vector3.zero;
+            SetKinematicFlagBody();
 
             transform.SetPositionAndRotation(startPos, startRot);
 
@@ -358,8 +357,6 @@ namespace _Scripts.Game.CTF
 
             _mover?.Server_BeginMove(startPos, initialVelocity);
             RpcBeginDropped(startPos, initialVelocity, startTick);
-
-            Debug.Log($"[FlagObject] {Team} flag thrown. Pos={startPos}, Vel={initialVelocity}");
         }
         
         [Server]
@@ -412,39 +409,160 @@ namespace _Scripts.Game.CTF
             if (!IsServer)
                 return;
 
+            Server_TryTouchPlayer(other);
+        }
+        
+        [Server]
+        bool Server_TryTouchPlayer(Collider other)
+        {
             if (_state.Value == FlagState.Carried)
-                return;
+                return false;
 
             PlayerIdentity identity = other.GetComponentInParent<PlayerIdentity>();
             if (identity == null)
-                return;
+                return false;
 
             if (IsIgnoredPickup(identity.NetworkObject))
-                return;
+                return false;
 
             PlayerHealth hp = other.GetComponentInParent<PlayerHealth>();
             if (hp == null || hp.IsDead || !hp.CanPickup)
-                return;
+                return false;
 
             FlagCarrier carrier = other.GetComponentInParent<FlagCarrier>();
             if (carrier == null)
-                return;
+                return false;
 
             // Same-team interaction: return own dropped flag.
-            // This must happen BEFORE checking whether the player can carry another flag.
+            // This must happen before checking if the player can carry another flag.
             if (identity.Team == Team)
             {
                 if (_state.Value == FlagState.Dropped)
+                {
                     Server_ReturnHome();
+                    return true;
+                }
 
-                return;
+                return false;
             }
 
-            // Enemy flag interaction: only now do we care whether player can carry.
+            // Enemy interaction: pick up enemy flag if able.
             if (!carrier.Server_CanCarryFlag())
-                return;
+                return false;
 
             Server_Pickup(carrier);
+            return true;
+        }
+        
+        [Server]
+        public void Server_CheckPlayerTouchAlongPath(Vector3 from, Vector3 to, float moverRadius)
+        {
+            if (_state.Value != FlagState.Dropped)
+                return;
+        
+            Vector3 delta = to - from;
+            float distance = delta.magnitude;
+        
+            float radius = Mathf.Max(playerTouchRadius, moverRadius);
+        
+            int hitCount;
+        
+            if (distance <= 0.001f)
+            {
+                hitCount = Physics.OverlapSphereNonAlloc(
+                    to,
+                    radius,
+                    _playerTouchHits,
+                    playerTouchMask,
+                    QueryTriggerInteraction.Collide);
+            }
+            else
+            {
+                Vector3 center = (from + to) * 0.5f;
+                float capsuleHalf = distance * 0.5f;
+                Vector3 dir = delta / distance;
+        
+                Vector3 p1 = center - dir * capsuleHalf;
+                Vector3 p2 = center + dir * capsuleHalf;
+        
+                hitCount = Physics.OverlapCapsuleNonAlloc(
+                    p1,
+                    p2,
+                    radius,
+                    _playerTouchHits,
+                    playerTouchMask,
+                    QueryTriggerInteraction.Collide);
+            }
+        
+            for (int i = 0; i < hitCount; i++)
+            {
+                Collider hit = _playerTouchHits[i];
+                if (hit == null)
+                    continue;
+        
+                if (Server_TryTouchPlayer(hit))
+                    break;
+            }
+        
+            // Clear refs from reusable buffer.
+            for (int i = 0; i < hitCount; i++)
+                _playerTouchHits[i] = null;
+        }
+        
+        // KNOCKBACK
+        
+        [Server]
+        public void Server_ApplyWeaponImpulse(Vector3 impulse)
+        {
+            if (_state.Value != FlagState.Dropped)
+                return;
+
+            if (_mover == null)
+                return;
+
+            _mover.Server_AddImpulse(impulse, maxImpulseSpeed);
+
+            RpcApplyWeaponImpulse(impulse, maxImpulseSpeed, TimeManager.Tick);
+        }
+
+        [ObserversRpc(BufferLast = false)]
+        void RpcApplyWeaponImpulse(Vector3 impulse, float maxSpeed, uint impulseTick)
+        {
+            if (IsServer)
+                return;
+
+            _mover?.Client_AddImpulse(impulse, maxSpeed, impulseTick);
+        }
+        
+        // HELPERS
+        void SetKinematicFlagBody()
+        {
+            if (_rb == null)
+                return;
+
+            if (!_rb.isKinematic)
+            {
+                _rb.linearVelocity = Vector3.zero;
+                _rb.angularVelocity = Vector3.zero;
+            }
+
+            _rb.isKinematic = true;
+        }
+        
+        [Server]
+        void DebugFlagState(string source)
+        {
+            Debug.Log(
+                $"[FlagObject:{source}] " +
+                $"team={Team}, state={_state.Value}, " +
+                $"carrier={(_carrier != null ? _carrier.name : "null")}, " +
+                $"carrierNob={(_carrierNob.Value != null ? _carrierNob.Value.name : "null")}, " +
+                $"colliderEnabled={(_pickupCollider != null && _pickupCollider.enabled)}, " +
+                $"colliderTrigger={(_pickupCollider != null && _pickupCollider.isTrigger)}, " +
+                $"layer={LayerMask.LayerToName(gameObject.layer)}, " +
+                $"pos={transform.position}, " +
+                $"moverMoving={(_mover != null && _mover.IsMoving)}, " +
+                $"moverVel={(_mover != null ? _mover.Velocity.ToString() : "null")}");
         }
     }
 }

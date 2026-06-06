@@ -55,6 +55,12 @@ namespace _Scripts.Game.Teams
 
             return a <= b ? TeamId.TeamA : TeamId.TeamB;
         }
+        
+        [Server]
+        public TeamId GetBalancedTeamForNewPlayer()
+        {
+            return GetBalancedTeam();
+        }
 
         public int CountTeam(TeamId team)
         {

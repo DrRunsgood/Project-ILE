@@ -67,6 +67,8 @@ namespace _Scripts.Player
         [SerializeField] private Transform headAnchor;
         [SerializeField] private Transform viewOrigin;
         [SerializeField] private Transform firePoint;
+        [SerializeField] Transform cameraFollowTarget;
+        
         public Transform ViewOrigin => viewOrigin;
 
         [Header("Look Settings")]
@@ -143,9 +145,9 @@ namespace _Scripts.Player
 
         [Header("Debug / State Info")]
         [SerializeField] private MovementState _state;
-
-        public MovementState State => _state;
         
+        public Transform CameraFollowTarget => cameraFollowTarget != null ? cameraFollowTarget : HeadAnchor;
+        public MovementState State => _state;
         public Transform HeadAnchor => headAnchor;
         public float CurrentPitch => _lookModule != null ? _lookModule.CurrentPitch : 0f;
 

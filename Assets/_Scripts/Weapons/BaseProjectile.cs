@@ -3,6 +3,7 @@ using FishNet.Object;
 using UnityEngine;
 using _Scripts.Data;
 using _Scripts.Player;
+using _Scripts.Game.CTF;
 
 [RequireComponent(typeof(Rigidbody))]
 public abstract class BaseProjectile : NetworkBehaviour
@@ -252,51 +253,117 @@ public abstract class BaseProjectile : NetworkBehaviour
     
     protected virtual void ApplyExplosion(Vector3 centre, Vector3 shotDir, Collider directHitCol)
     {
-        int cnt = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.playerMask, QueryTriggerInteraction.Ignore);
+        int cnt = Physics.OverlapSphereNonAlloc(
+            centre,
+            def.blastRadius,
+            _buf,
+            def.playerMask,
+            QueryTriggerInteraction.Ignore);
 
         bool any = false;
-        // ---------- players inside radius ----------
+
         for (int i = 0; i < cnt; ++i)
         {
             Collider c = _buf[i];
-            if (c == null) continue;
+            if (c == null)
+                continue;
 
-            // new LOS gate
             if (!ClearLineOfSight(centre, c))
                 continue;
-            
+
             any |= DealDamageAndKnockback(c, centre, shotDir);
         }
 
-        // ---------- direct-hit fallback ----------
         if (!any && directHitCol != null)
             DealDamageAndKnockback(directHitCol, centre, shotDir);
 
-        // hygiene
-        for (int i = 0; i < cnt; ++i) _buf[i] = null;
+        for (int i = 0; i < cnt; ++i)
+            _buf[i] = null;
+
+        ApplyObjectiveImpulse(centre, shotDir, directHitCol);
+    }
+    
+    protected virtual void ApplyObjectiveImpulse(Vector3 centre, Vector3 shotDir, Collider directHitCol)
+    {
+        if (def.knockbackForce <= 0f || def.blastRadius <= 0f)
+            return;
+
+        int cnt = Physics.OverlapSphereNonAlloc(
+            centre,
+            def.blastRadius,
+            _buf,
+            def.objectiveMask,
+            QueryTriggerInteraction.Collide);
+
+        for (int i = 0; i < cnt; ++i)
+        {
+            Collider c = _buf[i];
+            if (c == null)
+                continue;
+
+            FlagObject flag = c.GetComponentInParent<FlagObject>();
+            if (flag == null)
+                continue;
+
+            if (!ClearLineOfSight(centre, c))
+                continue;
+
+            Vector3 impulse = CalculateExplosionImpulse(c, centre, shotDir, out _);
+            impulse *= def.objectiveKnockbackMultiplier;
+
+            flag.Server_ApplyWeaponImpulse(impulse);
+        }
+
+        for (int i = 0; i < cnt; ++i)
+            _buf[i] = null;
+
+        // Direct-hit fallback for cases where the flag collider is hit but not found by overlap.
+        if (directHitCol != null)
+        {
+            FlagObject directFlag = directHitCol.GetComponentInParent<FlagObject>();
+            if (directFlag != null)
+            {
+                Vector3 impulse = CalculateExplosionImpulse(directHitCol, centre, shotDir, out _);
+                impulse *= def.objectiveKnockbackMultiplier;
+
+                directFlag.Server_ApplyWeaponImpulse(impulse);
+            }
+        }
     }
 
     // helper that contains your old fall-off, knock-back etc.
     protected virtual bool DealDamageAndKnockback(Collider col, Vector3 centre, Vector3 shotDir)
     {
         Transform root = col.transform.root;
-        if (!root.TryGetComponent(out AdvancedPredictedController ctrl) || !root.TryGetComponent(out PlayerHealth hp))
-            return false;                        // not a player
+        if (!root.TryGetComponent(out AdvancedPredictedController ctrl) ||
+            !root.TryGetComponent(out PlayerHealth hp))
+            return false;
 
-        Vector3 to   = col.ClosestPoint(centre) - centre;
-        float   dist = to.magnitude;
-        Vector3 dir  = (dist < def.minDirThreshold) ? shotDir : to.normalized;
-        float   pwr  = Mathf.Pow(1f - Mathf.Clamp01(dist / def.blastRadius), def.knockFalloffExp);
+        Vector3 imp = CalculateExplosionImpulse(col, centre, shotDir, out float pwr);
 
         int dmg = Mathf.Max(1, Mathf.RoundToInt(def.damage * pwr));
         hp.ApplyDamage(dmg, _shooterObj);
 
         if (def.knockbackForce > 0f)
-        {
-            Vector3 imp = dir * (def.knockbackForce * pwr);
             ctrl.ReceiveKnockback(imp);
-        }
+
         return true;
+    }
+    
+    protected Vector3 CalculateExplosionImpulse(Collider col, Vector3 centre, Vector3 shotDir, out float power)
+    {
+        Vector3 to = col.ClosestPoint(centre) - centre;
+        float dist = to.magnitude;
+
+        Vector3 dir = (dist < def.minDirThreshold)
+            ? shotDir
+            : to.normalized;
+
+        power = Mathf.Pow(
+            1f - Mathf.Clamp01(dist / def.blastRadius),
+            def.knockFalloffExp);
+
+        return dir * (def.knockbackForce * power);
     }
     
     [ObserversRpc(BufferLast = false)]

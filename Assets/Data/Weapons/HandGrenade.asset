@@ -14,11 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   displayName: HandGrenade
   fireRate: 1
-  usesAmmo: 0
-  magazine: 2
-  reloadTime: 0
   energyPerShot: 0
   requiresEnergyPack: 0
+  usesAmmo: 0
+  ammoType: 0
+  spawnAmmo: 10
+  maxAmmo: 15
+  ammoPerShot: 1
   projectilePrefab: {fileID: 7091038382272038184, guid: 3d809917d7811c34ab1e63cc24152b3d, type: 3}
   projectileSpeed: 40
   velocityInheritance: 0.5
@@ -38,6 +40,10 @@ MonoBehaviour:
   knockbackForce: 35
   knockFalloffExp: 1.2
   minDirThreshold: 0.01
+  objectiveMask:
+    serializedVersion: 2
+    m_Bits: 256
+  objectiveKnockbackMultiplier: 1
   fpViewPrefab: {fileID: 0}
   heldPrefab: {fileID: 639587363853817222, guid: 3fcd229340db00e48a4ef45b8780c4d7, type: 3}
   groundPrefab: {fileID: 3947490525665947623, guid: 8336f5f7fab076249b2ce8c5a25b48c4, type: 3}

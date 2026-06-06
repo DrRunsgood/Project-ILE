@@ -471,10 +471,11 @@ namespace _Scripts.Game
         {
             ResetAllPlayerStats();
 
-            CTFManager.Instance?.Server_ResetForMatchStart();
+            RoundResetManager.Instance?.ResetForCTFMatchStart();
 
             SpawnManager.Instance?.SpawnPendingPlayers();
             SpawnManager.Instance?.RespawnAllPlayers();
+            SpawnManager.Instance?.SetAllPlayersFrozen(false);
         }
         
         [Server]

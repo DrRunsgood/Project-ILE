@@ -40,6 +40,10 @@ MonoBehaviour:
   knockbackForce: 50
   knockFalloffExp: 1.5
   minDirThreshold: 0.01
+  objectiveMask:
+    serializedVersion: 2
+    m_Bits: 256
+  objectiveKnockbackMultiplier: 1
   fpViewPrefab: {fileID: 2200841259640157207, guid: 737c85537ca43154fa7f34e0f70b0dbb, type: 3}
   heldPrefab: {fileID: 6716188861691387432, guid: 5bd27fa1b01a5d8409e631768029d674, type: 3}
   groundPrefab: {fileID: 307748800059226076, guid: 99d7a22bbe358b34a872d80099314b1a, type: 3}

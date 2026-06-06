@@ -35,18 +35,32 @@ namespace _Scripts.Game
         }
 
         [Server]
+        public void ResetCommonWorldState()
+        {
+            ClearRoundObjects();
+        }
+
+        [Server]
         public void ResetForArenaRound()
         {
             RefreshCaches();
 
-            ClearRoundObjects();
-            
-            SpawnManager.Instance?.ResetAllPlayerInventoriesForRound();
-            
-            ResetRoundPickupSpawners();
+            ResetCommonWorldState();
 
-            // Player reset/freeze remains in GameModeManager for now,
-            // but can move here later if we want one central reset pipeline.
+            SpawnManager.Instance?.ResetAllPlayerInventoriesForRound();
+
+            ResetRoundPickupSpawners();
+        }
+
+        [Server]
+        public void ResetForCTFMatchStart()
+        {
+            RefreshCaches();
+
+            ResetCommonWorldState();
+
+            // Intentionally not resetting inventories or pickup spawners yet.
+            // CTF is continuous-play; add only if match-start design requires it.
         }
 
         [Server]

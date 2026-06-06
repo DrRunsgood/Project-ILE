@@ -27,6 +27,7 @@ public sealed class IFFManager : MonoBehaviour
     readonly Dictionary<PlayerIFFTarget, IFFWidget> _widgets = new();
     readonly Dictionary<PlayerIFFTarget, float> _nextLosCheck = new();
     readonly Dictionary<PlayerIFFTarget, bool> _losVisible = new();
+    readonly List<PlayerIFFTarget> _staleTargets = new();
 
     PlayerIdentity _localIdentity;
     Transform _localTransform;
@@ -61,11 +62,21 @@ public sealed class IFFManager : MonoBehaviour
         _localTransform = null;
 
         foreach (IFFWidget w in _widgets.Values)
-            if (w) w.SetVisible(false);
+        {
+            if (w != null)
+                Destroy(w.gameObject);
+        }
+
+        _widgets.Clear();
+        _nextLosCheck.Clear();
+        _losVisible.Clear();
+        _staleTargets.Clear();
     }
 
     void LateUpdate()
     {
+        CleanupStaleWidgets();
+        
         if (!_localIdentity || !_localTransform || !targetCamera || !widgetPrefab)
             return;
 
@@ -208,5 +219,31 @@ public sealed class IFFManager : MonoBehaviour
             out Vector2 localPoint);
 
         return localPoint;
+    }
+    
+    void CleanupStaleWidgets()
+    {
+        _staleTargets.Clear();
+
+        foreach (var kvp in _widgets)
+        {
+            PlayerIFFTarget target = kvp.Key;
+            IFFWidget widget = kvp.Value;
+
+            if (target == null || !target || !target.gameObject.activeInHierarchy)
+            {
+                if (widget != null)
+                    Destroy(widget.gameObject);
+
+                _staleTargets.Add(target);
+            }
+        }
+
+        foreach (PlayerIFFTarget target in _staleTargets)
+        {
+            _widgets.Remove(target);
+            _nextLosCheck.Remove(target);
+            _losVisible.Remove(target);
+        }
     }
 }

@@ -1,4 +1,4 @@
-using FishNet.Object;
+using FishNet;
 using UnityEngine;
 using _Scripts.Game.Teams;
 using _Scripts.Player;
@@ -7,7 +7,7 @@ namespace _Scripts.Game.CTF
 {
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Collider))]
-    public sealed class FlagCaptureTrigger : NetworkBehaviour
+    public sealed class FlagCaptureTrigger : MonoBehaviour
     {
         [Header("Setup")]
         [SerializeField] TeamId team;
@@ -20,7 +20,8 @@ namespace _Scripts.Game.CTF
 
         void OnTriggerEnter(Collider other)
         {
-            if (!IsServer)
+            if (InstanceFinder.ServerManager == null ||
+                !InstanceFinder.ServerManager.Started)
                 return;
 
             PlayerIdentity identity = other.GetComponentInParent<PlayerIdentity>();

@@ -63,6 +63,10 @@ namespace _Scripts.Data
         public float  knockFalloffExp   = 1.5f;
         [Tooltip("Treat centre hits as straight-up impulse below this distance")]
         public float minDirThreshold    = 0.01f;
+        
+        [Header("Objective Interaction")]
+        public LayerMask objectiveMask;
+        [Range(0f, 2f)] public float objectiveKnockbackMultiplier = 1f;
 
     /* ───────── Prefabs & Effects ───────── */
         [Header("Gun / FX")]
