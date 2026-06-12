@@ -30,7 +30,7 @@ public abstract class BaseProjectile : NetworkBehaviour
 
     /* helper */
     protected readonly Collider[] _buf = new Collider[32];
-    public   ParticleSystem projectileTrail;
+    TrailRenderer[] _trailRenderers;
 
     /* ───────────────────────────── */
     #region Initialisation
@@ -44,9 +44,15 @@ public abstract class BaseProjectile : NetworkBehaviour
         _spawnTick = tick;
 
         _velocity  = vel;
+        
+        StopAndClearTrails();
         transform.position = pos;
+        ApplyVelocityRotation(vel);
+        ResetInterpolation(pos);
+        RestartTrails();
+        
         _despawning = false;
-
+        
         gravAcc = def.gravityScale == 0 ? Vector3.zero : Physics.gravity * def.gravityScale;
         
         if (TryGetComponent(out Collider projCol))
@@ -63,12 +69,18 @@ public abstract class BaseProjectile : NetworkBehaviour
         _initPos   = pos;
         _initVel   = vel;
         _spawnTick = tick;
+        
         _velocity = vel;
         
-        gravAcc = def.gravityScale == 0 ? Vector3.zero : Physics.gravity * def.gravityScale;
-
+        StopAndClearTrails();
         transform.position = pos;                 // correct spawn pose
-        _prev = _next = pos;
+        ApplyVelocityRotation(vel);
+        ResetInterpolation(pos);
+        RestartTrails();
+        
+        _despawning = false;
+        
+        gravAcc = def.gravityScale == 0 ? Vector3.zero : Physics.gravity * def.gravityScale;
     }
     #endregion
 
@@ -79,6 +91,7 @@ public abstract class BaseProjectile : NetworkBehaviour
         _rb            = GetComponent<Rigidbody>();
         _rb.isKinematic = true;
         _rb.useGravity  = false;
+        _trailRenderers = GetComponentsInChildren<TrailRenderer>(true);
     }
 
     public override void OnStartServer() => TimeManager.OnTick += ServerTick;
@@ -91,12 +104,7 @@ public abstract class BaseProjectile : NetworkBehaviour
             TimeManager.OnTick += ClientTick;
             _prev = _next = transform.position;
             _tickDt = (float)TimeManager.TickDelta;
-        }
-
-        if (projectileTrail)
-        {
-            projectileTrail.Clear();
-            projectileTrail.Play();
+            StopAndClearTrails();
         }
     }
     public override void OnStopClient()
@@ -181,6 +189,12 @@ public abstract class BaseProjectile : NetworkBehaviour
         Vector3 dir = (to - from);
         float len   = dir.magnitude;
         dir        /= len;
+        
+        if (len <= 0.0001f)
+        {
+            hit = default;
+            return false;
+        }
 
         switch (def.castMode)
         {
@@ -369,7 +383,17 @@ public abstract class BaseProjectile : NetworkBehaviour
     [ObserversRpc(BufferLast = false)]
     protected void RpcSpawnImpact(Vector3 pos, Vector3 normal)
     {
-        VfxPool.Spawn("VFX/RocketExplosion", pos, Quaternion.LookRotation(normal), 2.5f);
+        if (def == null || !def.spawnImpactVfx)
+            return;
+
+        if (string.IsNullOrWhiteSpace(def.impactVfxKey))
+            return;
+
+        Quaternion rot = normal.sqrMagnitude > 0.0001f
+            ? Quaternion.LookRotation(normal.normalized)
+            : Quaternion.identity;
+        
+        VfxPool.Spawn(def.impactVfxKey, pos, rot, def.impactVfxLifetime);
     }
     #endregion
     
@@ -377,6 +401,53 @@ public abstract class BaseProjectile : NetworkBehaviour
     {
         if (_despawning) return;
         _despawning = true;
+        StopAndClearTrails();
         ServerManager.Despawn(gameObject, DespawnType.Pool);
+    }
+    
+    protected void ApplyVelocityRotation(Vector3 vel)
+    {
+        if (vel.sqrMagnitude <= 0.0001f)
+            return;
+
+        transform.rotation = Quaternion.LookRotation(vel.normalized, Vector3.up);
+    }
+    
+    protected void ResetInterpolation(Vector3 pos)
+    {
+        _prev = _next = pos;
+        _timer = 0f;
+        _tickDt = TimeManager != null ? (float)TimeManager.TickDelta : 0f;
+    }
+    
+    protected void StopAndClearTrails()
+    {
+        if (_trailRenderers == null)
+            return;
+
+        foreach (TrailRenderer tr in _trailRenderers)
+        {
+            if (!tr)
+                continue;
+
+            tr.emitting = false;
+            tr.Clear();
+        }
+    }
+
+    protected void RestartTrails()
+    {
+        if (_trailRenderers == null)
+            return;
+
+        foreach (TrailRenderer tr in _trailRenderers)
+        {
+            if (!tr)
+                continue;
+
+            tr.emitting = false;
+            tr.Clear();
+            tr.emitting = true;
+        }
     }
 }

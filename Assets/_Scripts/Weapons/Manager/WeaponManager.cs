@@ -130,6 +130,33 @@ namespace _Scripts.Weapons
         }
 
         #endregion
+        
+        #region Fire Input
+
+        [Server]
+        public void Server_ProcessFireInput(InputButtons held, FirePose pose)
+        {
+            if ((held & InputButtons.Fire) == 0)
+                return;
+
+            NetworkObject active = _activeNob.Value;
+            if (active == null)
+                return;
+
+            if (!active.TryGetComponent(out ProjectileWeapon weapon))
+                return;
+
+            // Hidden quick items keep their existing armed/TargetRpc/old-fire path for now.
+            if (weapon.isHiddenQuickItem)
+                return;
+
+            if (!weapon.IsActive)
+                return;
+
+            weapon.Server_TryFireFromPose(pose);
+        }
+
+        #endregion
 
         #region Shared Attach / Visual Helpers
 
@@ -173,7 +200,6 @@ namespace _Scripts.Weapons
 
             if (IsOwner && !_fpViews.ContainsKey(nob) && pw.Definition?.fpViewPrefab)
             {
-                Debug.Log("hi");
                 GameObject fp = Instantiate(pw.Definition.fpViewPrefab, firstPersonAnchor);
                 ResetLocal(fp.transform);
                 fp.transform.localScale = Vector3.one * 2f;

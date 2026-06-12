@@ -12,6 +12,9 @@ namespace _Scripts.Weapons
     {
         /* ───────── inspector ───────── */
         [SerializeField] protected WeaponDefinition def;
+        
+        [Header("Fire Routing")]
+        [SerializeField] bool usePredictedInputFire = true;
 
         [Header("Spawn Settings")]
         [Tooltip("How far in front of the camera the projectile should appear (roughly barrel length from camera).")]
@@ -53,11 +56,22 @@ namespace _Scripts.Weapons
 
         void Update()
         {
-            if (!IsOwner || _wm == null || _ih == null) return;
-            if (!isHiddenQuickItem && !IsActive)        return;
+            if (!IsOwner || _wm == null || _ih == null)
+                return;
+
+            // Regular weapons now fire through AdvancedPredictedController.MovementData.Held.
+            // Hidden quick-items keep the old armed Update -> Server_RequestFire path for now.
+            if (usePredictedInputFire && !isHiddenQuickItem)
+                return;
+
+            if (!isHiddenQuickItem && !IsActive)
+                return;
+
             EnsureFireTimingInitialized();
-            if (!CanFire()) return;
-            
+
+            if (!CanFire())
+                return;
+
             uint nowTick = TimeManager.Tick;
             _nextFireTick = nowTick + _fireIntervalTicks;
 
@@ -88,14 +102,74 @@ namespace _Scripts.Weapons
 
         /* ================================================================= */
         #region  Server-authoritative spawn
+        
+        [Server]
+        public bool Server_TryFireFromPose(FirePose pose)
+        {
+            if (def == null || def.projectilePrefab == null || _shooterNO == null)
+                return false;
 
+            if (isHiddenQuickItem)
+                return false;
+
+            EnsureFireTimingInitialized();
+
+            uint serverNow = TimeManager.Tick;
+
+            if (serverNow < _nextServerFireTick)
+                return false;
+
+            if (_wm != null && !_wm.Server_CanConsumeAmmo(def, def.ammoPerShot))
+                return false;
+
+            // Important: call this once only. EnergyProjectileWeapon burns energy here.
+            if (!ServerCanConsume())
+                return false;
+
+            if (_wm != null && !_wm.Server_TryConsumeAmmo(def, def.ammoPerShot))
+                return false;
+
+            _nextServerFireTick = serverNow + _fireIntervalTicks;
+
+            Vector3 fireDir = pose.Direction.sqrMagnitude > 0.0001f
+                ? pose.Direction.normalized
+                : transform.forward;
+
+            Vector3 shotOrigin = pose.Position;
+            Vector3 spawnPos = ResolveSafeSpawnPosition(shotOrigin, fireDir);
+
+            Vector3 finalVel = fireDir * def.projectileSpeed + pose.Velocity * def.velocityInheritance;
+
+            NetworkObject nob = InstanceFinder.NetworkManager.GetPooledInstantiated(def.projectilePrefab, true);
+            if (nob == null)
+                return false;
+
+            Quaternion rot = finalVel.sqrMagnitude > 0.0001f
+                ? Quaternion.LookRotation(finalVel.normalized, Vector3.up)
+                : Quaternion.LookRotation(fireDir, Vector3.up);
+
+            nob.transform.SetPositionAndRotation(spawnPos, rot);
+
+            if (nob.TryGetComponent(out BaseProjectile proj))
+            {
+                proj.Init(spawnPos, finalVel, serverNow, _shooterNO);
+                ServerManager.Spawn(nob);
+                proj.RpcInit(spawnPos, finalVel, serverNow);
+                return true;
+            }
+
+            ServerManager.Despawn(nob, DespawnType.Pool);
+            return false;
+        }
+        
+        
+        // Legacy path for hidden quick items only.
+        // Regular weapons fire through CSP MovementData.Held.
         [ServerRpc(RequireOwnership = true)]
         void Server_RequestFire(uint clientFireTick, NetworkConnection sender = null)
         {
-            if (def.projectilePrefab == null || _shooterNO == null || !sender?.IsValid == true)
+            if (def == null || def.projectilePrefab == null || _shooterNO == null || sender == null || !sender.IsValid)
                 return;
-
-            if (!ServerCanConsume()) return;
 
             uint serverNow = TimeManager.Tick;
             

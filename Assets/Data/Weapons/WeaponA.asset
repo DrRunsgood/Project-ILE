@@ -27,7 +27,7 @@ MonoBehaviour:
   gravityScale: 0
   lifeTime: 15
   castMode: 0
-  castRadius: 0.5
+  castRadius: 0.2
   castHalf: 0.4
   hitMask:
     serializedVersion: 2

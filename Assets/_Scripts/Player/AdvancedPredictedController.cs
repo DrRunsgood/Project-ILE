@@ -5,6 +5,7 @@ using FishNet.Object.Prediction;
 using FishNet.Transporting;
 using FishNet.Object.Synchronizing;
 using _Scripts.Packs;
+using _Scripts.Weapons;
 
 namespace _Scripts.Player
 {
@@ -178,6 +179,9 @@ namespace _Scripts.Player
         // Input
         private InputHandler _iH;
         
+        // Weapon Manager
+        private WeaponManager _weaponManager;
+        
         // Pack Manager
         private PackManager _packMgr;
         
@@ -287,6 +291,7 @@ namespace _Scripts.Player
             _netObj = GetComponent<NetworkObject>();
             _predictionRb = new PredictionRigidbody();
             _predictionRb.Initialize(_rb);
+            _weaponManager = GetComponent<WeaponManager>();
             _packMgr = GetComponent<PackManager>();
             _col = GetComponent<Collider>();
             
@@ -480,9 +485,28 @@ namespace _Scripts.Player
                 viewOrigin.position = headAnchor.position;
                 viewOrigin.rotation = headAnchor.rotation;
             }
-            
-            if (IsServer && LagCompensationManager.Instance != null) 
-                LagCompensationManager.Instance.RecordSnapshot(_netObj, viewOrigin.position, viewOrigin.forward, _rb.linearVelocity, TimeManager.Tick);
+
+            if (IsServer)
+            {
+                Transform fireAnchor = viewOrigin != null ? viewOrigin : headAnchor;
+
+                if (fireAnchor != null)
+                {
+                    FirePose pose = new FirePose(
+                        fireAnchor.position,
+                        fireAnchor.forward,
+                        _rb.linearVelocity,
+                        TimeManager.Tick
+                    );
+
+                    if (_weaponManager != null)
+                        _weaponManager.Server_ProcessFireInput(held, pose);
+
+                    if (LagCompensationManager.Instance != null)
+                        LagCompensationManager.Instance.RecordSnapshot(_netObj, pose.Position, pose.Direction,
+                            pose.Velocity, pose.Tick);
+                }
+            }
         }
         #endregion
 

@@ -166,7 +166,7 @@ MonoBehaviour:
     Scale: {x: 1, y: 1, z: 1}
     IsValid: 1
   <IsNested>k__BackingField: 0
-  WasActiveDuringEdit: 0
+  WasActiveDuringEdit: 1
   WasActiveDuringEdit_Set1: 1
   <ComponentIndex>k__BackingField: 0
   <PredictedSpawn>k__BackingField: {fileID: 0}
@@ -245,9 +245,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0577af9cfba0c524f8711e329caca2a8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Game.RoundScopedObject
-  _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1938724514370874692}
-  _networkObjectCache: {fileID: 0}
   scope: 0
 --- !u!1001 &6897245378069661687
 PrefabInstance:
@@ -304,6 +301,10 @@ PrefabInstance:
     - target: {fileID: 8088216247664916916, guid: 2c2ec5e665f6a3c43b2c11ae975a6f97, type: 3}
       propertyPath: m_Name
       value: RocketFire
+      objectReference: {fileID: 0}
+    - target: {fileID: 8088216247664916916, guid: 2c2ec5e665f6a3c43b2c11ae975a6f97, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
