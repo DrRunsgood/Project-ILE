@@ -196,6 +196,7 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 8766701267539982643}
   _networkObjectCache: {fileID: 8766701267539982643}
   def: {fileID: 11400000, guid: a28c83aa53782194b80335f1df23e504, type: 2}
+  rotateToVelocity: 1
 --- !u!114 &-7359712020024571819
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -247,7 +248,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 38bb250caaaaa614199a3c5f5c1f3e20, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 1
+      value: 0.7071068
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 38bb250caaaaa614199a3c5f5c1f3e20, type: 3}
       propertyPath: m_LocalRotation.x
@@ -255,7 +256,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 38bb250caaaaa614199a3c5f5c1f3e20, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0
+      value: -0.7071068
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 38bb250caaaaa614199a3c5f5c1f3e20, type: 3}
       propertyPath: m_LocalRotation.z
@@ -267,7 +268,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 38bb250caaaaa614199a3c5f5c1f3e20, type: 3}
       propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
+      value: -90
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 38bb250caaaaa614199a3c5f5c1f3e20, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z

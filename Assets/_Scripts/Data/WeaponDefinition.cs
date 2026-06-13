@@ -73,9 +73,11 @@ namespace _Scripts.Data
         public GameObject    fpViewPrefab;  // Local visual game object for our first person player view
         public NetworkObject heldPrefab;                // gun in hand for others
         public NetworkObject groundPrefab;
-        public GameObject     muzzleVFX;
-        public GameObject     impactVFX;
-        public AudioClip      fireSFX;
+        
+        [Header("Projectile VFX")]
+        public string impactVfxKey = "VFX/RocketExplosion";
+        public float impactVfxLifetime = 2.5f;
+        public bool spawnImpactVfx = true;
         
         [Header("Meta / UI")]
         public bool hiddenQuickItem = false;

@@ -9,18 +9,22 @@ Material:
   m_PrefabAsset: {fileID: 0}
   m_Name: Blue
   m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
-  m_Parent: {fileID: 2100000, guid: 17c9450b3dbe4ee4d80b7daad8411e5b, type: 2}
-  m_ModifiedSerializedProperties: 0
-  m_ValidKeywords: []
+  m_Parent: {fileID: 2100000, guid: 8f87c77d1f4a3ae43994c60ce700df88, type: 2}
+  m_ModifiedSerializedProperties: 2
+  m_ValidKeywords:
+  - _ALPHAPREMULTIPLY_ON
+  - _SURFACE_TYPE_TRANSPARENT
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
   stringTagMap:
-    RenderType: Opaque
+    RenderType: Transparent
   disabledShaderPasses:
   - MOTIONVECTORS
+  - DepthOnly
+  - SHADOWCASTER
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -30,6 +34,7 @@ Material:
     m_Colors:
     - _BaseColor: {r: 0.14244394, g: 0.71536446, b: 0.9150943, a: 1}
     - _Color: {r: 0.1424439, g: 0.71536446, b: 0.9150943, a: 1}
+    - _EmissionColor: {r: 477.20233, g: 155.31586, b: 155.31586, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!114 &7363247341586411579

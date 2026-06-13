@@ -44,6 +44,7 @@ public abstract class BaseProjectile : NetworkBehaviour
     protected readonly Collider[] _buf = new Collider[32];
 
     TrailRenderer[] _trailRenderers;
+    ProjectileBeamLink[] _beamLinks;
     readonly List<Collider> _ignoredShooterColliders = new();
 
     #region Initialization
@@ -75,12 +76,14 @@ public abstract class BaseProjectile : NetworkBehaviour
             : Vector3.zero;
 
         StopAndClearTrails();
+        StopBeamLinks();
 
         transform.position = pos;
         ApplyVelocityRotation(vel);
         ResetInterpolation(pos);
 
         RestartTrails();
+        StartBeamLinks(pos);
     }
 
     /*
@@ -132,6 +135,7 @@ public abstract class BaseProjectile : NetworkBehaviour
 
         _projectileCollider = GetComponent<Collider>();
         CacheTrailRenderers();
+        _beamLinks = GetComponentsInChildren<ProjectileBeamLink>(true);
     }
 
     public override void OnStartServer()
@@ -168,6 +172,7 @@ public abstract class BaseProjectile : NetworkBehaviour
 
         _spawnStateApplied = false;
         StopAndClearTrails();
+        StopBeamLinks();
     }
 
     #endregion
@@ -542,6 +547,7 @@ public abstract class BaseProjectile : NetworkBehaviour
         _spawnStateApplied = false;
 
         StopAndClearTrails();
+        StopBeamLinks();
         ClearIgnoredShooterCollisions();
 
         ServerManager.Despawn(gameObject, DespawnType.Pool);
@@ -651,6 +657,34 @@ public abstract class BaseProjectile : NetworkBehaviour
 
         for (int i = 0; i < n; ++i)
             _buf[i] = null;
+    }
+    
+    void StartBeamLinks(Vector3 startPos)
+    {
+        if (_beamLinks == null)
+            return;
+
+        foreach (ProjectileBeamLink beam in _beamLinks)
+        {
+            if (!beam)
+                continue;
+
+            beam.Init(startPos);
+        }
+    }
+
+    void StopBeamLinks()
+    {
+        if (_beamLinks == null)
+            return;
+
+        foreach (ProjectileBeamLink beam in _beamLinks)
+        {
+            if (!beam)
+                continue;
+
+            beam.ResetBeam();
+        }
     }
 
     #endregion

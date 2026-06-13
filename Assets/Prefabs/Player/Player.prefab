@@ -211,7 +211,7 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 6832439599154668905}
   orientation: {fileID: 9128714729413085702}
   mainBodyObject: {fileID: 9181107508806418986}
-  headAnchor: {fileID: 7088975781661900932}
+  headAnchor: {fileID: 448569795313915978}
   viewOrigin: {fileID: 7088975781661900932}
   firePoint: {fileID: 4852927213834493852}
   cameraFollowTarget: {fileID: 5977801183613013475}

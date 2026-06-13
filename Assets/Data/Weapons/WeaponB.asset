@@ -27,7 +27,7 @@ MonoBehaviour:
   gravityScale: 1.5
   lifeTime: 15
   castMode: 0
-  castRadius: 0.5
+  castRadius: 0.75
   castHalf: 0.4
   hitMask:
     serializedVersion: 2
@@ -47,7 +47,7 @@ MonoBehaviour:
   fpViewPrefab: {fileID: 2200841259640157207, guid: 737c85537ca43154fa7f34e0f70b0dbb, type: 3}
   heldPrefab: {fileID: 6716188861691387432, guid: 5bd27fa1b01a5d8409e631768029d674, type: 3}
   groundPrefab: {fileID: 307748800059226076, guid: 99d7a22bbe358b34a872d80099314b1a, type: 3}
-  muzzleVFX: {fileID: 0}
-  impactVFX: {fileID: 0}
-  fireSFX: {fileID: 0}
+  impactVfxKey: VFX/RocketExplosion
+  impactVfxLifetime: 2.5
+  spawnImpactVfx: 1
   hiddenQuickItem: 0
