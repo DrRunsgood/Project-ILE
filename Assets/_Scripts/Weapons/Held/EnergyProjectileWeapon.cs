@@ -52,5 +52,19 @@ namespace _Scripts.Weapons
             _ctrl.ServerSpendEnergy(EnergyPerShot);
             return true;
         }
+        
+        protected override bool ClientCanPlayPredictedFireSfx()
+        {
+            if (!base.ClientCanPlayPredictedFireSfx())
+                return false;
+
+            if (_ctrl == null)
+                return false;
+
+            if (NeedsEnergyPack && _pm?.CurrentId != PackId.Energy)
+                return false;
+
+            return _ctrl.Energy >= EnergyPerShot;
+        }
     }
 }

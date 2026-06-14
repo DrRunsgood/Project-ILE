@@ -14,8 +14,15 @@ public class BulletProjectile : BaseProjectile
     protected override bool Sweep(Vector3 from, Vector3 to, out RaycastHit hit)
     {
         Vector3 dir = to - from;
-        float len   = dir.magnitude;
-        dir        /= len;
+        float len = dir.magnitude;
+
+        if (len <= 0.0001f)
+        {
+            hit = default;
+            return false;
+        }
+
+        dir /= len;
         return Physics.Raycast(from, dir, out hit, len, def.hitMask, QueryTriggerInteraction.Ignore);
     }
 

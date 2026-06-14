@@ -50,4 +50,20 @@ MonoBehaviour:
   impactVfxKey: VFX/RocketExplosion
   impactVfxLifetime: 2.5
   spawnImpactVfx: 1
+  fireSfx: {fileID: 8300000, guid: a8bd6c1598e010443ae8a060e2fb9839, type: 3}
+  fireVolume: 0.7
+  firePitchMin: 0.96
+  firePitchMax: 1.04
+  fireSpatialBlend: 1
+  fireMinDistance: 3
+  fireMaxDistance: 80
+  playLocalPredictedFireSfx: 1
+  localFireSpatialBlend: 0.1
+  localFireVolumeMultiplier: 1
+  impactSfx: {fileID: 0}
+  impactVolume: 1
+  impactPitchMin: 0.95
+  impactPitchMax: 1.05
+  impactMinDistance: 4
+  impactMaxDistance: 100
   hiddenQuickItem: 0

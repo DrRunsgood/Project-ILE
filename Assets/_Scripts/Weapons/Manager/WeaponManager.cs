@@ -547,6 +547,8 @@ namespace _Scripts.Weapons
 
             if (_ih.ConsumeWeaponDrop())
                 Server_RequestDropActive();
+            
+            ProcessLocalPredictedFireAudio();
         }
 
         [ServerRpc(RequireOwnership = true)]
@@ -792,6 +794,29 @@ namespace _Scripts.Weapons
             }
 
             RefreshActive();
+        }
+        
+        void ProcessLocalPredictedFireAudio()
+        {
+            if (_ih == null)
+                return;
+
+            if ((_ih.HeldButtons & InputButtons.Fire) == 0)
+                return;
+
+            NetworkObject active = _activeNob.Value;
+
+            if (active == null)
+                return;
+
+            if (!active.TryGetComponent(out ProjectileWeapon weapon))
+                return;
+
+            if (weapon.isHiddenQuickItem)
+                return;
+
+            Vector3 pos = active.transform.position;
+            weapon.Client_TryPlayPredictedFireSfx(pos);
         }
     }
 }

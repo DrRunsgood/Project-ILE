@@ -12,12 +12,13 @@ GameObject:
   - component: {fileID: 2313605069946618563}
   - component: {fileID: 830621418103231863}
   - component: {fileID: 1451465412514159687}
-  - component: {fileID: 16042802745636805}
   - component: {fileID: 2877665405076106222}
   - component: {fileID: 4356129245166151907}
   - component: {fileID: -8571736992089961157}
   - component: {fileID: 2760273553822079888}
   - component: {fileID: 3329046351917159825}
+  - component: {fileID: 9074821108863026973}
+  - component: {fileID: 3146740071011218296}
   m_Layer: 0
   m_Name: EnergyRifleGround
   m_TagString: Untagged
@@ -330,14 +331,6 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!33 &16042802745636805
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2624510343394097245}
-  m_Mesh: {fileID: 0}
 --- !u!54 &2877665405076106222
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -418,6 +411,7 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 3329046351917159825}
   defaultArmDelay: 0.15
   definition: {fileID: 11400000, guid: d383feca8e1f0eb4db549813be653155, type: 2}
+  runtimeAmmo: -1
 --- !u!114 &3329046351917159825
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -447,7 +441,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 13
+  <PrefabId>k__BackingField: 14
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 8690719981751549595
   SceneId: 0
@@ -465,6 +459,7 @@ MonoBehaviour:
   NetworkBehaviours:
   - {fileID: -8571736992089961157}
   - {fileID: 2760273553822079888}
+  - {fileID: 9074821108863026973}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
   RuntimeParentNetworkBehaviour: {fileID: 0}
@@ -475,4 +470,37 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 1
-  _initializedTimestamp: -8584268083753593102
+  _initializedTimestamp: -8584202372448469453
+--- !u!114 &9074821108863026973
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2624510343394097245}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d4ef8c7f880c3941a58c7442d1ed1b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.GamePhysics.KinematicMover
+  _componentIndexCache: 2
+  _addedNetworkObject: {fileID: 3329046351917159825}
+  _networkObjectCache: {fileID: 3329046351917159825}
+  gravityScale: 1
+  bounciness: 0.3
+  slideFriction: 15
+  stopSpeed: 0.05
+  sphereRadius: 0.1
+  worldMask:
+    serializedVersion: 2
+    m_Bits: 3665
+  reaction: 0
+  lifeTime: -1
+--- !u!33 &3146740071011218296
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2624510343394097245}
+  m_Mesh: {fileID: 0}

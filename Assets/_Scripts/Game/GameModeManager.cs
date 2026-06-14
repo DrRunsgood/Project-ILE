@@ -539,15 +539,19 @@ namespace _Scripts.Game
             switch (_mode.Value)
             {
                 case GameModeType.Deathmatch:
-                    return _state.Value == MatchState.Live ||
-                           _state.Value == MatchState.Warmup;
-
-                case GameModeType.Arena:
                     return _state.Value == MatchState.Waiting ||
-                           _state.Value == MatchState.PreRound;
+                           _state.Value == MatchState.Warmup ||
+                           _state.Value == MatchState.Live;
 
                 case GameModeType.CTF:
-                    return _state.Value == MatchState.Live ||
+                    return _state.Value == MatchState.Waiting ||
+                           _state.Value == MatchState.Warmup ||
+                           _state.Value == MatchState.Live;
+
+                case GameModeType.Arena:
+                    // Arena: no mid-round respawn once live.
+                    return _state.Value == MatchState.Waiting ||
+                           _state.Value == MatchState.PreRound ||
                            _state.Value == MatchState.Warmup;
 
                 default:
@@ -558,17 +562,20 @@ namespace _Scripts.Game
         [Server]
         public float GetRespawnDelay(PlayerHealth player)
         {
+            bool practiceState =
+                _state.Value == MatchState.Waiting ||
+                _state.Value == MatchState.Warmup ||
+                _state.Value == MatchState.PreRound;
+
+            if (practiceState)
+                return 1f;
+
             return _mode.Value switch
             {
                 GameModeType.Deathmatch => 3f,
-
                 GameModeType.CTF => ctfRespawnDelay,
 
-                GameModeType.Arena =>
-                    _state.Value == MatchState.Waiting ||
-                    _state.Value == MatchState.PreRound
-                        ? 2f
-                        : 0f,
+                GameModeType.Arena => 0f,
 
                 _ => 3f
             };

@@ -79,6 +79,43 @@ namespace _Scripts.Data
         public float impactVfxLifetime = 2.5f;
         public bool spawnImpactVfx = true;
         
+        [Header("Fire Audio")]
+        public AudioClip fireSfx;
+
+        [Range(0f, 1f)]
+        public float fireVolume = 1f;
+
+        public float firePitchMin = 0.96f;
+        public float firePitchMax = 1.04f;
+
+        [Tooltip("World/observer fire sound. 1 = full 3D.")]
+        [Range(0f, 1f)]
+        public float fireSpatialBlend = 1f;
+
+        public float fireMinDistance = 3f;
+        public float fireMaxDistance = 80f;
+
+        [Header("Local Predicted Fire Audio")]
+        public bool playLocalPredictedFireSfx = true;
+
+        [Range(0f, 1f)]
+        public float localFireSpatialBlend = 0f;
+
+        [Range(0f, 2f)]
+        public float localFireVolumeMultiplier = 1f;
+
+        [Header("Impact Audio")]
+        public AudioClip impactSfx;
+
+        [Range(0f, 1f)]
+        public float impactVolume = 1f;
+
+        public float impactPitchMin = 0.95f;
+        public float impactPitchMax = 1.05f;
+
+        public float impactMinDistance = 4f;
+        public float impactMaxDistance = 100f;
+        
         [Header("Meta / UI")]
         public bool hiddenQuickItem = false;
     }

@@ -54,6 +54,7 @@ namespace _Scripts.Weapons
         uint _nextFireTick;        // client-side legacy quick-item/fallback timing
         uint _fireIntervalTicks;
         uint _nextServerFireTick;  // authoritative server cooldown
+        uint _nextLocalFireAudioTick;
 
         #endregion
 
@@ -212,52 +213,63 @@ namespace _Scripts.Weapons
             if (serverNow < _nextServerFireTick)
                 return false;
 
+            if (def == null || def.projectilePrefab == null || _shooterNO == null)
+                return false;
+
+            // Validate prefab setup before consuming ammo/energy.
+            if (!def.projectilePrefab.TryGetComponent(out BaseProjectile _))
+            {
+                Debug.LogError($"[ProjectileWeapon] Projectile prefab '{def.projectilePrefab.name}' has no BaseProjectile.");
+                return false;
+            }
+
             if (_wm != null && !_wm.Server_CanConsumeAmmo(def, def.ammoPerShot))
                 return false;
 
-            Vector3 spawnPos = ResolveSafeSpawnPosition(shotOrigin, fireDir);
-            Vector3 finalVel = fireDir * def.projectileSpeed + shooterVelocity * def.velocityInheritance;
+            /*
+             * Important: ServerCanConsume may be destructive.
+             * EnergyProjectileWeapon burns energy here, so call this once only.
+             *
+             * Keep this BEFORE taking a pooled projectile so failed energy checks
+             * do not create/despawn pooled objects.
+             */
+            if (!ServerCanConsume())
+                return false;
+
+            if (_wm != null && !_wm.Server_TryConsumeAmmo(def, def.ammoPerShot))
+                return false;
+
+            fireDir = GetSafeDirection(fireDir, transform.forward);
+
+            Vector3 spawnDir = fireDir;
+            Vector3 velocityDir = GetSafeDirection(AdjustProjectileVelocityDirection(fireDir), fireDir);
+
+            Vector3 spawnPos = ResolveSafeSpawnPosition(shotOrigin, spawnDir);
+
+            Vector3 finalVel = velocityDir * def.projectileSpeed + shooterVelocity * def.velocityInheritance;
 
             NetworkObject nob = InstanceFinder.NetworkManager.GetPooledInstantiated(def.projectilePrefab, true);
 
             if (nob == null)
+            {
+                Debug.LogWarning($"[ProjectileWeapon] Could not get pooled projectile for '{def.displayName}'.");
                 return false;
+            }
 
             if (!nob.TryGetComponent(out BaseProjectile proj))
             {
-                ServerManager.Despawn(nob, DespawnType.Pool);
+                // Should not happen because prefab was validated above.
+                Debug.LogError($"[ProjectileWeapon] Spawned projectile '{nob.name}' has no BaseProjectile despite prefab validation.");
                 return false;
             }
 
-            /*
-             * Important:
-             * ServerCanConsume may be destructive. EnergyProjectileWeapon burns energy here.
-             * Keep this after all cheap validation and call it once only.
-             */
-            if (!ServerCanConsume())
-            {
-                ServerManager.Despawn(nob, DespawnType.Pool);
-                return false;
-            }
-
-            if (_wm != null && !_wm.Server_TryConsumeAmmo(def, def.ammoPerShot))
-            {
-                ServerManager.Despawn(nob, DespawnType.Pool);
-                return false;
-            }
-
-            _nextServerFireTick = serverNow + _fireIntervalTicks;
-
-            Quaternion rot = GetProjectileRotation(fireDir, finalVel);
+            Quaternion rot = GetProjectileRotation(velocityDir, finalVel);
             nob.transform.SetPositionAndRotation(spawnPos, rot);
 
-            /*
-             * BaseProjectile.Init writes deterministic spawn state.
-             * FishNet spawn payload sends that state to observing clients.
-             * Do not call RpcInit on the normal payload path.
-             */
             proj.Init(spawnPos, finalVel, serverNow, _shooterNO);
             ServerManager.Spawn(nob);
+
+            _nextServerFireTick = serverNow + _fireIntervalTicks;
 
             return true;
         }
@@ -291,6 +303,7 @@ namespace _Scripts.Weapons
         {
             _nextFireTick = 0;
             _nextServerFireTick = 0;
+            _nextLocalFireAudioTick = 0;
         }
 
         #endregion
@@ -356,7 +369,65 @@ namespace _Scripts.Weapons
 
             return Quaternion.LookRotation(lookDir, Vector3.up);
         }
+        
+        protected virtual Vector3 AdjustProjectileVelocityDirection(Vector3 fireDir)
+        {
+            return fireDir;
+        }
 
+        #endregion
+        
+        #region Effects
+        
+        public void Client_TryPlayPredictedFireSfx(Vector3 pos)
+        {
+            if (!IsOwner)
+                return;
+
+            if (isHiddenQuickItem)
+                return;
+
+            if (!IsActive)
+                return;
+
+            if (def == null || def.fireSfx == null || !def.playLocalPredictedFireSfx)
+                return;
+
+            EnsureFireTimingInitialized();
+
+            uint now = TimeManager.Tick;
+
+            if (now < _nextLocalFireAudioTick)
+                return;
+
+            if (!ClientCanPlayPredictedFireSfx())
+                return;
+
+            _nextLocalFireAudioTick = now + _fireIntervalTicks;
+
+            float pitch = Random.Range(def.firePitchMin, def.firePitchMax);
+
+            WeaponAudioPool.PlayOneShot(
+                def.fireSfx,
+                pos,
+                def.fireVolume * def.localFireVolumeMultiplier,
+                pitch,
+                def.localFireSpatialBlend,
+                def.fireMinDistance,
+                def.fireMaxDistance);
+        }
+
+        protected virtual bool ClientCanPlayPredictedFireSfx()
+        {
+            if (def == null)
+                return false;
+
+            if (def.usesAmmo && _wm != null && _wm.ActiveAmmo < def.ammoPerShot)
+                return false;
+
+            return true;
+        }
+        
         #endregion
     }
 }

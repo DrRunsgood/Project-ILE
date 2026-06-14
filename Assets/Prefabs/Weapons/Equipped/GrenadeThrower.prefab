@@ -92,7 +92,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584268083753593102
+  _initializedTimestamp: -8584201425547930631
 --- !u!114 &4594633025322485925
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -109,7 +109,15 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 639587363853817222}
   _networkObjectCache: {fileID: 639587363853817222}
   def: {fileID: 11400000, guid: 44aceb61cf6796b498d775bc98420803, type: 2}
+  usePredictedInputFire: 1
   spawnOffset: 1.75
+  spawnSafetyRadiusOverride: -1
+  spawnBackoff: 0.02
+  spawnBlockMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  throwArcDegrees: 25
+  verticalArcDampingPower: 1
 --- !u!114 &-2521788501774271842
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,5 +1,6 @@
 // _Scripts/Weapons/Projectiles/BaseProjectile.cs
 using System.Collections.Generic;
+using FishNet;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Serializing;
@@ -35,10 +36,17 @@ public abstract class BaseProjectile : NetworkBehaviour
     protected Transform _shooterRoot;
     NetworkObject _shooterObj;
     protected Vector3 _velocity;
+    int _shooterClientId = -1;
+    bool _suppressSpawnFireAudio;
 
     /* ─── interpolation ------------------------------------------ */
     protected Vector3 _prev, _next;
     protected float _timer, _tickDt;
+    
+    /* ─── compression ------------------------------------------ */
+    
+    const float ProjectileSpeedQuantScale = 10f; // 0.1 m/s precision, max ~6553 m/s
+    const byte NoShooterClientId = byte.MaxValue;
 
     /* ─── helpers ------------------------------------------------ */
     protected readonly Collider[] _buf = new Collider[32];
@@ -52,13 +60,19 @@ public abstract class BaseProjectile : NetworkBehaviour
     public void Init(Vector3 pos, Vector3 vel, uint tick, NetworkObject shooter)
     {
         ClearIgnoredShooterCollisions();
+        
+        int shooterClientId = shooter != null && shooter.Owner.IsValid
+            ? shooter.Owner.ClientId
+            : -1;
 
-        ApplySpawnState(pos, vel, tick, shooter);
+        ApplySpawnState(pos, vel, tick, shooter, shooterClientId, false);
 
         IgnoreShooterCollisions(shooter);
     }
 
-    void ApplySpawnState(Vector3 pos, Vector3 vel, uint tick, NetworkObject shooter)
+    void ApplySpawnState(Vector3 pos, Vector3 vel, uint tick, NetworkObject shooter,
+        int shooterClientId,
+        bool playSpawnPresentation)
     {
         _shooterObj = shooter;
         _shooterRoot = shooter != null ? shooter.transform : null;
@@ -70,6 +84,11 @@ public abstract class BaseProjectile : NetworkBehaviour
         _velocity = vel;
         _despawning = false;
         _spawnStateApplied = true;
+        
+        _shooterClientId = shooterClientId;
+        _suppressSpawnFireAudio = IsLocalShooter(_shooterClientId) &&
+                                  def != null &&
+                                  def.playLocalPredictedFireSfx;
 
         gravAcc = def != null && def.gravityScale != 0f
             ? Physics.gravity * def.gravityScale
@@ -84,6 +103,9 @@ public abstract class BaseProjectile : NetworkBehaviour
 
         RestartTrails();
         StartBeamLinks(pos);
+        
+        if (playSpawnPresentation)
+            PlaySpawnFireAudio(pos);
     }
 
     /*
@@ -96,20 +118,26 @@ public abstract class BaseProjectile : NetworkBehaviour
         if (IsServer)
             return;
 
-        ApplySpawnState(pos, vel, tick, null);
+        ApplySpawnState(pos, vel, tick, null, -1, true);
     }
 
     #endregion
 
     #region Spawn Payload
-
+    
     public override void WritePayload(NetworkConnection connection, Writer writer)
     {
         base.WritePayload(connection, writer);
 
         writer.WriteVector3(_initPos);
-        writer.WriteVector3(_initVel);
+
+        EncodeProjectileVelocity(_initVel, out ushort yawQ, out ushort pitchQ, out ushort speedQ);
+        writer.WriteUInt16(yawQ);
+        writer.WriteUInt16(pitchQ);
+        writer.WriteUInt16(speedQ);
+
         writer.WriteUInt32(_spawnTick);
+        writer.WriteUInt8Unpacked(EncodeShooterClientId(_shooterClientId));
     }
 
     public override void ReadPayload(NetworkConnection connection, Reader reader)
@@ -117,12 +145,90 @@ public abstract class BaseProjectile : NetworkBehaviour
         base.ReadPayload(connection, reader);
 
         Vector3 pos = reader.ReadVector3();
-        Vector3 vel = reader.ReadVector3();
-        uint tick = reader.ReadUInt32();
 
-        ApplySpawnState(pos, vel, tick, null);
+        ushort yawQ = reader.ReadUInt16();
+        ushort pitchQ = reader.ReadUInt16();
+        ushort speedQ = reader.ReadUInt16();
+        Vector3 vel = DecodeProjectileVelocity(yawQ, pitchQ, speedQ);
+
+        uint tick = reader.ReadUInt32();
+        int shooterClientId = DecodeShooterClientId(reader.ReadUInt8Unpacked());
+        
+        ApplySpawnState(pos, vel, tick, null, shooterClientId, true);
+    }
+    
+    static void EncodeProjectileVelocity(Vector3 velocity, out ushort yawQ, out ushort pitchQ, out ushort speedQ)
+    {
+        float speed = velocity.magnitude;
+
+        if (speed <= 0.0001f)
+        {
+            yawQ = 0;
+            pitchQ = QuantizeProjectilePitch(0f);
+            speedQ = 0;
+            return;
+        }
+
+        Vector3 dir = velocity / speed;
+
+        float yawDeg = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
+        yawDeg = (yawDeg + 360f) % 360f;
+
+        float pitchDeg = Mathf.Asin(Mathf.Clamp(dir.y, -1f, 1f)) * Mathf.Rad2Deg;
+
+        yawQ = (ushort)Mathf.Clamp(Mathf.RoundToInt(yawDeg * (65535f / 360f)), 0, 65535);
+
+        pitchQ = QuantizeProjectilePitch(pitchDeg);
+
+        speedQ = (ushort)Mathf.Clamp(Mathf.RoundToInt(speed * ProjectileSpeedQuantScale), 0, 65535);
     }
 
+    static Vector3 DecodeProjectileVelocity(ushort yawQ, ushort pitchQ, ushort speedQ)
+    {
+        float speed = speedQ / ProjectileSpeedQuantScale;
+
+        if (speed <= 0.0001f)
+            return Vector3.zero;
+
+        float yawRad = yawQ * (360f / 65535f) * Mathf.Deg2Rad;
+        float pitchRad = DequantizeProjectilePitch(pitchQ) * Mathf.Deg2Rad;
+
+        float cosPitch = Mathf.Cos(pitchRad);
+
+        Vector3 dir = new Vector3(Mathf.Sin(yawRad) * cosPitch, Mathf.Sin(pitchRad), Mathf.Cos(yawRad) * cosPitch);
+
+        return dir * speed;
+    }
+
+    static ushort QuantizeProjectilePitch(float pitchDeg)
+    {
+        float n = Mathf.InverseLerp(-90f, 90f, Mathf.Clamp(pitchDeg, -90f, 90f));
+
+        return (ushort)Mathf.Clamp(Mathf.RoundToInt(n * 65535f), 0, 65535);
+    }
+
+    static float DequantizeProjectilePitch(ushort pitchQ)
+    {
+        float n = pitchQ / 65535f;
+        return Mathf.Lerp(-90f, 90f, n);
+    }
+
+    static byte EncodeShooterClientId(int clientId)
+    {
+        // 0–254 = valid shooter id
+        // 255   = no shooter / invalid / too large
+        if (clientId < 0 || clientId >= NoShooterClientId)
+            return NoShooterClientId;
+
+        return (byte)clientId;
+    }
+
+    static int DecodeShooterClientId(byte encoded)
+    {
+        return encoded == NoShooterClientId
+            ? -1
+            : encoded;
+    }
     #endregion
 
     #region Unity / FishNet Lifecycle
@@ -591,7 +697,7 @@ public abstract class BaseProjectile : NetworkBehaviour
 
     #endregion
 
-    #region Visual / Interpolation Helpers
+    #region Visual / Audio / Interpolation Helpers
 
     protected void ApplyVelocityRotation(Vector3 vel)
     {
@@ -685,6 +791,38 @@ public abstract class BaseProjectile : NetworkBehaviour
 
             beam.ResetBeam();
         }
+    }
+    
+    bool IsLocalShooter(int shooterClientId)
+    {
+        if (shooterClientId < 0)
+            return false;
+
+        if (InstanceFinder.ClientManager == null ||
+            InstanceFinder.ClientManager.Connection == null)
+            return false;
+
+        return InstanceFinder.ClientManager.Connection.ClientId == shooterClientId;
+    }
+
+    void PlaySpawnFireAudio(Vector3 pos)
+    {
+        if (_suppressSpawnFireAudio)
+            return;
+
+        if (def == null || def.fireSfx == null)
+            return;
+
+        float pitch = Random.Range(def.firePitchMin, def.firePitchMax);
+
+        WeaponAudioPool.PlayOneShot(
+            def.fireSfx,
+            pos,
+            def.fireVolume,
+            pitch,
+            def.fireSpatialBlend,
+            def.fireMinDistance,
+            def.fireMaxDistance);
     }
 
     #endregion
