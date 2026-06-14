@@ -25,6 +25,10 @@ namespace _Scripts.Data
         [Header("Weapon Info")]
         public string displayName   = "Rocket-Launcher";
         [Min(0.01f)] public float fireRate      = 1f;   // shots / second
+        
+        [Header("Handling")]
+        [Tooltip("Delay after switching to this weapon before it may fire.")]
+        [Min(0f)] public float equipFireDelaySeconds = 0.20f;
 
         [Header("Energy weapon")]
         public float energyPerShot = 4f;  // cost in “energy units”

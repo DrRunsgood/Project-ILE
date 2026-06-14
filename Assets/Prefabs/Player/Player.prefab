@@ -22,6 +22,7 @@ GameObject:
   - component: {fileID: -5001881930451287172}
   - component: {fileID: 4467132549693816983}
   - component: {fileID: 3370746286946904150}
+  - component: {fileID: 8377303944074814623}
   m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
@@ -100,6 +101,9 @@ MonoBehaviour:
   - {fileID: 7031928564848404723}
   - {fileID: -6653470587612458186}
   - {fileID: -2565893807731604051}
+  - {fileID: -5001881930451287172}
+  - {fileID: 3370746286946904150}
+  - {fileID: 3289860153973179968}
   - {fileID: 759703639484445222}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
@@ -111,7 +115,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584225665024559390
+  _initializedTimestamp: -8584201381195413345
 --- !u!54 &7001912800235990901
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -369,9 +373,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fdde88d33acc10418bacdff07ddc757, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerStats
-  _componentIndexCache: 255
+  _componentIndexCache: 7
   _addedNetworkObject: {fileID: 6832439599154668905}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 6832439599154668905}
 --- !u!114 &4467132549693816983
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -397,10 +401,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0fd1774f37bcd044588155f60f6db247, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FlagCarrier
-  _componentIndexCache: 255
+  _componentIndexCache: 8
   _addedNetworkObject: {fileID: 6832439599154668905}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 6832439599154668905}
   carryAnchor: {fileID: 7098417995176220013}
+--- !u!114 &8377303944074814623
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246683354149957449}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e90b483a2a6bfd4f9ca4091839677f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerCombatFeedback
 --- !u!1 &1658271619301096103
 GameObject:
   m_ObjectHideFlags: 0
@@ -445,9 +461,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Transforming.Beta.NetworkTickSmoother
-  _componentIndexCache: 255
+  _componentIndexCache: 9
   _addedNetworkObject: {fileID: 6832439599154668905}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:
     TargetTransform: {fileID: 5541322204877821614}
     DetachOnStart: 1
@@ -947,7 +963,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 7
+  _componentIndexCache: 10
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:

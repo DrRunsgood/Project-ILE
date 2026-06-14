@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   displayName: Grenade Launcher
   fireRate: 1
+  equipFireDelaySeconds: 0.5
   energyPerShot: 4
   requiresEnergyPack: 0
   usesAmmo: 1

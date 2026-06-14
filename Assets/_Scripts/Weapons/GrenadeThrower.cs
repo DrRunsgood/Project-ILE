@@ -80,11 +80,7 @@ namespace _Scripts.Weapons
             if (arcRadians <= 0.0001f)
                 return aimDir;
 
-            return Vector3.RotateTowards(
-                aimDir,
-                Vector3.up,
-                arcRadians,
-                0f).normalized;
+            return Vector3.RotateTowards(aimDir,Vector3.up, arcRadians, 0f).normalized;
         }
 
         protected override bool ServerCanConsume() => true;

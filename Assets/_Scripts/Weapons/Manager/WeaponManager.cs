@@ -63,12 +63,14 @@ namespace _Scripts.Weapons
 
         readonly List<WeaponInstance> _weapons = new();
         readonly Dictionary<NetworkObject, GameObject> _fpViews = new();
-
         readonly SyncVar<NetworkObject> _activeNob = new(null);
         readonly SyncVar<int> _activeAmmo = new(0);
         readonly SyncVar<int> _activeMaxAmmo = new(0);
 
         InputHandler _ih;
+        
+        uint _serverActiveWeaponReadyTick;
+        uint _localActiveWeaponReadyTick;
 
         #endregion
 
@@ -92,17 +94,7 @@ namespace _Scripts.Weapons
             base.OnStartServer();
             GiveDefaultQuickItems();
         }
-
-        public override void OnStartClient()
-        {
-            base.OnStartClient();
-
-            if (!IsOwner)
-                return;
-        }
         
-        
-
         public override void OnSpawnServer(NetworkConnection conn)
         {
             base.OnSpawnServer(conn);
@@ -127,6 +119,9 @@ namespace _Scripts.Weapons
         void OnActiveWeaponChanged(NetworkObject prev, NetworkObject next, bool asServer)
         {
             RefreshActive();
+            
+            if (IsOwner)
+                _localActiveWeaponReadyTick = CalculateWeaponReadyTick(next);
         }
 
         #endregion
@@ -137,6 +132,9 @@ namespace _Scripts.Weapons
         public void Server_ProcessFireInput(InputButtons held, FirePose pose)
         {
             if ((held & InputButtons.Fire) == 0)
+                return;
+            
+            if (TimeManager.Tick < _serverActiveWeaponReadyTick)
                 return;
 
             NetworkObject active = _activeNob.Value;
@@ -518,7 +516,13 @@ namespace _Scripts.Weapons
         [Server]
         void SetActiveWeapon(NetworkObject nob)
         {
+            bool changed = _activeNob.Value != nob;
+
             _activeNob.Value = nob;
+
+            if (changed)
+                _serverActiveWeaponReadyTick = CalculateWeaponReadyTick(nob);
+
             UpdateActiveAmmoSync();
         }
 
@@ -757,6 +761,41 @@ namespace _Scripts.Weapons
                     _pw.IsActive = active;
             }
         }
+        
+        WeaponDefinition GetDefinition(NetworkObject nob)
+        {
+            if (nob == null)
+                return null;
+
+            WeaponInstance inst = _weapons.Find(w => w.NetworkObj == nob);
+
+            if (inst != null && inst.Def != null)
+                return inst.Def;
+
+            return nob.TryGetComponent(out ProjectileWeapon pw)
+                ? pw.Definition
+                : null;
+        }
+
+        uint CalculateWeaponReadyTick(NetworkObject nob)
+        {
+            if (TimeManager == null || nob == null)
+                return 0;
+
+            WeaponDefinition def = GetDefinition(nob);
+            float delay = def != null ? Mathf.Max(0f, def.equipFireDelaySeconds) : 0f;
+
+            if (delay <= 0f)
+                return TimeManager.Tick;
+
+            float tickDelta = (float)TimeManager.TickDelta;
+
+            uint delayTicks = (uint)Mathf.Max(
+                1,
+                Mathf.CeilToInt(delay / tickDelta));
+
+            return TimeManager.Tick + delayTicks;
+        }
 
         #endregion
         
@@ -802,6 +841,9 @@ namespace _Scripts.Weapons
                 return;
 
             if ((_ih.HeldButtons & InputButtons.Fire) == 0)
+                return;
+            
+            if (TimeManager.Tick < _localActiveWeaponReadyTick)
                 return;
 
             NetworkObject active = _activeNob.Value;

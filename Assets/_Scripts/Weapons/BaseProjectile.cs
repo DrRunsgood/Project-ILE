@@ -600,11 +600,29 @@ public abstract class BaseProjectile : NetworkBehaviour
 
         int dmg = Mathf.Max(1, Mathf.RoundToInt(def.damage * power));
         hp.ApplyDamage(dmg, _shooterObj);
+        NotifyShooterHitMarker(root);
 
         if (def.knockbackForce > 0f)
             ctrl.ReceiveKnockback(impulse);
 
         return true;
+    }
+    
+    [Server]
+    void NotifyShooterHitMarker(Transform victimRoot)
+    {
+        if (_shooterObj == null)
+            return;
+
+        if (victimRoot != null &&
+            victimRoot.TryGetComponent(out NetworkObject victimNob) &&
+            victimNob == _shooterObj)
+        {
+            return; // no self-hit marker
+        }
+
+        if (_shooterObj.TryGetComponent(out _Scripts.Player.PlayerCombatFeedback feedback))
+            feedback.ServerNotifyHitMarker();
     }
 
     protected Vector3 CalculateExplosionImpulse(Collider col, Vector3 centre, Vector3 shotDir, out float power)

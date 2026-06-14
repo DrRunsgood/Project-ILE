@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   displayName: HandGrenade
   fireRate: 1
+  equipFireDelaySeconds: 0
   energyPerShot: 0
   requiresEnergyPack: 0
   usesAmmo: 0
@@ -47,7 +48,23 @@ MonoBehaviour:
   fpViewPrefab: {fileID: 0}
   heldPrefab: {fileID: 639587363853817222, guid: 3fcd229340db00e48a4ef45b8780c4d7, type: 3}
   groundPrefab: {fileID: 3947490525665947623, guid: 8336f5f7fab076249b2ce8c5a25b48c4, type: 3}
-  muzzleVFX: {fileID: 0}
-  impactVFX: {fileID: 0}
-  fireSFX: {fileID: 0}
+  impactVfxKey: VFX/RocketExplosion
+  impactVfxLifetime: 2.5
+  spawnImpactVfx: 1
+  fireSfx: {fileID: 0}
+  fireVolume: 1
+  firePitchMin: 0.96
+  firePitchMax: 1.04
+  fireSpatialBlend: 1
+  fireMinDistance: 3
+  fireMaxDistance: 80
+  playLocalPredictedFireSfx: 1
+  localFireSpatialBlend: 0
+  localFireVolumeMultiplier: 1
+  impactSfx: {fileID: 0}
+  impactVolume: 1
+  impactPitchMin: 0.95
+  impactPitchMax: 1.05
+  impactMinDistance: 4
+  impactMaxDistance: 100
   hiddenQuickItem: 1
