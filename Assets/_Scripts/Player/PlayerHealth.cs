@@ -21,6 +21,7 @@ public sealed class PlayerHealth : NetworkBehaviour
     public int  Current => _hp.Value;
     public int  Max     => maxHp;
     public bool IsDead  => _hp.Value == 0;
+    public bool IsAlive => !IsDead && _hp.Value > 0;
     
     public bool CanPickup => !IsDead;
 
@@ -67,18 +68,24 @@ public sealed class PlayerHealth : NetworkBehaviour
     /* ═════════════════════════ */
 
     #region Server-side API
-    [Server] public void ApplyDamage(int dmg, NetworkObject instigator = null)
+    [Server]
+    public bool ApplyDamage(int dmg, NetworkObject instigator = null)
     {
-        if (IsDead || dmg <= 0) return;
-        
-        // Check for shield absorb
+        if (IsDead || dmg <= 0)
+            return false;
+
         if (ctrl != null)
-            dmg = ctrl.AbsorbDamageWithShield(dmg);  // may return 0
-        if (dmg <= 0) return;                        // all soaked; early-out
-        
+            dmg = ctrl.AbsorbDamageWithShield(dmg);
+
+        if (dmg <= 0)
+            return false;
+
         _hp.Value = Mathf.Max(_hp.Value - dmg, 0);
+
         if (_hp.Value == 0)
             HandleDeath(instigator);
+
+        return true;
     }
 
     [Server] public void ApplyHeal(int amount) =>
@@ -126,7 +133,8 @@ public sealed class PlayerHealth : NetworkBehaviour
         pm?.Server_Drop();
 
         // Hide player / disable hitboxes.
-        RpcSetAlive(false);
+        ApplyAliveState(false); // server-side physics/hitboxes
+        RpcSetAlive(false);     // clients/observers
 
         // Later: play death explosion/VFX here.
         // RpcPlayDeathFx(transform.position);
@@ -171,7 +179,8 @@ public sealed class PlayerHealth : NetworkBehaviour
         _hp.Value = maxHp;
 
         SetPlayable(true);
-        RpcSetAlive(true);
+        ApplyAliveState(true); // server-side physics/hitboxes
+        RpcSetAlive(true);     // clients/observers
 
         GameModeManager.Instance?.NotifyPlayerRespawned(this);
         OnRespawned?.Invoke();
@@ -209,17 +218,31 @@ public sealed class PlayerHealth : NetworkBehaviour
 
         // colliders handled in RpcSetAlive for everyone
     }
+    
+    void ApplyAliveState(bool alive)
+    {
+        foreach (Renderer r in rends)
+        {
+            if (r)
+                r.enabled = alive;
+        }
+
+        foreach (Collider c in cols)
+        {
+            if (c)
+                c.enabled = alive;
+        }
+    }
 
     /* ---------- one tiny RPC toggles visuals & hitboxes everywhere ---------- */
     [ObserversRpc(BufferLast = false, ExcludeOwner = false)]
     void RpcSetAlive(bool alive)
     {
-        foreach (var r in rends) r.enabled = alive;
-        foreach (var c in cols)  c.enabled = alive;
-        
+        ApplyAliveState(alive);
+
         if (IsOwner)
         {
-            FpsCameraFollow cam = FindFirstObjectByType<FpsCameraFollow>();
+            FpsCameraFollow cam = FindAnyObjectByType<FpsCameraFollow>();
             if (cam != null)
                 cam.SetTargetAlive(alive);
         }

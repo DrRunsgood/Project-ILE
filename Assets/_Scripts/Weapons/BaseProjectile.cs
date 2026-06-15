@@ -596,11 +596,14 @@ public abstract class BaseProjectile : NetworkBehaviour
             !root.TryGetComponent(out PlayerHealth hp))
             return false;
 
+        if (!hp.IsAlive)
+            return false;
+
         Vector3 impulse = CalculateExplosionImpulse(col, centre, shotDir, out float power);
 
         int dmg = Mathf.Max(1, Mathf.RoundToInt(def.damage * power));
-        hp.ApplyDamage(dmg, _shooterObj);
-        NotifyShooterHitMarker(root);
+        if (hp.ApplyDamage(dmg, _shooterObj))
+            NotifyShooterHitMarker(root);
 
         if (def.knockbackForce > 0f)
             ctrl.ReceiveKnockback(impulse);

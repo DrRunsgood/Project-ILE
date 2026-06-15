@@ -8,6 +8,9 @@ namespace _Scripts.UI.HUD
         public static HitMarkerUI Instance { get; private set; }
 
         [Header("Shape")]
+        [SerializeField] Color bodyColor = new Color(1f, 0.9f, 0.15f, 1f);
+        [SerializeField] Color outlineColor = Color.black;
+        [SerializeField] float outlineThickness = 1.5f;
         [SerializeField] float lineLength = 14f;
         [SerializeField] float lineThickness = 2f;
         [SerializeField] float centerGap = 8f;
@@ -106,6 +109,31 @@ namespace _Scripts.UI.HUD
 
         void CreateLine(string name, Vector2 pos, float rotation)
         {
+            CreateLineImage(
+                name + "_Outline",
+                pos,
+                rotation,
+                lineLength + outlineThickness * 2f,
+                lineThickness + outlineThickness * 2f,
+                outlineColor);
+
+            CreateLineImage(
+                name + "_Body",
+                pos,
+                rotation,
+                lineLength,
+                lineThickness,
+                bodyColor);
+        }
+
+        void CreateLineImage(
+            string name,
+            Vector2 pos,
+            float rotation,
+            float length,
+            float thickness,
+            Color color)
+        {
             GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
             go.transform.SetParent(_root, false);
 
@@ -114,12 +142,12 @@ namespace _Scripts.UI.HUD
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos;
-            rt.sizeDelta = new Vector2(lineLength, lineThickness);
+            rt.sizeDelta = new Vector2(length, thickness);
             rt.localRotation = Quaternion.Euler(0f, 0f, rotation);
 
             Image img = go.GetComponent<Image>();
             img.raycastTarget = false;
-            img.color = Color.white;
+            img.color = color;
             img.sprite = GetWhiteSprite();
         }
 
