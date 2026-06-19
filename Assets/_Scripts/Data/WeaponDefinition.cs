@@ -1,6 +1,7 @@
 // _Scripts/Data/WeaponDefinition.cs
 using UnityEngine;
 using FishNet.Object;                       // NetworkObject
+using _Scripts.Combat;
 
 namespace _Scripts.Data
 {
@@ -22,9 +23,20 @@ namespace _Scripts.Data
     public class WeaponDefinition : ScriptableObject
     {
     /* ───────── General ───────── */
+        [Header("Damage Metadata")]
+        [Tooltip("Compact weapon id for damage events, kill feed, and HUD lookup. Keep stable once assigned.")]
+        public byte weaponId = 0;
+
+        [Tooltip("Damage classification used by the damage pipeline, kill feed, and future stats.")]
+        public DamageType damageType = DamageType.Explosion;
+    
         [Header("Weapon Info")]
         public string displayName   = "Rocket-Launcher";
         [Min(0.01f)] public float fireRate      = 1f;   // shots / second
+        
+        [Header("Kill Feed")]
+        [Tooltip("Display name used by kill feed and combat messages.")]
+        public string killFeedName = "";
         
         [Header("Handling")]
         [Tooltip("Delay after switching to this weapon before it may fire.")]

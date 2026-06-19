@@ -3,6 +3,9 @@ using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Game.Teams;
 using _Scripts.Game.CTF;
+using _Scripts.Combat;
+using _Scripts.Player;
+using _Scripts.UI.HUD;
 
 namespace _Scripts.Game
 {
@@ -32,6 +35,9 @@ namespace _Scripts.Game
 
         [Header("Mode")]
         [SerializeField] GameModeType startingMode = GameModeType.Deathmatch;
+        
+        [Header("Rules")]
+        [SerializeField] bool allowTeamDamage = true;
 
         [Header("Timing")]
         [SerializeField] float warmupSeconds = 5f;
@@ -48,7 +54,7 @@ namespace _Scripts.Game
         [Header("CTF")]
         [SerializeField] int captureLimit = 5;
         [SerializeField] float ctfRespawnDelay = 5f;
-
+        
         #endregion
 
         #region SyncVars / Public State
@@ -70,6 +76,8 @@ namespace _Scripts.Game
         public int TeamBScore => _teamBScore.Value;
 
         public bool IsLive => _state.Value == MatchState.Live;
+        
+        public bool AllowTeamDamage => allowTeamDamage;
 
         #endregion
 
@@ -446,6 +454,25 @@ namespace _Scripts.Game
                 EndMatch();
             }
         }
+        
+        [Server]
+        void HandleDeathmatchDeath(PlayerHealth victim, DamageResult result)
+        {
+            if (_state.Value != MatchState.Live)
+                return;
+
+            RecordKillDeath(victim, result);
+
+            NetworkObject killer = result.Attacker;
+
+            if (killer != null &&
+                killer != victim.NetworkObject &&
+                killer.TryGetComponent(out Player.PlayerStats killerStats) &&
+                killerStats.Kills >= killLimit)
+            {
+                EndMatch();
+            }
+        }
 
         #endregion
         
@@ -494,7 +521,7 @@ namespace _Scripts.Game
         #endregion
 
         #region Player Death / Respawn Rules
-
+        
         [Server]
         public void NotifyPlayerDied(PlayerHealth victim, NetworkObject killer)
         {
@@ -518,6 +545,33 @@ namespace _Scripts.Game
                 case GameModeType.CTF:
                     if (_state.Value == MatchState.Live || _state.Value == MatchState.Warmup)
                         RecordKillDeath(victim, killer);
+                    break;
+            }
+        }
+
+        [Server]
+        public void NotifyPlayerDied(PlayerHealth victim, DamageResult result)
+        {
+            if (victim == null)
+                return;
+
+            switch (_mode.Value)
+            {
+                case GameModeType.Deathmatch:
+                    HandleDeathmatchDeath(victim, result);
+                    break;
+
+                case GameModeType.Arena:
+                    if (_state.Value == MatchState.Live)
+                    {
+                        RecordKillDeath(victim, result);
+                        CheckArenaEliminationWin();
+                    }
+                    break;
+
+                case GameModeType.CTF:
+                    if (_state.Value == MatchState.Live || _state.Value == MatchState.Warmup)
+                        RecordKillDeath(victim, result);
                     break;
             }
         }
@@ -615,6 +669,13 @@ namespace _Scripts.Game
                 killerStats.AddKill();
             }
         }
+        
+        [Server]
+        void RecordKillDeath(PlayerHealth victim, DamageResult result)
+        {
+            RecordKillDeath(victim, result.Attacker);
+            BroadcastKillFeed(victim, result);
+        }
 
         [Server]
         void ResetAllPlayerStats()
@@ -689,6 +750,69 @@ namespace _Scripts.Game
             return (float)TimeManager.TicksToTime(end - now);
         }
 
+        #endregion
+
+        #region Kill Feed
+        
+        [ObserversRpc(BufferLast = false)]
+        private void RpcShowKillFeed(string killerName, string victimName, string sourceText, bool isSelfKill, bool isEnvironmental)
+        {
+            UI.HUD.KillFeedUI.Instance?.Push(killerName, victimName, sourceText, isSelfKill, isEnvironmental);
+        }
+        
+        [Server]
+        void BroadcastKillFeed(PlayerHealth victim, DamageResult result)
+        {
+            if (victim == null)
+                return;
+
+            string victimName = GetPlayerDisplayName(victim.NetworkObject);
+            string killerName = GetPlayerDisplayName(result.Attacker);
+
+            bool isSelfKill =
+                result.Attacker != null &&
+                victim.NetworkObject != null &&
+                result.Attacker == victim.NetworkObject;
+
+            bool isEnvironmental =
+                result.Attacker == null ||
+                result.Type == DamageType.Environment ||
+                result.Type == DamageType.Impact;
+
+            string sourceText = GetDamageSourceText(result);
+
+            RpcShowKillFeed(
+                killerName,
+                victimName,
+                sourceText,
+                isSelfKill,
+                isEnvironmental);
+        }
+        
+        static string GetPlayerDisplayName(NetworkObject nob)
+        {
+            if (nob == null)
+                return "Unknown";
+
+            if (nob.TryGetComponent(out PlayerIdentity identity))
+                return identity.DisplayName;
+
+            return nob.name;
+        }
+        
+        static string GetDamageSourceText(DamageResult result)
+        {
+            return result.Type switch
+            {
+                DamageType.Projectile => "projectile",
+                DamageType.Explosion => "explosion",
+                DamageType.Impact => "impact",
+                DamageType.Environment => "environment",
+                DamageType.Self => "self",
+                _ => "eliminated"
+            };
+        }
+        
         #endregion
     }
 }

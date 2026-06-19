@@ -8,6 +8,7 @@ using UnityEngine;
 using _Scripts.Data;
 using _Scripts.Player;
 using _Scripts.Game.CTF;
+using _Scripts.Combat;
 
 [RequireComponent(typeof(Rigidbody))]
 public abstract class BaseProjectile : NetworkBehaviour
@@ -602,13 +603,26 @@ public abstract class BaseProjectile : NetworkBehaviour
         Vector3 impulse = CalculateExplosionImpulse(col, centre, shotDir, out float power);
 
         int dmg = Mathf.Max(1, Mathf.RoundToInt(def.damage * power));
-        if (hp.ApplyDamage(dmg, _shooterObj))
+
+        Vector3 hitPoint = col.ClosestPoint(centre);
+        Vector3 normal = shotDir.sqrMagnitude > 0.0001f ? -shotDir.normalized : Vector3.up;
+
+        DamageType damageType = def != null ? def.damageType : DamageType.Explosion;
+
+        byte weaponId = def != null ? def.weaponId : (byte)0;
+
+        var info = new DamageInfo(amount: dmg, attacker: _shooterObj, source: NetworkObject, type: damageType,
+            point: hitPoint, normal: normal, impulse: impulse, weaponId: weaponId);
+
+        DamageResult result = hp.ApplyDamage(info);
+
+        if (result.ShouldShowHitMarker)
             NotifyShooterHitMarker(root);
 
         if (def.knockbackForce > 0f)
             ctrl.ReceiveKnockback(impulse);
 
-        return true;
+        return result.Applied;
     }
     
     [Server]

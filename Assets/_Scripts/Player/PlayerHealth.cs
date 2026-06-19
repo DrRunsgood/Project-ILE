@@ -9,6 +9,7 @@ using _Scripts.Player;    // AdvancedPredictedController
 using _Scripts.Weapons;   // WeaponManager
 using _Scripts.Packs;
 using _Scripts.Game.CTF;
+using _Scripts.Combat;
 
 [DisallowMultipleComponent]
 public sealed class PlayerHealth : NetworkBehaviour
@@ -71,21 +72,88 @@ public sealed class PlayerHealth : NetworkBehaviour
     [Server]
     public bool ApplyDamage(int dmg, NetworkObject instigator = null)
     {
-        if (IsDead || dmg <= 0)
-            return false;
+        var info = new DamageInfo(
+            amount: dmg,
+            attacker: instigator,
+            source: instigator,
+            type: DamageType.Unknown,
+            point: transform.position,
+            normal: Vector3.up,
+            impulse: Vector3.zero);
+
+        return ApplyDamage(info).Applied;
+    }
+
+    [Server]
+    public DamageResult ApplyDamage(in DamageInfo info)
+    {
+        int before = _hp.Value;
+
+        if (IsDead)
+            return DamageResult.Rejected(info, NetworkObject, before, DamageRejectReason.TargetDead);
+
+        if (info.Amount <= 0)
+            return DamageResult.Rejected(info, NetworkObject, before, DamageRejectReason.NonPositiveDamage);
+
+        bool isSelfDamage =
+            info.Attacker != null &&
+            NetworkObject != null &&
+            info.Attacker == NetworkObject;
+
+        if (!isSelfDamage && GameModeManager.Instance != null && !GameModeManager.Instance.AllowTeamDamage
+            && IsSameTeam(info.Attacker, NetworkObject))
+        {
+            return DamageResult.Rejected(info, NetworkObject, before, DamageRejectReason.BlockedByGameRules);
+        }
+
+        int rawDamage = info.Amount;
+        int finalDamage = rawDamage;
 
         if (ctrl != null)
-            dmg = ctrl.AbsorbDamageWithShield(dmg);
+            finalDamage = ctrl.AbsorbDamageWithShield(rawDamage);
 
-        if (dmg <= 0)
-            return false;
+        int shieldAbsorbed = rawDamage - finalDamage;
 
-        _hp.Value = Mathf.Max(_hp.Value - dmg, 0);
+        if (finalDamage <= 0)
+        {
+            return new DamageResult(
+                applied: false,
+                killed: false,
+                rawDamage: rawDamage,
+                finalDamage: 0,
+                shieldAbsorbed: shieldAbsorbed,
+                healthBefore: before,
+                healthAfter: before,
+                attacker: info.Attacker,
+                victim: NetworkObject,
+                type: info.Type,
+                weaponId: info.WeaponId,
+                rejectReason: DamageRejectReason.FullyAbsorbed);
+        }
 
-        if (_hp.Value == 0)
-            HandleDeath(instigator);
+        int after = Mathf.Max(before - finalDamage, 0);
+        _hp.Value = after;
 
-        return true;
+        bool killed = after == 0;
+
+        var result = new DamageResult(
+            applied: true,
+            killed: killed,
+            rawDamage: rawDamage,
+            finalDamage: finalDamage,
+            shieldAbsorbed: shieldAbsorbed,
+            healthBefore: before,
+            healthAfter: after,
+            attacker: info.Attacker,
+            victim: NetworkObject,
+            type: info.Type,
+            weaponId: info.WeaponId,
+            rejectReason: DamageRejectReason.None);
+
+        if (killed)
+            HandleDeath(info.Attacker, result);
+
+        return result;
     }
 
     [Server] public void ApplyHeal(int amount) =>
@@ -121,27 +189,33 @@ public sealed class PlayerHealth : NetworkBehaviour
     }
 
     /* ─── death ───────────────── */
-    [Server] void HandleDeath(NetworkObject killer)
+    [Server]
+    void HandleDeath(NetworkObject killer)
     {
-        // Stop gameplay control, but do not freeze/stutter physics manually.
+        HandleDeath(killer, default);
+    }
+
+    [Server]
+    void HandleDeath(NetworkObject killer, DamageResult result)
+    {
         SetPlayable(false);
 
         Debug.Log($"[PlayerHealth] {name} died. Checking for carried flag.");
-        GetComponent<FlagCarrier>()?.Server_DropCarriedFlagOnDeath(); // Drop flag if carrier
-        // Drop held weapons and pack.
+
+        GetComponent<FlagCarrier>()?.Server_DropCarriedFlagOnDeath();
+
         wm?.DropAll();
         pm?.Server_Drop();
 
-        // Hide player / disable hitboxes.
-        ApplyAliveState(false); // server-side physics/hitboxes
-        RpcSetAlive(false);     // clients/observers
-
-        // Later: play death explosion/VFX here.
-        // RpcPlayDeathFx(transform.position);
+        ApplyAliveState(false);
+        RpcSetAlive(false);
 
         OnDied?.Invoke();
 
-        GameModeManager.Instance?.NotifyPlayerDied(this, killer);
+        if (result.Victim != null)
+            GameModeManager.Instance?.NotifyPlayerDied(this, result);
+        else
+            GameModeManager.Instance?.NotifyPlayerDied(this, killer);
 
         float delay = GameModeManager.Instance != null
             ? GameModeManager.Instance.GetRespawnDelay(this)
@@ -232,6 +306,26 @@ public sealed class PlayerHealth : NetworkBehaviour
             if (c)
                 c.enabled = alive;
         }
+    }
+    
+    bool IsSameTeam(NetworkObject attacker, NetworkObject victim)
+    {
+        if (attacker == null || victim == null)
+            return false;
+
+        if (!attacker.TryGetComponent(out PlayerIdentity attackerIdentity))
+            return false;
+
+        if (!victim.TryGetComponent(out PlayerIdentity victimIdentity))
+            return false;
+
+        if (attackerIdentity.Team == _Scripts.Game.Teams.TeamId.None ||
+            victimIdentity.Team == _Scripts.Game.Teams.TeamId.None)
+        {
+            return false;
+        }
+
+        return attackerIdentity.Team == victimIdentity.Team;
     }
 
     /* ---------- one tiny RPC toggles visuals & hitboxes everywhere ---------- */

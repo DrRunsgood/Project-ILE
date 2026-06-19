@@ -35,16 +35,24 @@ namespace _Scripts.Player
         void Awake()
         {
             _team.OnChange += OnTeamChanged;
+            _displayName.OnChange += OnDisplayNameChanged;
         }
 
         void OnDestroy()
         {
             _team.OnChange -= OnTeamChanged;
+            _displayName.OnChange -= OnDisplayNameChanged;
         }
 
         void OnTeamChanged(TeamId prev, TeamId next, bool asServer)
         {
             Debug.Log($"[PlayerIdentity] {name} team changed: {prev} -> {next}");
+        }
+        
+        void OnDisplayNameChanged(string prev, string next, bool asServer)
+        {
+            if (!string.IsNullOrWhiteSpace(next))
+                gameObject.name = next;
         }
 
         [Server]
@@ -56,6 +64,14 @@ namespace _Scripts.Player
         [Server]
         public void ServerSetDisplayName(string value)
         {
+            if (string.IsNullOrWhiteSpace(value))
+                value = "Player";
+
+            value = value.Trim();
+
+            if (value.Length > 24)
+                value = value.Substring(0, 24);
+
             _displayName.Value = value;
             gameObject.name = value;
         }
