@@ -12,8 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: df35101616fced345bd415aa95240daa, type: 3}
   m_Name: HandGrenade
   m_EditorClassIdentifier: 
+  weaponId: 0
+  damageType: 2
   displayName: HandGrenade
   fireRate: 1
+  killFeedName: 
   equipFireDelaySeconds: 0
   energyPerShot: 0
   requiresEnergyPack: 0
@@ -27,6 +30,11 @@ MonoBehaviour:
   velocityInheritance: 0.5
   gravityScale: 1
   lifeTime: 1.5
+  convergenceMode: 0
+  convergenceDistance: 50
+  aimMask:
+    serializedVersion: 2
+    m_Bits: 0
   castMode: 0
   castRadius: 0.5
   castHalf: 0.4

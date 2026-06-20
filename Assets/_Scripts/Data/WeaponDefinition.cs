@@ -17,6 +17,13 @@ namespace _Scripts.Data
         Rocket,
         Special
     }
+    
+    public enum ConvergenceMode : byte
+    {
+        SimpleRaycast = 0,
+        FixedDistance = 1,
+        RaycastClamped = 2
+    }
 
     [CreateAssetMenu(menuName = "Weapons/Weapon Definition",
                      fileName   = "NewWeapon")]
@@ -61,6 +68,17 @@ namespace _Scripts.Data
         [Range(0f,1f)] public float velocityInheritance = 0.7f;
         public float  gravityScale         = 0f;        // 0 = no gravity
         public float lifeTime       = 15f;              // projectile life
+        
+        /* ───────── Aim Convergence ───────── */
+        [Header("Aim Convergence")]
+        [Tooltip("How camera/crosshair aim is resolved for muzzle-fired projectiles.")]
+        public ConvergenceMode convergenceMode = ConvergenceMode.SimpleRaycast;
+
+        [Tooltip("Used as the max ray distance for SimpleRaycast, and as the aim distance for FixedDistance/no-hit shots.")]
+        [Min(1f)] public float convergenceDistance = 600f;
+
+        [Tooltip("Layers used by the camera/crosshair aim ray.")]
+        public LayerMask aimMask = ~0;
 
     /* ───────── Hit sweep (server) ───────── */
         [Header("Sweep primitive")]

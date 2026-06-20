@@ -12,8 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: df35101616fced345bd415aa95240daa, type: 3}
   m_Name: WeaponB
   m_EditorClassIdentifier: 
+  weaponId: 0
+  damageType: 2
   displayName: Grenade Launcher
   fireRate: 1
+  killFeedName: 
   equipFireDelaySeconds: 0.5
   energyPerShot: 4
   requiresEnergyPack: 0
@@ -27,6 +30,11 @@ MonoBehaviour:
   velocityInheritance: 0.7
   gravityScale: 1.5
   lifeTime: 15
+  convergenceMode: 0
+  convergenceDistance: 1500
+  aimMask:
+    serializedVersion: 2
+    m_Bits: 3136
   castMode: 0
   castRadius: 0.75
   castHalf: 0.4

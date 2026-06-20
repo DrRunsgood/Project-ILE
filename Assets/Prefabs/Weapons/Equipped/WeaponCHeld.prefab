@@ -96,7 +96,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 15
+  <PrefabId>k__BackingField: 17
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 11083455294055659731
   SceneId: 0
@@ -124,7 +124,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 1
-  _initializedTimestamp: -8584224658589752422
+  _initializedTimestamp: -8584196305246236305
 --- !u!114 &4438395089947966568
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -141,7 +141,9 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 4745445434944333998}
   _networkObjectCache: {fileID: 4745445434944333998}
   def: {fileID: 11400000, guid: a28c83aa53782194b80335f1df23e504, type: 2}
-  spawnOffset: 1.5
+  usePredictedInputFire: 1
+  spawnOffset: 0
+  firePoint: {fileID: 2426140324239721828}
   spawnSafetyRadiusOverride: -1
   spawnBackoff: 0.02
   spawnBlockMask:

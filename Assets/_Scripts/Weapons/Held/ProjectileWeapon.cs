@@ -21,7 +21,9 @@ namespace _Scripts.Weapons
 
         [Header("Spawn Settings")]
         [Tooltip("How far in front of the fire origin the projectile should appear.")]
-        [SerializeField] float spawnOffset = 1.5f;
+        [SerializeField] float spawnOffset = 0.25f;
+        [Tooltip("Optional muzzle/fire point. If empty, this weapon auto-finds a child named FirePoint.")]
+        [SerializeField] Transform firePoint;
 
         [Header("Spawn Safety")]
         [SerializeField] float spawnSafetyRadiusOverride = -1f;
@@ -55,6 +57,8 @@ namespace _Scripts.Weapons
         uint _fireIntervalTicks;
         uint _nextServerFireTick;  // authoritative server cooldown
         uint _nextLocalFireAudioTick;
+        
+        static readonly RaycastHit[] AimHits = new RaycastHit[16];
 
         #endregion
 
@@ -66,6 +70,46 @@ namespace _Scripts.Weapons
             _ih = ih;
             _shooterNO = wm != null ? wm.NetworkObject : null;
         }
+        
+        Transform GetFirePoint()
+        {
+            if (firePoint != null)
+                return firePoint;
+
+            Transform found = transform.Find("FirePoint");
+
+            if (found != null)
+            {
+                firePoint = found;
+                return firePoint;
+            }
+
+            Transform[] children = GetComponentsInChildren<Transform>(true);
+
+            for (int i = 0; i < children.Length; i++)
+            {
+                if (children[i] != null && children[i].name == "FirePoint")
+                {
+                    firePoint = children[i];
+                    return firePoint;
+                }
+            }
+
+            return transform;
+        }
+
+#if UNITY_EDITOR
+        void OnValidate()
+        {
+            if (firePoint == null)
+            {
+                Transform found = transform.Find("FirePoint");
+
+                if (found != null)
+                    firePoint = found;
+            }
+        }
+#endif
 
         #endregion
 
@@ -130,11 +174,18 @@ namespace _Scripts.Weapons
 
             EnsureFireTimingInitialized();
 
-            Vector3 fireDir = GetSafeDirection(pose.Direction, transform.forward);
-            Vector3 shooterVelocity = pose.Velocity;
-            Vector3 shotOrigin = pose.Position;
+            Vector3 viewOrigin = pose.Position;
+            Vector3 viewDir = GetSafeDirection(pose.Direction, transform.forward);
 
-            return Server_TrySpawnProjectile(shotOrigin, fireDir, shooterVelocity);
+            Transform muzzle = GetFirePoint();
+            Vector3 muzzleOrigin = muzzle != null ? muzzle.position : viewOrigin;
+
+            Vector3 aimPoint = ResolveAimPoint(viewOrigin, viewDir);
+            Vector3 fireDir = GetSafeDirection(aimPoint - muzzleOrigin, viewDir);
+
+            Vector3 shooterVelocity = pose.Velocity;
+
+            return Server_TrySpawnProjectile(muzzleOrigin, fireDir, shooterVelocity);
         }
 
         #endregion
@@ -373,6 +424,103 @@ namespace _Scripts.Weapons
         protected virtual Vector3 AdjustProjectileVelocityDirection(Vector3 fireDir)
         {
             return fireDir;
+        }
+        
+        [Server]
+        protected virtual Vector3 ResolveAimPoint(Vector3 viewOrigin, Vector3 viewDir)
+        {
+            viewDir = GetSafeDirection(viewDir, transform.forward);
+
+            if (def == null)
+                return viewOrigin + viewDir * 600f;
+
+            float distance = Mathf.Max(1f, def.convergenceDistance);
+
+            switch (def.convergenceMode)
+            {
+                case ConvergenceMode.FixedDistance:
+                    return viewOrigin + viewDir * distance;
+
+                case ConvergenceMode.RaycastClamped:
+                    // Future mode. For now, fall through to simple behavior.
+                    return ResolveSimpleRaycastAimPoint(viewOrigin, viewDir, distance);
+
+                case ConvergenceMode.SimpleRaycast:
+                default:
+                    return ResolveSimpleRaycastAimPoint(viewOrigin, viewDir, distance);
+            }
+        }
+
+        [Server]
+        protected virtual Vector3 ResolveSimpleRaycastAimPoint(
+            Vector3 viewOrigin,
+            Vector3 viewDir,
+            float maxDistance)
+        {
+            if (TryGetAimHit(viewOrigin, viewDir, maxDistance, out RaycastHit hit))
+                return hit.point;
+
+            return viewOrigin + viewDir * maxDistance;
+        }
+
+        [Server]
+        protected virtual bool TryGetAimHit(
+            Vector3 viewOrigin,
+            Vector3 viewDir,
+            float maxDistance,
+            out RaycastHit bestHit)
+        {
+            bestHit = default;
+
+            if (def == null)
+                return false;
+
+            int hitCount = Physics.RaycastNonAlloc(
+                viewOrigin,
+                viewDir,
+                AimHits,
+                maxDistance,
+                def.aimMask,
+                QueryTriggerInteraction.Ignore);
+
+            if (hitCount <= 0)
+                return false;
+
+            bool found = false;
+            float closestDistance = float.MaxValue;
+
+            for (int i = 0; i < hitCount; i++)
+            {
+                RaycastHit hit = AimHits[i];
+
+                if (hit.collider == null)
+                    continue;
+
+                if (IsShooterCollider(hit.collider))
+                    continue;
+
+                if (hit.distance < closestDistance)
+                {
+                    closestDistance = hit.distance;
+                    bestHit = hit;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
+        protected virtual bool IsShooterCollider(Collider col)
+        {
+            if (col == null || _shooterNO == null)
+                return false;
+
+            NetworkObject hitNob = col.GetComponentInParent<NetworkObject>();
+
+            if (hitNob == null)
+                return false;
+
+            return hitNob == _shooterNO;
         }
 
         #endregion

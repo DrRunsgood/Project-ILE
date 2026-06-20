@@ -12,8 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: df35101616fced345bd415aa95240daa, type: 3}
   m_Name: EnergyRifle
   m_EditorClassIdentifier: 
+  weaponId: 0
+  damageType: 2
   displayName: EnergyRifle
   fireRate: 100
+  killFeedName: 
   equipFireDelaySeconds: 0.65
   energyPerShot: 80
   requiresEnergyPack: 1
@@ -27,6 +30,11 @@ MonoBehaviour:
   velocityInheritance: 0
   gravityScale: 0
   lifeTime: 2
+  convergenceMode: 0
+  convergenceDistance: 1500
+  aimMask:
+    serializedVersion: 2
+    m_Bits: 3136
   castMode: 2
   castRadius: 0.15
   castHalf: 0.4

@@ -13,6 +13,7 @@ public sealed class MatchDebugHUD : MonoBehaviour
     TMP_Text _label;
     PlayerIdentity _identity;
     PlayerStats _stats;
+    bool _hasLocalPlayer;
 
     void Awake()
     {
@@ -23,6 +24,8 @@ public sealed class MatchDebugHUD : MonoBehaviour
 
         if (LocalPlayerContext.IsReady)
             HandleLocalPlayerReady(LocalPlayerContext.Controller);
+        else
+            SetWaitingText();
 
         InvokeRepeating(nameof(Refresh), 0.1f, refreshRate);
     }
@@ -42,6 +45,7 @@ public sealed class MatchDebugHUD : MonoBehaviour
 
         _identity = controller.GetComponent<PlayerIdentity>();
         _stats = controller.GetComponent<PlayerStats>();
+        _hasLocalPlayer = true;
 
         Refresh();
     }
@@ -50,13 +54,24 @@ public sealed class MatchDebugHUD : MonoBehaviour
     {
         _identity = null;
         _stats = null;
+        _hasLocalPlayer = false;
 
-        if (_label != null)
-            _label.text = "";
+        SetWaitingText();
     }
 
     void Refresh()
     {
+        if (_label == null)
+            return;
+
+        // Important: while sitting at the client bootstrap menu, no local player exists yet.
+        // Do not poll GameModeManager timing until the local player has spawned.
+        if (!_hasLocalPlayer)
+        {
+            SetWaitingText();
+            return;
+        }
+
         GameModeManager gm = GameModeManager.Instance;
 
         if (gm == null)
@@ -65,12 +80,12 @@ public sealed class MatchDebugHUD : MonoBehaviour
             return;
         }
 
-        float remaining = gm.GetStateTimeRemaining();
+        float remaining = Mathf.Max(0f, gm.GetStateTimeRemaining());
         int minutes = Mathf.FloorToInt(remaining / 60f);
         int seconds = Mathf.FloorToInt(remaining % 60f);
 
         string playerName = _identity != null ? _identity.DisplayName : "Unknown";
-        string team = _identity != null ? _identity.Team.ToString() : "None";
+        string team = _identity != null ? _identity.Team.ToString() : TeamId.None.ToString();
         int kills = _stats != null ? _stats.Kills : 0;
         int deaths = _stats != null ? _stats.Deaths : 0;
 
@@ -91,5 +106,10 @@ public sealed class MatchDebugHUD : MonoBehaviour
             $"{playerName} [{team}]\n" +
             $"K/D: {kills}/{deaths}";
     }
-    
+
+    void SetWaitingText()
+    {
+        if (_label != null)
+            _label.text = "Waiting for player...";
+    }
 }
