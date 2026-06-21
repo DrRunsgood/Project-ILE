@@ -51,6 +51,9 @@ namespace _Scripts.Bootstrap
 
             Debug.Log("[GameStartupManager] Starting in client menu mode.");
             SetClientBootstrapVisible(true);
+
+            if (networkSessionManager != null)
+                networkSessionManager.EnterClientMenu();
         }
 
         private StartupConfig BuildStartupConfig()

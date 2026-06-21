@@ -17,6 +17,94 @@ namespace _Scripts.Bootstrap
         [SerializeField] private Button joinButton;
         [SerializeField] private TMP_Text statusText;
 
+        private bool _subscribed;
+        
+        
+        private void OnEnable()
+        {
+            if (networkSessionManager == null)
+                networkSessionManager = FindAnyObjectByType<NetworkSessionManager>();
+
+            if (networkSessionManager != null && !_subscribed)
+            {
+                networkSessionManager.OnStateChanged += HandleSessionStateChanged;
+                _subscribed = true;
+
+                RefreshForState(networkSessionManager.CurrentState);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (networkSessionManager != null && _subscribed)
+            {
+                networkSessionManager.OnStateChanged -= HandleSessionStateChanged;
+                _subscribed = false;
+            }
+        }
+
+        private void HandleSessionStateChanged(NetworkSessionState previous, NetworkSessionState next)
+        {
+            RefreshForState(next);
+        }
+
+        private void RefreshForState(NetworkSessionState state)
+        {
+            switch (state)
+            {
+                case NetworkSessionState.Offline:
+                case NetworkSessionState.ClientMenu:
+                case NetworkSessionState.Failed:
+                    if (joinButton != null)
+                        joinButton.interactable = true;
+
+                    if (state == NetworkSessionState.Failed)
+                        SetStatus("Connection failed. Check address/port and try again.");
+                    else
+                        SetStatus("Enter name and server address.");
+                    break;
+
+                case NetworkSessionState.Connecting:
+                    if (joinButton != null)
+                        joinButton.interactable = false;
+
+                    SetStatus("Connecting...");
+                    break;
+
+                case NetworkSessionState.Connected:
+                case NetworkSessionState.LoadingGameplay:
+                    if (joinButton != null)
+                        joinButton.interactable = false;
+
+                    SetStatus("Loading game...");
+                    break;
+
+                case NetworkSessionState.InGame:
+                    if (joinButton != null)
+                        joinButton.interactable = false;
+
+                    SetStatus("In game.");
+                    break;
+
+                case NetworkSessionState.Disconnecting:
+                    if (joinButton != null)
+                        joinButton.interactable = false;
+
+                    SetStatus("Disconnecting...");
+                    break;
+                // server states
+                case NetworkSessionState.ServerStarting:
+                case NetworkSessionState.ServerLoadingGameplay:
+                case NetworkSessionState.ServerRunning:
+                case NetworkSessionState.ServerStopping:
+                    if (joinButton != null)
+                        joinButton.interactable = false;
+
+                    SetStatus("Server mode active.");
+                    break;
+            }
+        }
+        
         private void Awake()
         {
             if (networkSessionManager == null)
