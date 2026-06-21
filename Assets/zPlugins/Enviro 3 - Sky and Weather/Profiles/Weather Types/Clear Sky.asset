@@ -22,7 +22,7 @@ MonoBehaviour:
   showAuroraControls: 0
   showEnvironmentControls: 0
   showAudioControls: 1
-  showAmbientAudioControls: 0
+  showAmbientAudioControls: 1
   showWeatherAudioControls: 0
   showLightningControls: 0
   cloudsOverride:
@@ -98,7 +98,7 @@ MonoBehaviour:
     ambientOverride:
     - showEditor: 0
       name: Day
-      volume: 1
+      volume: 0.15
       spring: 0
       summer: 0
       autumn: 0

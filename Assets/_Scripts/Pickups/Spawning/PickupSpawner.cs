@@ -1,6 +1,7 @@
 using FishNet.Object;
 using UnityEngine;
 using _Scripts.Data;
+using _Scripts.FNPool;
 using _Scripts.Weapons;
 
 namespace _Scripts.Pickups.Spawning

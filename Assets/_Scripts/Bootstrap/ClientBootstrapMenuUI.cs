@@ -21,7 +21,7 @@ namespace _Scripts.Bootstrap
         [SerializeField] private TMP_Text statusText;
 
         [Header("Options")]
-        [SerializeField] private bool hideAfterJoinClicked = true;
+        [SerializeField] private bool hideAfterJoinClicked = false;
 
         private void Awake()
         {

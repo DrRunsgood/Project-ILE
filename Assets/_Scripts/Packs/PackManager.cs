@@ -1,5 +1,6 @@
 // _Scripts/Packs/PackManager.cs
 using System;
+using _Scripts.FNPool;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;

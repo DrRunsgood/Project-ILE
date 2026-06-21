@@ -1,9 +1,9 @@
-using UnityEngine;
 using System;
 using FishNet;
 using FishNet.Object;
+using UnityEngine;
 
-namespace YourGameNamespace.Pooling
+namespace _Scripts.FNPool
 {
     public class ObjectPool : MonoBehaviour
     {

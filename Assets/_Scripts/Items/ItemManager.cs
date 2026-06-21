@@ -1,6 +1,7 @@
 // _Scripts/Items/ItemManager.cs
 using System;
 using System.Runtime.CompilerServices;
+using _Scripts.FNPool;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;

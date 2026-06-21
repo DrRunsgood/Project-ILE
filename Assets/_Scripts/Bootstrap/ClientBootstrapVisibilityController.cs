@@ -5,8 +5,13 @@ namespace _Scripts.Bootstrap
 {
     public sealed class ClientBootstrapVisibilityController : MonoBehaviour
     {
+        [SerializeField] private ClientServerManager clientServerManager;
+
         private void Awake()
         {
+            if (clientServerManager == null)
+                clientServerManager = FindFirstObjectByType<ClientServerManager>();
+
             LocalPlayerContext.OnLocalPlayerReady += HandleLocalPlayerReady;
         }
 
@@ -17,7 +22,10 @@ namespace _Scripts.Bootstrap
 
         private void HandleLocalPlayerReady(AdvancedPredictedController controller)
         {
-            gameObject.SetActive(false);
+            if (clientServerManager != null)
+                clientServerManager.SetClientBootstrapVisible(false);
+            else
+                gameObject.SetActive(false);
         }
     }
 }

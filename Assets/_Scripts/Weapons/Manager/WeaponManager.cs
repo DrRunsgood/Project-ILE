@@ -5,6 +5,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Data;
+using _Scripts.FNPool;
 using _Scripts.GamePhysics;
 using _Scripts.Player;
 using _Scripts.Game;
