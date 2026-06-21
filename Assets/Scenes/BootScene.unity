@@ -2193,9 +2193,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ef949e178b4da504fade4ffc862464e7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Bootstrap.GameStartupManager
-  runAsDedicatedServer: 1
+  runAsDedicatedServer: 0
   defaultServerPort: 7770
   defaultGameplaySceneName: Arena_TestMap_01
+  useCommandLineArgs: 1
   networkSessionManager: {fileID: 702156392}
   clientBootstrapRoot: {fileID: 1052880477}
   menuCamera: {fileID: 1943376783}

@@ -6,24 +6,31 @@ namespace _Scripts.Bootstrap
     [DefaultExecutionOrder(-10000)]
     public sealed class GameStartupManager : MonoBehaviour
     {
-        [Header("Mode")]
+        [Header("Editor / Default Mode")]
         [SerializeField] private bool runAsDedicatedServer;
 
         [Header("Server Defaults")]
         [SerializeField] private ushort defaultServerPort = 7770;
         [SerializeField] private string defaultGameplaySceneName = "Arena_TestMap_01";
 
+        [Header("Command Line")]
+        [SerializeField] private bool useCommandLineArgs = true;
+
         [Header("References")]
         [SerializeField] private NetworkSessionManager networkSessionManager;
         [SerializeField] private GameObject clientBootstrapRoot;
         [SerializeField] private Camera menuCamera;
+
+        private StartupConfig _startupConfig;
 
         private void Awake()
         {
             if (networkSessionManager == null)
                 networkSessionManager = FindFirstObjectByType<NetworkSessionManager>();
 
-            if (runAsDedicatedServer)
+            _startupConfig = BuildStartupConfig();
+
+            if (_startupConfig.IsDedicatedServer)
             {
                 Debug.Log("[GameStartupManager] Starting in dedicated server mode.");
 
@@ -35,12 +42,28 @@ namespace _Scripts.Bootstrap
                     return;
                 }
 
-                networkSessionManager.StartDedicatedServer(defaultServerPort, defaultGameplaySceneName);
+                networkSessionManager.StartDedicatedServer(
+                    _startupConfig.Port,
+                    _startupConfig.MapSceneName);
+
                 return;
             }
 
             Debug.Log("[GameStartupManager] Starting in client menu mode.");
             SetClientBootstrapVisible(true);
+        }
+
+        private StartupConfig BuildStartupConfig()
+        {
+            StartupConfig config = new StartupConfig(
+                runAsDedicatedServer,
+                defaultServerPort,
+                defaultGameplaySceneName);
+
+            if (useCommandLineArgs)
+                config = CommandLineArgs.ApplyTo(config);
+
+            return config;
         }
 
         public void SetClientBootstrapVisible(bool visible)
