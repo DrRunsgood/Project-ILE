@@ -1,6 +1,4 @@
-using FishNet;
-using FishNet.Managing;
-using FishNet.Transporting.Tugboat;
+using _Scripts.Networking;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,9 +7,8 @@ namespace _Scripts.Bootstrap
 {
     public sealed class ClientBootstrapMenuUI : MonoBehaviour
     {
-        [Header("FishNet")]
-        [SerializeField] private NetworkManager networkManager;
-        [SerializeField] private Tugboat tugboat;
+        [Header("Session")]
+        [SerializeField] private NetworkSessionManager networkSessionManager;
 
         [Header("UI")]
         [SerializeField] private TMP_InputField displayNameInput;
@@ -20,16 +17,10 @@ namespace _Scripts.Bootstrap
         [SerializeField] private Button joinButton;
         [SerializeField] private TMP_Text statusText;
 
-        [Header("Options")]
-        [SerializeField] private bool hideAfterJoinClicked = false;
-
         private void Awake()
         {
-            if (networkManager == null)
-                networkManager = InstanceFinder.NetworkManager;
-
-            if (tugboat == null && networkManager != null)
-                tugboat = networkManager.GetComponent<Tugboat>();
+            if (networkSessionManager == null)
+                networkSessionManager = FindAnyObjectByType<NetworkSessionManager>();
 
             if (displayNameInput != null)
                 displayNameInput.text = ClientBootstrapSettings.DisplayName;
@@ -56,27 +47,34 @@ namespace _Scripts.Bootstrap
         {
             SaveInputs();
 
-            if (networkManager == null)
+            if (networkSessionManager == null)
             {
-                SetStatus("Missing NetworkManager.");
-                Debug.LogError("[ClientBootstrapMenuUI] Missing NetworkManager.");
+                SetStatus("Missing NetworkSessionManager.");
+                Debug.LogError("[ClientBootstrapMenuUI] Missing NetworkSessionManager.");
                 return;
             }
 
-            ApplyTugboatAddress();
+            string address = ClientBootstrapSettings.ServerAddress;
+            ushort port = ClientBootstrapSettings.ServerPort;
 
-            SetStatus($"Connecting to {ClientBootstrapSettings.ServerAddress}:{ClientBootstrapSettings.ServerPort}...");
+            SetStatus($"Connecting to {address}:{port}...");
 
-            bool started = networkManager.ClientManager.StartConnection();
+            if (joinButton != null)
+                joinButton.interactable = false;
+
+            bool started = networkSessionManager.StartClient(address, port);
 
             if (!started)
             {
                 SetStatus("Client start failed.");
+
+                if (joinButton != null)
+                    joinButton.interactable = true;
+
                 return;
             }
 
-            if (hideAfterJoinClicked)
-                gameObject.SetActive(false);
+            SetStatus($"Connecting to {address}:{port}...");
         }
 
         private void SaveInputs()
@@ -88,19 +86,13 @@ namespace _Scripts.Bootstrap
                 ClientBootstrapSettings.ServerAddress = addressInput.text;
 
             if (portInput != null && ushort.TryParse(portInput.text, out ushort parsedPort))
-                ClientBootstrapSettings.ServerPort = parsedPort;
-        }
-
-        private void ApplyTugboatAddress()
-        {
-            if (tugboat == null)
             {
-                Debug.LogWarning("[ClientBootstrapMenuUI] Tugboat reference missing. Using transport defaults.");
-                return;
+                ClientBootstrapSettings.ServerPort = parsedPort;
             }
-
-            tugboat.SetClientAddress(ClientBootstrapSettings.ServerAddress);
-            tugboat.SetPort(ClientBootstrapSettings.ServerPort);
+            else if (portInput != null)
+            {
+                portInput.text = ClientBootstrapSettings.ServerPort.ToString();
+            }
         }
 
         private void SetStatus(string value)

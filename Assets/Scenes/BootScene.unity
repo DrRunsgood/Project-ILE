@@ -824,6 +824,53 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 657740318}
   m_CullTransparentMesh: 1
+--- !u!1 &702156390
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 702156391}
+  - component: {fileID: 702156392}
+  m_Layer: 0
+  m_Name: NetworkSessionManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &702156391
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 702156390}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1625813624}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &702156392
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 702156390}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 541057a3731c1f24384cef02587be529, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Networking.NetworkSessionManager
+  networkManager: {fileID: 1127664022}
+  tugboat: {fileID: 1127664018}
+  graphicsStripper: {fileID: 1559658377}
 --- !u!1 &948164734
 GameObject:
   m_ObjectHideFlags: 0
@@ -1059,7 +1106,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b6caa147a01a16b4a971586ef637feb4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ClientBootstrapVisibilityController
-  clientServerManager: {fileID: 0}
+  gameStartupManager: {fileID: 0}
 --- !u!4 &1052880479
 Transform:
   m_ObjectHideFlags: 0
@@ -1267,61 +1314,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1165382037
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1165382038}
-  - component: {fileID: 1165382039}
-  m_Layer: 0
-  m_Name: ClientServerManager
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1165382038
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1165382037}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1625813624}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1165382039
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1165382037}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 66957e73c5c4aba439b9c8fddc146ba6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  isServer: 1
-  loadDefaultGameplaySceneOnServerStart: 1
-  defaultGameplaySceneName: Arena_TestMap_01
-  clientBootstrapRoot: {fileID: 1052880477}
-  menuCamera: {fileID: 0}
-  serverQualityLevel: 0
-  serverTargetFps: 60
-  disableEnviro: 1
-  disableVolumes: 1
-  disableCameras: 1
-  disableAudio: 1
 --- !u!1 &1188276663
 GameObject:
   m_ObjectHideFlags: 0
@@ -1727,6 +1719,57 @@ MonoBehaviour:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.RectMask2D
   m_Padding: {x: -8, y: -5, z: -8, w: -5}
   m_Softness: {x: 0, y: 0}
+--- !u!1 &1559658375
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1559658376}
+  - component: {fileID: 1559658377}
+  m_Layer: 0
+  m_Name: DedicatedServerGraphicsStripper
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1559658376
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1559658375}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1625813624}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1559658377
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1559658375}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8d8e738ccb299542ba3b17004d53309, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Bootstrap.DedicatedServerGraphicsStripper
+  serverQualityLevel: 0
+  serverTargetFps: 60
+  disableEnviro: 1
+  disableVolumes: 1
+  disableCameras: 1
+  disableAudio: 1
+  stripAgainWhenSceneLoads: 1
 --- !u!1 &1625813623
 GameObject:
   m_ObjectHideFlags: 0
@@ -1756,7 +1799,9 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 1165382038}
+  - {fileID: 1667271617}
+  - {fileID: 702156391}
+  - {fileID: 1559658376}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1642765405
@@ -2104,6 +2149,56 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1652296171}
   m_CullTransparentMesh: 1
+--- !u!1 &1667271616
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1667271617}
+  - component: {fileID: 1667271618}
+  m_Layer: 0
+  m_Name: GameStartupManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1667271617
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1667271616}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1625813624}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1667271618
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1667271616}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ef949e178b4da504fade4ffc862464e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Bootstrap.GameStartupManager
+  runAsDedicatedServer: 1
+  defaultServerPort: 7770
+  defaultGameplaySceneName: Arena_TestMap_01
+  networkSessionManager: {fileID: 702156392}
+  clientBootstrapRoot: {fileID: 1052880477}
+  menuCamera: {fileID: 1943376783}
 --- !u!1 &1672657300
 GameObject:
   m_ObjectHideFlags: 0
@@ -2702,14 +2797,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aa9886bbc4bd62048ba94eeb0253a458, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Bootstrap.ClientBootstrapMenuUI
-  networkManager: {fileID: 0}
-  tugboat: {fileID: 0}
+  networkSessionManager: {fileID: 702156392}
   displayNameInput: {fileID: 4138240}
   addressInput: {fileID: 2081783332}
   portInput: {fileID: 1712563040}
   joinButton: {fileID: 657740320}
   statusText: {fileID: 1238149867}
-  hideAfterJoinClicked: 0
 --- !u!114 &1907017031
 MonoBehaviour:
   m_ObjectHideFlags: 0
