@@ -18,6 +18,11 @@ namespace _Scripts.Networking
 
         [Header("Server")]
         [SerializeField] private DedicatedServerGraphicsStripper graphicsStripper;
+        
+        [SerializeField] private string bootSceneName = "BootScene";
+
+        private string _loadedGameplaySceneName;
+        private bool _isReturningToMenu;
 
         private bool _clientStartRequested;
         private bool _serverStartRequested;
@@ -190,6 +195,7 @@ namespace _Scripts.Networking
             }
 
             _serverSceneLoadRequested = true;
+            _loadedGameplaySceneName = sceneName;
 
             bool serverWasRunning = CurrentState == NetworkSessionState.ServerRunning;
 
@@ -240,6 +246,34 @@ namespace _Scripts.Networking
             SetState(NetworkSessionState.ClientMenu);
         }
         
+        public void DisconnectClient()
+        {
+            if (CurrentState == NetworkSessionState.Offline ||
+                CurrentState == NetworkSessionState.ClientMenu ||
+                CurrentState == NetworkSessionState.Disconnecting)
+            {
+                Debug.Log($"[NetworkSessionManager] Disconnect ignored while state is {CurrentState}.");
+                return;
+            }
+
+            if (networkManager == null)
+                ResolveReferences();
+
+            if (networkManager == null)
+            {
+                Debug.LogError("[NetworkSessionManager] Cannot disconnect. Missing NetworkManager.");
+                SetState(NetworkSessionState.ClientMenu);
+                return;
+            }
+
+            Debug.Log("[NetworkSessionManager] Disconnecting client.");
+
+            _isReturningToMenu = true;
+            SetState(NetworkSessionState.Disconnecting);
+
+            networkManager.ClientManager.StopConnection();
+        }
+        
         // Event Handlers
         private void HandleClientConnectionState(ClientConnectionStateArgs args)
         {
@@ -275,17 +309,54 @@ namespace _Scripts.Networking
                 case LocalConnectionState.Stopped:
                     _clientStartRequested = false;
 
-                    if (CurrentState == NetworkSessionState.Disconnecting ||
+                    if (_isReturningToMenu ||
+                        CurrentState == NetworkSessionState.Disconnecting ||
                         CurrentState == NetworkSessionState.Connecting ||
                         CurrentState == NetworkSessionState.Connected ||
                         CurrentState == NetworkSessionState.LoadingGameplay ||
                         CurrentState == NetworkSessionState.InGame ||
                         CurrentState == NetworkSessionState.Failed)
                     {
-                        SetState(NetworkSessionState.ClientMenu);
+                        StartCoroutine(ReturnClientToMenuAfterDisconnect());
                     }
                     break;
             }
+        }
+        
+        private IEnumerator ReturnClientToMenuAfterDisconnect()
+        {
+            Debug.Log("[NetworkSessionManager] Returning client to menu.");
+
+            yield return null;
+
+            UnloadGameplayScenesLocal();
+
+            yield return null;
+
+            _isReturningToMenu = false;
+            SetState(NetworkSessionState.ClientMenu);
+        }
+            
+        private void UnloadGameplayScenesLocal()
+        {
+            // For now, unload every loaded scene except BootScene.
+            // This is simple and correct for the current architecture:
+            // BootScene persists; gameplay scenes are additive.
+            for (int i = UnityEngine.SceneManagement.SceneManager.sceneCount - 1; i >= 0; i--)
+            {
+                UnityEngine.SceneManagement.Scene scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+
+                if (!scene.isLoaded)
+                    continue;
+
+                if (scene.name == bootSceneName)
+                    continue;
+
+                Debug.Log($"[NetworkSessionManager] Unloading local gameplay scene: {scene.name}");
+                UnityEngine.SceneManagement.SceneManager.UnloadSceneAsync(scene);
+            }
+
+            _loadedGameplaySceneName = null;
         }
 
         private void HandleServerConnectionState(ServerConnectionStateArgs args)

@@ -871,6 +871,7 @@ MonoBehaviour:
   networkManager: {fileID: 1127664022}
   tugboat: {fileID: 1127664018}
   graphicsStripper: {fileID: 1559658377}
+  bootSceneName: BootScene
 --- !u!1 &948164734
 GameObject:
   m_ObjectHideFlags: 0
@@ -1779,6 +1780,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1625813624}
+  - component: {fileID: 1625813625}
   m_Layer: 0
   m_Name: AppRoot
   m_TagString: Untagged
@@ -1804,6 +1806,20 @@ Transform:
   - {fileID: 1559658376}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1625813625
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1625813623}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a30e6aadd564e9f4cba4db8d5a85aae4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.DebugTools.DebugDisconnectHotkey
+  networkSessionManager: {fileID: 702156392}
+  disconnectKey: 291
 --- !u!1 &1642765405
 GameObject:
   m_ObjectHideFlags: 0
@@ -2193,7 +2209,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ef949e178b4da504fade4ffc862464e7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Bootstrap.GameStartupManager
-  runAsDedicatedServer: 0
+  runAsDedicatedServer: 1
   defaultServerPort: 7770
   defaultGameplaySceneName: Arena_TestMap_01
   useCommandLineArgs: 1

@@ -22,11 +22,18 @@ namespace _Scripts.Bootstrap
         [SerializeField] private Camera menuCamera;
 
         private StartupConfig _startupConfig;
+        private bool _subscribedToSession;
 
         private void Awake()
         {
             if (networkSessionManager == null)
-                networkSessionManager = FindFirstObjectByType<NetworkSessionManager>();
+                networkSessionManager = FindAnyObjectByType<NetworkSessionManager>();
+
+            if (networkSessionManager != null && !_subscribedToSession)
+            {
+                networkSessionManager.OnStateChanged += HandleSessionStateChanged;
+                _subscribedToSession = true;
+            }
 
             _startupConfig = BuildStartupConfig();
 
@@ -54,6 +61,26 @@ namespace _Scripts.Bootstrap
 
             if (networkSessionManager != null)
                 networkSessionManager.EnterClientMenu();
+        }
+        
+        private void HandleSessionStateChanged(NetworkSessionState previous, NetworkSessionState next)
+        {
+            if (next != NetworkSessionState.ClientMenu)
+                return;
+
+            SetClientBootstrapVisible(true);
+
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        
+        private void OnDestroy()
+        {
+            if (networkSessionManager != null && _subscribedToSession)
+            {
+                networkSessionManager.OnStateChanged -= HandleSessionStateChanged;
+                _subscribedToSession = false;
+            }
         }
 
         private StartupConfig BuildStartupConfig()
