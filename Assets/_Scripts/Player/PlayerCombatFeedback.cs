@@ -40,7 +40,7 @@ namespace _Scripts.Player
             HitMarkerUI ui = HitMarkerUI.Instance;
 
             if (ui == null)
-                ui = FindFirstObjectByType<HitMarkerUI>();
+                ui = FindAnyObjectByType<HitMarkerUI>();
 
             ui?.ShowHit();
         }

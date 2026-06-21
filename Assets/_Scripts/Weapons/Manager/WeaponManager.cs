@@ -577,7 +577,7 @@ namespace _Scripts.Weapons
         }
 
         [Server]
-        void Server_DropWeapon(int idx)
+        void Server_DropWeapon(int idx, bool allowTransformFallback = false)
         {
             if (idx < 0 || idx >= _weapons.Count)
                 return;
@@ -593,10 +593,30 @@ namespace _Scripts.Weapons
             uint serverNow = TimeManager.Tick;
             int remainingAmmo = inst.CurrentAmmo;
 
-            if (!TryGetFireSnapshot(serverNow, out LagCompensationManager.FireSnapshot snap))
-                return;
+            Vector3 dropOrigin;
+            Vector3 dropDirection;
 
-            Vector3 pos = ResolveSafeDropPosition(snap.Position, snap.Direction);
+            if (TryGetFireSnapshot(serverNow, out LagCompensationManager.FireSnapshot snap))
+            {
+                dropOrigin = snap.Position;
+                dropDirection = snap.Direction;
+            }
+            else if (allowTransformFallback)
+            {
+                dropOrigin = transform.position + Vector3.up;
+                dropDirection = transform.forward;
+
+                if (dropDirection.sqrMagnitude < 0.001f)
+                    dropDirection = Vector3.forward;
+
+                Debug.LogWarning("[WeaponManager] No fire snapshot available during drop. Using transform fallback.");
+            }
+            else
+            {
+                return;
+            }
+
+            Vector3 pos = ResolveSafeDropPosition(dropOrigin, dropDirection);
 
             NetworkObject ground = PoolUtil.TakeFromPool(inst.Def.groundPrefab);
             if (ground == null)
@@ -612,7 +632,7 @@ namespace _Scripts.Weapons
             if (ground.TryGetComponent(out KinematicMover km))
             {
                 Vector3 playerVel = GetComponent<Rigidbody>()?.linearVelocity ?? Vector3.zero;
-                Vector3 tossForward = snap.Direction * 15f;
+                Vector3 tossForward = dropDirection.normalized * 15f;
                 km.InitVelocity(playerVel * 0.5f + tossForward);
             }
 
@@ -696,7 +716,7 @@ namespace _Scripts.Weapons
             for (int i = _weapons.Count - 1; i >= 0; i--)
             {
                 if (_weapons[i].Def != null && !_weapons[i].IsQuickItem)
-                    Server_DropWeapon(i);
+                    Server_DropWeapon(i, true);
             }
         }
 

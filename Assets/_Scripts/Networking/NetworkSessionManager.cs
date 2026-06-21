@@ -256,12 +256,33 @@ namespace _Scripts.Networking
                 return;
             }
 
+            if (!_isReturningToMenu)
+            {
+                PlayerDisconnectCleanup cleanup = null;
+
+                if (LocalPlayerContext.IsReady && LocalPlayerContext.Controller != null)
+                    cleanup = LocalPlayerContext.Controller.GetComponent<PlayerDisconnectCleanup>();
+
+                if (cleanup != null && cleanup.TryBeginGracefulDisconnect(ContinueDisconnectClient))
+                {
+                    _isReturningToMenu = true;
+                    SetState(NetworkSessionState.Disconnecting);
+                    return;
+                }
+            }
+
+            ContinueDisconnectClient();
+        }
+        
+        private void ContinueDisconnectClient()
+        {
             if (networkManager == null)
                 ResolveReferences();
 
             if (networkManager == null)
             {
                 Debug.LogError("[NetworkSessionManager] Cannot disconnect. Missing NetworkManager.");
+                _isReturningToMenu = false;
                 SetState(NetworkSessionState.ClientMenu);
                 return;
             }
