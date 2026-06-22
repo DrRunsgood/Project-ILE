@@ -3,16 +3,18 @@ using FishNet.Managing.Server;
 using FishNet.Transporting;
 using FishNet.Object;
 using UnityEngine;
+using System.Collections;
 
 public class GameManager : NetworkBehaviour
 {
     [SerializeField] private GameObject playerPrefab; // Player prefab.
+    [SerializeField] private float spawnExistingConnectionsDelay = 0.35f;
     private SpawnManager spawnManager;
 
     private void Awake()
     {
         // Locate the SpawnManager in the scene.
-        spawnManager = Object.FindFirstObjectByType<SpawnManager>();
+        spawnManager = Object.FindAnyObjectByType<SpawnManager>();
         if (spawnManager == null)
         {
             Debug.LogError("SpawnManager is missing. Please add it to the scene.");
@@ -22,8 +24,10 @@ public class GameManager : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        // Subscribe to client connection state events.
+
         ServerManager.OnRemoteConnectionState += HandleRemoteConnectionState;
+
+        StartCoroutine(SpawnExistingConnectionsAfterSceneLoad());
     }
 
     public override void OnStopServer()
@@ -56,6 +60,32 @@ public class GameManager : NetworkBehaviour
 
             // Unsubscribe after spawning to avoid duplicate calls.
             conn.OnLoadedStartScenes -= OnClientLoadedStartScenes;
+        }
+    }
+    
+    private IEnumerator SpawnExistingConnectionsAfterSceneLoad()
+    {
+        yield return new WaitForSeconds(spawnExistingConnectionsDelay);
+
+        if (!IsServerStarted)
+            yield break;
+
+        if (spawnManager == null)
+            spawnManager = Object.FindAnyObjectByType<SpawnManager>();
+
+        if (spawnManager == null)
+        {
+            Debug.LogError("[GameManager] Cannot spawn existing players. SpawnManager is missing.");
+            yield break;
+        }
+
+        foreach (NetworkConnection conn in ServerManager.Clients.Values)
+        {
+            if (conn == null || !conn.IsValid)
+                continue;
+
+            Debug.Log($"[GameManager] Spawning existing connection after map load: {conn.ClientId}");
+            spawnManager.SpawnPlayer(conn, playerPrefab);
         }
     }
 }

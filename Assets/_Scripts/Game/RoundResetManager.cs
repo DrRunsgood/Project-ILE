@@ -95,5 +95,24 @@ namespace _Scripts.Game
                 spawner.ResetForRound();
             }
         }
+        
+        [Server]
+        public void PrepareForMapUnload()
+        {
+            RefreshCaches();
+
+            if (_pickupSpawners != null)
+            {
+                foreach (PickupSpawner spawner in _pickupSpawners)
+                {
+                    if (spawner == null)
+                        continue;
+
+                    spawner.ServerPrepareForMapUnload();
+                }
+            }
+
+            ClearRoundObjects();
+        }
     }
 }

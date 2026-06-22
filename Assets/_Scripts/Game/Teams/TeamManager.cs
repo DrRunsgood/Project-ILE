@@ -33,9 +33,8 @@ namespace _Scripts.Game.Teams
 
             if (player.Team == TeamId.None)
                 player.ServerSetTeam(GetBalancedTeam());
-            
-            player.ServerSetDisplayName($"Player {_players.Count}");
-            Debug.Log($"[TeamManager] Assigned {player.name} to {player.Team}");
+
+            Debug.Log($"[TeamManager] Registered {player.name} to {player.Team}");
         }
 
         [Server]

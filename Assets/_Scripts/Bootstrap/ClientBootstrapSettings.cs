@@ -8,6 +8,13 @@ namespace _Scripts.Bootstrap
         private const string AddressKey = "ProjectILE.ServerAddress";
         private const string PortKey = "ProjectILE.ServerPort";
 
+        public static string RuntimeSessionDisplayName { get; private set; }
+
+        public static void SetRuntimeSessionDisplayName(string value)
+        {
+            RuntimeSessionDisplayName = SanitizeName(value);
+        }
+
         public static string DisplayName
         {
             get => SanitizeName(PlayerPrefs.GetString(NameKey, "Player"));

@@ -62,6 +62,8 @@ namespace _Scripts.Pickups.Spawning
         NetworkObject _currentSpawned;
         bool _respawnPending;
         float _respawnAt;
+        
+        bool _suppressNextDespawnNotify;
 
         Transform SpawnTransform => spawnPoint != null ? spawnPoint : transform;
 
@@ -136,7 +138,21 @@ namespace _Scripts.Pickups.Spawning
         [Server]
         public void NotifyPickupDespawned(NetworkObject nob)
         {
-            if (nob == null || _currentSpawned != nob)
+            if (nob == null)
+                return;
+
+            if (_suppressNextDespawnNotify)
+            {
+                _suppressNextDespawnNotify = false;
+                _respawnPending = false;
+
+                if (_currentSpawned == nob)
+                    _currentSpawned = null;
+
+                return;
+            }
+
+            if (_currentSpawned != nob)
                 return;
 
             _currentSpawned = null;
@@ -159,19 +175,25 @@ namespace _Scripts.Pickups.Spawning
         [Server]
         public void ForceRespawnNow()
         {
-            DespawnCurrent();
+            DespawnCurrent(false);
             _respawnPending = false;
             SpawnNow();
         }
 
         [Server]
-        public void DespawnCurrent()
+        public void DespawnCurrent(bool scheduleRespawn = false)
         {
             if (_currentSpawned == null)
                 return;
 
             NetworkObject current = _currentSpawned;
+
             _currentSpawned = null;
+            _respawnPending = false;
+
+            // If we are clearing for round/map reset, the link's OnDisable should not
+            // treat this as a normal consumed pickup.
+            _suppressNextDespawnNotify = !scheduleRespawn;
 
             ServerManager.Despawn(current, DespawnType.Pool);
         }
@@ -183,6 +205,13 @@ namespace _Scripts.Pickups.Spawning
                 return;
 
             ForceRespawnNow();
+        }
+        
+        [Server]
+        public void ServerPrepareForMapUnload()
+        {
+            _respawnPending = false;
+            DespawnCurrent(false);
         }
     }
 }

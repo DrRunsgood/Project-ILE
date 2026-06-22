@@ -80,7 +80,7 @@ public sealed class IFFManager : MonoBehaviour
         if (!_localIdentity || !_localTransform || !targetCamera || !widgetPrefab)
             return;
 
-        PlayerIFFTarget[] targets = FindObjectsByType<PlayerIFFTarget>(FindObjectsSortMode.None);
+        PlayerIFFTarget[] targets = FindObjectsByType<PlayerIFFTarget>();
 
         foreach (PlayerIFFTarget target in targets)
         {

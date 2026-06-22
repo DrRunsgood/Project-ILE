@@ -1365,6 +1365,9 @@ namespace _Scripts.Player
         
             foreach (Renderer rend in _mainBodyRenderers)
             {
+                if (rend == null)
+                    continue;
+
                 rend.enabled = isVisible;
             }
         }

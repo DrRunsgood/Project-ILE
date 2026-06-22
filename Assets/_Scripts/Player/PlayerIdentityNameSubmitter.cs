@@ -23,6 +23,12 @@ namespace _Scripts.Player
             SubmitName();
         }
 
+        public override void OnStopClient()
+        {
+            base.OnStopClient();
+            _submitted = false;
+        }
+
         private void SubmitName()
         {
             if (_submitted)
@@ -30,7 +36,11 @@ namespace _Scripts.Player
 
             _submitted = true;
 
-            string requestedName = ClientBootstrapSettings.DisplayName;
+            string requestedName = ClientBootstrapSettings.RuntimeSessionDisplayName;
+
+            if (string.IsNullOrWhiteSpace(requestedName))
+                requestedName = ClientBootstrapSettings.DisplayName;
+
             Server_RequestDisplayName(requestedName);
         }
 

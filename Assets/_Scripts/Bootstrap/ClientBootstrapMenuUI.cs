@@ -168,7 +168,10 @@ namespace _Scripts.Bootstrap
         private void SaveInputs()
         {
             if (displayNameInput != null)
+            {
                 ClientBootstrapSettings.DisplayName = displayNameInput.text;
+                ClientBootstrapSettings.SetRuntimeSessionDisplayName(displayNameInput.text);
+            }
 
             if (addressInput != null)
                 ClientBootstrapSettings.ServerAddress = addressInput.text;

@@ -64,23 +64,28 @@ public sealed class MatchDebugHUD : MonoBehaviour
         if (_label == null)
             return;
 
-        // Important: while sitting at the client bootstrap menu, no local player exists yet.
-        // Do not poll GameModeManager timing until the local player has spawned.
-        if (!_hasLocalPlayer)
-        {
-            SetWaitingText();
-            return;
-        }
-
         GameModeManager gm = GameModeManager.Instance;
 
         if (gm == null)
         {
-            _label.text = "No GameMode";
+            _label.text = LocalPlayerContext.IsReady
+                ? "Loading match..."
+                : "Loading player...";
             return;
         }
 
-        float remaining = Mathf.Max(0f, gm.GetStateTimeRemaining());
+        float remaining = 0f;
+
+        try
+        {
+            remaining = gm.GetStateTimeRemaining();
+        }
+        catch
+        {
+            _label.text = "Loading match...";
+            return;
+        }
+
         int minutes = Mathf.FloorToInt(remaining / 60f);
         int seconds = Mathf.FloorToInt(remaining % 60f);
 

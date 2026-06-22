@@ -7,6 +7,7 @@ using UnityEngine;
 using _Scripts.Bootstrap;
 using _Scripts.Player;
 using FishNet.Transporting;
+using _Scripts.Game;
 
 namespace _Scripts.Networking
 {
@@ -20,6 +21,13 @@ namespace _Scripts.Networking
         [SerializeField] private DedicatedServerGraphicsStripper graphicsStripper;
         
         [SerializeField] private string bootSceneName = "BootScene";
+        
+        [SerializeField] private float serverMapChangeUnloadDelay = 0.25f;
+        [SerializeField] private float serverMapChangeLoadDelay = 0.1f;
+
+        public string CurrentGameplaySceneName => _loadedGameplaySceneName;
+
+        private bool _serverMapChangeInProgress;
 
         private string _loadedGameplaySceneName;
         private bool _isReturningToMenu;
@@ -207,7 +215,9 @@ namespace _Scripts.Networking
             SceneLoadData sceneLoadData = new SceneLoadData(sceneName);
             InstanceFinder.SceneManager.LoadGlobalScenes(sceneLoadData);
 
-            // Temporary until we wire FishNet scene-load completion events.
+            _serverSceneLoadRequested = false;
+
+            // Temporary until FishNet scene completion events are wired.
             if (serverWasRunning)
                 SetState(NetworkSessionState.ServerRunning);
         }
@@ -216,6 +226,91 @@ namespace _Scripts.Networking
         {
             yield return null;
             LoadServerMap(sceneName);
+        }
+        
+        public void ChangeServerMap(string nextSceneName)
+        {
+            if (string.IsNullOrWhiteSpace(nextSceneName))
+            {
+                Debug.LogError("[NetworkSessionManager] Cannot change server map. Next scene name is empty.");
+                return;
+            }
+
+            if (!InstanceFinder.IsServerStarted)
+            {
+                Debug.LogWarning("[NetworkSessionManager] Cannot change server map. Server is not started.");
+                return;
+            }
+
+            if (_serverMapChangeInProgress)
+            {
+                Debug.LogWarning("[NetworkSessionManager] Server map change already in progress.");
+                return;
+            }
+
+            StartCoroutine(ChangeServerMapRoutine(nextSceneName));
+        }
+        
+        private IEnumerator ChangeServerMapRoutine(string nextSceneName)
+        {
+            _serverMapChangeInProgress = true;
+
+            string previousSceneName = _loadedGameplaySceneName;
+
+            Debug.Log($"[NetworkSessionManager] Server map change requested. Previous={previousSceneName}, Next={nextSceneName}");
+
+            bool serverWasRunning =
+                CurrentState == NetworkSessionState.ServerRunning ||
+                CurrentState == NetworkSessionState.ServerLoadingGameplay;
+
+            if (serverWasRunning)
+                SetState(NetworkSessionState.ServerLoadingGameplay);
+
+            if (!string.IsNullOrWhiteSpace(previousSceneName))
+            {
+                Debug.Log($"[NetworkSessionManager] Preparing old gameplay scene for unload: {previousSceneName}");
+
+                SpawnManager.Instance?.DespawnAllPlayers();
+                RoundResetManager.Instance?.PrepareForMapUnload();
+
+                // Give FishNet a couple ticks/frames to process despawns before Unity scene unload destroys objects.
+                yield return null;
+                yield return null;
+
+                Debug.Log($"[NetworkSessionManager] Unloading previous gameplay scene globally: {previousSceneName}");
+
+                SceneUnloadData unloadData = new SceneUnloadData(previousSceneName);
+                InstanceFinder.SceneManager.UnloadGlobalScenes(unloadData);
+
+                yield return new WaitForSeconds(serverMapChangeUnloadDelay);
+            }
+
+            yield return new WaitForSeconds(serverMapChangeLoadDelay);
+
+            Debug.Log($"[NetworkSessionManager] Loading next gameplay scene globally: {nextSceneName}");
+
+            _loadedGameplaySceneName = nextSceneName;
+
+            SceneLoadData loadData = new SceneLoadData(nextSceneName);
+            InstanceFinder.SceneManager.LoadGlobalScenes(loadData);
+
+            yield return null;
+
+            _serverMapChangeInProgress = false;
+
+            if (serverWasRunning)
+                SetState(NetworkSessionState.ServerRunning);
+        }
+        
+        public void RestartCurrentServerMap()
+        {
+            if (string.IsNullOrWhiteSpace(_loadedGameplaySceneName))
+            {
+                Debug.LogWarning("[NetworkSessionManager] Cannot restart current map; no gameplay scene is known.");
+                return;
+            }
+
+            ChangeServerMap(_loadedGameplaySceneName);
         }
 
         private void ApplyClientTransportSettings(string address, ushort port)
@@ -422,8 +517,28 @@ namespace _Scripts.Networking
 
         private void HandleLocalPlayerCleared()
         {
-            if (CurrentState == NetworkSessionState.InGame)
+            if (CurrentState != NetworkSessionState.InGame)
+                return;
+
+            // If we intentionally started a return-to-menu disconnect, then the local
+            // player being cleared is part of disconnect cleanup.
+            if (_isReturningToMenu)
+            {
                 SetState(NetworkSessionState.Disconnecting);
+                return;
+            }
+
+            // If the client connection is still alive, the local player was probably
+            // cleared because the gameplay scene/map is changing.
+            if (InstanceFinder.IsClientStarted)
+            {
+                Debug.Log("[NetworkSessionManager] Local player cleared while client is still connected. Treating as map/loading transition.");
+                SetState(NetworkSessionState.LoadingGameplay);
+                return;
+            }
+
+            // Fallback: if the client is no longer running, this is a disconnect.
+            SetState(NetworkSessionState.Disconnecting);
         }
         
         // Helper
@@ -449,7 +564,7 @@ namespace _Scripts.Networking
                 tugboat = networkManager.GetComponent<Tugboat>();
 
             if (graphicsStripper == null)
-                graphicsStripper = FindFirstObjectByType<DedicatedServerGraphicsStripper>();
+                graphicsStripper = FindAnyObjectByType<DedicatedServerGraphicsStripper>();
         }
     }
 }

@@ -5,7 +5,8 @@ using _Scripts.Game.Teams;
 using _Scripts.Game.CTF;
 using _Scripts.Combat;
 using _Scripts.Player;
-using _Scripts.UI.HUD;
+using _Scripts.Server;
+using FishNet;
 
 namespace _Scripts.Game
 {
@@ -80,6 +81,8 @@ namespace _Scripts.Game
         public bool AllowTeamDamage => allowTeamDamage;
 
         #endregion
+        
+        bool _postMatchFlowRequested;
 
         #region Unity / FishNet Lifecycle
 
@@ -182,11 +185,50 @@ namespace _Scripts.Game
             // - show winner
             // - prepare map/mode rotation
         }
+        
+        [Server]
+        void CompletePostMatchFlow()
+        {
+            if (_postMatchFlowRequested)
+                return;
+
+            _postMatchFlowRequested = true;
+
+            if (ServerMapFlowManager.Instance != null)
+            {
+                Debug.Log("[GameModeManager] PostMatch complete. Handing off to ServerMapFlowManager.");
+                ServerMapFlowManager.Instance.ServerHandleMatchComplete();
+                return;
+            }
+
+            Debug.LogWarning("[GameModeManager] ServerMapFlowManager missing. Falling back to local restart behavior.");
+
+            switch (_mode.Value)
+            {
+                case GameModeType.Arena:
+                    ResetArenaMatch();
+                    StartWaiting();
+                    break;
+
+                case GameModeType.CTF:
+                    ResetCTFMatch();
+                    StartWarmup();
+                    break;
+
+                case GameModeType.Deathmatch:
+                default:
+                    StartWarmup();
+                    break;
+            }
+        }
 
         [Server]
         void SetState(MatchState next, float duration)
         {
             _state.Value = next;
+
+            if (next != MatchState.PostMatch)
+                _postMatchFlowRequested = false;
 
             uint durationTicks = TimeManager.TimeToTicks(Mathf.Max(0f, duration));
             _stateEndTick.Value = TimeManager.Tick + durationTicks;
@@ -233,7 +275,7 @@ namespace _Scripts.Game
                     break;
 
                 case MatchState.PostMatch:
-                    StartWarmup();
+                    CompletePostMatchFlow();
                     break;
             }
         }
@@ -273,8 +315,9 @@ namespace _Scripts.Game
                     break;
 
                 case MatchState.PostMatch:
-                    ResetArenaMatch();
-                    StartWaiting();
+                    CompletePostMatchFlow();
+                    //ResetArenaMatch();
+                    //StartWaiting();
                     break;
             }
         }
@@ -312,8 +355,9 @@ namespace _Scripts.Game
                     break;
 
                 case MatchState.PostMatch:
-                    ResetCTFMatch();
-                    StartWarmup();
+                    CompletePostMatchFlow();
+                    //ResetCTFMatch();
+                    //StartWarmup();
                     break;
             }
         }
@@ -325,6 +369,9 @@ namespace _Scripts.Game
         [Server]
         void StartArenaPreRound()
         {
+            if (_currentRound.Value == 0)
+                ResetAllPlayerStats();
+
             RoundResetManager.Instance?.ResetForArenaRound();
 
             SpawnManager.Instance?.SpawnPendingPlayers();
@@ -332,10 +379,6 @@ namespace _Scripts.Game
             SpawnManager.Instance?.SetAllPlayersFrozen(true);
 
             SetState(MatchState.PreRound, warmupSeconds);
-
-            // Later:
-            // - clear projectiles
-            // - reset round-only state
         }
 
         [Server]
@@ -738,16 +781,18 @@ namespace _Scripts.Game
 
         public float GetStateTimeRemaining()
         {
-            if (TimeManager == null)
+            var timeManager = InstanceFinder.TimeManager;
+
+            if (timeManager == null)
                 return 0f;
 
-            uint now = TimeManager.Tick;
+            uint now = timeManager.Tick;
             uint end = _stateEndTick.Value;
 
             if (now >= end)
                 return 0f;
 
-            return (float)TimeManager.TicksToTime(end - now);
+            return (float)timeManager.TicksToTime(end - now);
         }
 
         #endregion
