@@ -6,6 +6,7 @@ using _Scripts.Game;
 using _Scripts.Player;
 using _Scripts.Game.Teams;
 using FishNet.Transporting;
+using _Scripts.Player.Sessions;
 
 public class SpawnManager : NetworkBehaviour
 {
@@ -214,13 +215,21 @@ public class SpawnManager : NetworkBehaviour
         }
 
         SpawnTeam spawnTeam = SpawnTeam.Any;
+        TeamId assignedTeam = TeamId.None;
 
         if (GameModeManager.Instance != null &&
             (GameModeManager.Instance.Mode == GameModeType.Arena ||
              GameModeManager.Instance.Mode == GameModeType.CTF) &&
             TeamManager.Instance != null)
         {
-            spawnTeam = ToSpawnTeam(TeamManager.Instance.GetBalancedTeamForNewPlayer());
+            TeamId fallbackTeam = TeamManager.Instance.GetBalancedTeamForNewPlayer();
+
+            if (PlayerSessionManager.Instance != null)
+                assignedTeam = PlayerSessionManager.Instance.ServerEnsureTeam(conn, fallbackTeam);
+            else
+                assignedTeam = fallbackTeam;
+
+            spawnTeam = ToSpawnTeam(assignedTeam);
         }
 
         PlayerSpawnPoint sp = GetSpawnPoint(spawnTeam);
@@ -234,6 +243,9 @@ public class SpawnManager : NetworkBehaviour
         Spawn(nob, conn);
 
         _spawnedPlayers[conn] = nob;
+        
+        if (PlayerSessionManager.Instance != null)
+            PlayerSessionManager.Instance.ServerLinkSpawnedPlayer(conn, nob);
 
         // Safety: force controller/prediction state to match the spawn transform too.
         if (nob.TryGetComponent(out AdvancedPredictedController ctrl))
@@ -302,6 +314,9 @@ public class SpawnManager : NetworkBehaviour
 
         _spawnedPlayers.Remove(conn);
 
+        if (PlayerSessionManager.Instance != null)
+            PlayerSessionManager.Instance.ServerUnlinkSpawnedPlayer(conn, nob);
+
         if (nob != null && nob.IsSpawned)
             Despawn(nob);
     }
@@ -312,8 +327,14 @@ public class SpawnManager : NetworkBehaviour
         if (!IsServerStarted)
             return;
 
-        foreach (NetworkObject nob in _spawnedPlayers.Values)
+        foreach (var kvp in _spawnedPlayers)
         {
+            NetworkConnection conn = kvp.Key;
+            NetworkObject nob = kvp.Value;
+
+            if (PlayerSessionManager.Instance != null)
+                PlayerSessionManager.Instance.ServerUnlinkSpawnedPlayer(conn, nob);
+
             if (nob != null && nob.IsSpawned)
                 Despawn(nob);
         }

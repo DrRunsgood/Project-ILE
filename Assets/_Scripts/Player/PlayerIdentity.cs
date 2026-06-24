@@ -75,5 +75,12 @@ namespace _Scripts.Player
             _displayName.Value = value;
             gameObject.name = value;
         }
+        
+        [Server]
+        public void ServerApplySessionData(string displayName, TeamId team)
+        {
+            ServerSetDisplayName(displayName);
+            ServerSetTeam(team);
+        }
     }
 }

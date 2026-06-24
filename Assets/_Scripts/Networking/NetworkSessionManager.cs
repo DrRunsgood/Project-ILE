@@ -8,6 +8,7 @@ using _Scripts.Bootstrap;
 using _Scripts.Player;
 using FishNet.Transporting;
 using _Scripts.Game;
+using _Scripts.Player.Sessions;
 
 namespace _Scripts.Networking
 {
@@ -269,7 +270,8 @@ namespace _Scripts.Networking
             if (!string.IsNullOrWhiteSpace(previousSceneName))
             {
                 Debug.Log($"[NetworkSessionManager] Preparing old gameplay scene for unload: {previousSceneName}");
-
+                
+                PlayerSessionManager.Instance?.ServerPrepareForMapChange();
                 SpawnManager.Instance?.DespawnAllPlayers();
                 RoundResetManager.Instance?.PrepareForMapUnload();
 

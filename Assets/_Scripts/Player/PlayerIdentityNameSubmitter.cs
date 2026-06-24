@@ -1,4 +1,6 @@
 using _Scripts.Bootstrap;
+using _Scripts.Player.Sessions;
+using FishNet.Connection;
 using FishNet.Object;
 
 namespace _Scripts.Player
@@ -44,16 +46,21 @@ namespace _Scripts.Player
             Server_RequestDisplayName(requestedName);
         }
 
-        [ServerRpc]
-        private void Server_RequestDisplayName(string requestedName)
+        [ServerRpc(RequireOwnership = true)]
+        private void Server_RequestDisplayName(string requestedName, NetworkConnection conn = null)
         {
+            if (PlayerSessionManager.Instance != null && conn != null)
+            {
+                PlayerSessionManager.Instance.ServerSetDisplayName(conn, requestedName);
+                return;
+            }
+
+            // Fallback for test scenes without PlayerSessionManager.
             if (_identity == null)
                 _identity = GetComponent<PlayerIdentity>();
 
-            if (_identity == null)
-                return;
-
-            _identity.ServerSetDisplayName(requestedName);
+            if (_identity != null)
+                _identity.ServerSetDisplayName(requestedName);
         }
     }
 }

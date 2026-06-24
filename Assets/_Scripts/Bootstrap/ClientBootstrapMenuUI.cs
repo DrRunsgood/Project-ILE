@@ -111,7 +111,10 @@ namespace _Scripts.Bootstrap
                 networkSessionManager = FindAnyObjectByType<NetworkSessionManager>();
 
             if (displayNameInput != null)
-                displayNameInput.text = ClientBootstrapSettings.DisplayName;
+            {
+                ClientBootstrapSettings.DisplayName = displayNameInput.text;
+                ClientBootstrapSettings.SetRuntimeSessionDisplayName(displayNameInput.text);
+            }
 
             if (addressInput != null)
                 addressInput.text = ClientBootstrapSettings.ServerAddress;
