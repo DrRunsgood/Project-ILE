@@ -112,7 +112,7 @@ namespace _Scripts.Bootstrap
 
             if (displayNameInput != null)
             {
-                ClientBootstrapSettings.DisplayName = displayNameInput.text;
+                displayNameInput.text = ClientBootstrapSettings.DisplayName;
                 ClientBootstrapSettings.SetRuntimeSessionDisplayName(displayNameInput.text);
             }
 

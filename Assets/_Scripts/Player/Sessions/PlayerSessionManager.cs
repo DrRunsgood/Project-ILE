@@ -236,7 +236,7 @@ namespace _Scripts.Player.Sessions
             OnSessionBodyUnlinked?.Invoke(session);
         }
 
-        public void ServerPrepareForMapChange()
+        public void ServerPrepareForMapChange(bool clearTeams = true)
         {
             foreach (PlayerSession session in _allSessions)
             {
@@ -245,10 +245,25 @@ namespace _Scripts.Player.Sessions
 
                 session.ClearSpawnedBody();
 
-                // Casual/default behavior later:
-                // session.Team = TeamId.None;
-                //
-                // We will flip this when we wire team rebuilding per map.
+                if (clearTeams)
+                    session.Team = TeamId.None;
+            }
+
+            Debug.Log($"[PlayerSessionManager] Prepared sessions for map change. ClearTeams={clearTeams}");
+        }
+        
+        public void ServerClearMapTeamAssignments()
+        {
+            foreach (PlayerSession session in _allSessions)
+            {
+                if (session == null)
+                    continue;
+
+                session.Team = TeamId.None;
+
+                ApplySessionToSpawnedIdentity(session);
+
+                Debug.Log($"[PlayerSessionManager] Cleared map team assignment. SessionId={session.SessionId}, ClientId={session.ClientId}");
             }
         }
 

@@ -9,6 +9,7 @@ using _Scripts.Player;
 using FishNet.Transporting;
 using _Scripts.Game;
 using _Scripts.Player.Sessions;
+using _Scripts.Server;
 
 namespace _Scripts.Networking
 {
@@ -271,7 +272,12 @@ namespace _Scripts.Networking
             {
                 Debug.Log($"[NetworkSessionManager] Preparing old gameplay scene for unload: {previousSceneName}");
                 
-                PlayerSessionManager.Instance?.ServerPrepareForMapChange();
+                bool clearTeams = true;
+
+                if (ServerMapFlowManager.Instance != null)
+                    clearTeams = ServerMapFlowManager.Instance.ShouldRebuildTeamsOnMapChange;
+
+                PlayerSessionManager.Instance?.ServerPrepareForMapChange(clearTeams);
                 SpawnManager.Instance?.DespawnAllPlayers();
                 RoundResetManager.Instance?.PrepareForMapUnload();
 

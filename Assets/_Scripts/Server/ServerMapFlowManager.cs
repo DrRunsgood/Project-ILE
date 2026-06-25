@@ -11,15 +11,24 @@ namespace _Scripts.Server
         StayOnCurrentMap = 2
     }
     
+    public enum TeamPersistenceMode : byte
+    {
+        RebuildEachMap = 0,
+        PreserveAcrossMapChange = 1
+    }
+    
     public sealed class ServerMapFlowManager : MonoBehaviour
     {
         public static ServerMapFlowManager Instance { get; private set; }
+        public bool ShouldRebuildTeamsOnMapChange => teamPersistenceMode == TeamPersistenceMode.RebuildEachMap;
 
         [Header("References")]
         [SerializeField] private NetworkSessionManager networkSessionManager;
         [Header("Post Match Flow")]
         [SerializeField] private PostMatchMapAction postMatchAction = PostMatchMapAction.LoadNextMap;
-
+        [Header("Team Flow")]
+        [SerializeField] private TeamPersistenceMode teamPersistenceMode = TeamPersistenceMode.RebuildEachMap;
+        
         [Header("Map Rotation")]
         [SerializeField] private string[] mapRotation =
         {

@@ -210,6 +210,12 @@ public class SpawnManager : NetworkBehaviour
         {
             _spawnedPlayers.Remove(conn);
 
+            if (TeamManager.Instance != null && existing.TryGetComponent(out PlayerIdentity existingIdentity))
+                TeamManager.Instance.UnregisterPlayer(existingIdentity);
+
+            if (PlayerSessionManager.Instance != null)
+                PlayerSessionManager.Instance.ServerUnlinkSpawnedPlayer(conn, existing);
+
             if (existing.IsSpawned)
                 Despawn(existing);
         }
@@ -246,6 +252,9 @@ public class SpawnManager : NetworkBehaviour
         
         if (PlayerSessionManager.Instance != null)
             PlayerSessionManager.Instance.ServerLinkSpawnedPlayer(conn, nob);
+        
+        if (TeamManager.Instance != null && nob.TryGetComponent(out PlayerIdentity identity))
+            TeamManager.Instance.RegisterPlayer(identity);
 
         // Safety: force controller/prediction state to match the spawn transform too.
         if (nob.TryGetComponent(out AdvancedPredictedController ctrl))
@@ -314,9 +323,12 @@ public class SpawnManager : NetworkBehaviour
 
         _spawnedPlayers.Remove(conn);
 
+        if (TeamManager.Instance != null && nob.TryGetComponent(out PlayerIdentity identity))
+            TeamManager.Instance.UnregisterPlayer(identity);
+
         if (PlayerSessionManager.Instance != null)
             PlayerSessionManager.Instance.ServerUnlinkSpawnedPlayer(conn, nob);
-
+        
         if (nob != null && nob.IsSpawned)
             Despawn(nob);
     }
@@ -327,10 +339,15 @@ public class SpawnManager : NetworkBehaviour
         if (!IsServerStarted)
             return;
 
+        _pendingSpawnPlayers.Clear();
+
         foreach (var kvp in _spawnedPlayers)
         {
             NetworkConnection conn = kvp.Key;
             NetworkObject nob = kvp.Value;
+
+            if (TeamManager.Instance != null && nob.TryGetComponent(out PlayerIdentity identity))
+                TeamManager.Instance.UnregisterPlayer(identity);
 
             if (PlayerSessionManager.Instance != null)
                 PlayerSessionManager.Instance.ServerUnlinkSpawnedPlayer(conn, nob);

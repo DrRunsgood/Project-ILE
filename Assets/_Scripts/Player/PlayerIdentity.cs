@@ -15,22 +15,6 @@ namespace _Scripts.Player
         public string DisplayName => _displayName.Value;
 
         public TeamId Team => _team.Value;
-
-        public override void OnStartServer()
-        {
-            base.OnStartServer();
-
-            if (TeamManager.Instance != null)
-                TeamManager.Instance.RegisterPlayer(this);
-        }
-
-        public override void OnStopServer()
-        {
-            base.OnStopServer();
-
-            if (TeamManager.Instance != null)
-                TeamManager.Instance.UnregisterPlayer(this);
-        }
         
         void Awake()
         {
