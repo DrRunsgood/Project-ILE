@@ -26,6 +26,7 @@ GameObject:
   - component: {fileID: 8377303944074814623}
   - component: {fileID: -8491762940690051033}
   - component: {fileID: 2049052762416851640}
+  - component: {fileID: -3267090812201351334}
   m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
@@ -109,6 +110,7 @@ MonoBehaviour:
   - {fileID: 3370746286946904150}
   - {fileID: 8377303944074814623}
   - {fileID: -8491762940690051033}
+  - {fileID: 2049052762416851640}
   - {fileID: 3289860153973179968}
   - {fileID: 759703639484445222}
   InitializedParentNetworkBehaviour: {fileID: 0}
@@ -121,7 +123,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584196058203018982
+  _initializedTimestamp: -8584190391482673452
 --- !u!54 &7001912800235990901
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -483,10 +485,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a9be93b7b79931e429f9f633bbd4e123, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerDisconnectCleanup
-  _componentIndexCache: 255
+  _componentIndexCache: 12
   _addedNetworkObject: {fileID: 6832439599154668905}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 6832439599154668905}
   fallbackDisconnectDelay: 0.35
+  disconnectAfterCleanupDelay: 0.15
+--- !u!114 &-3267090812201351334
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246683354149957449}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 674ab5ffb5311cb40be67d997bfae0a1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerSuicideController
 --- !u!1 &1658271619301096103
 GameObject:
   m_ObjectHideFlags: 0
@@ -531,7 +546,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Transforming.Beta.NetworkTickSmoother
-  _componentIndexCache: 12
+  _componentIndexCache: 13
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:
@@ -1033,7 +1048,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 13
+  _componentIndexCache: 14
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:

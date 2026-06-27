@@ -289,6 +289,44 @@ public sealed class PlayerHealth : NetworkBehaviour
         }
         _healRoutine = null;                     // finished / interrupted
     }
+    
+    [Server]
+    public void ServerSuicide()
+    {
+        if (IsDead)
+            return;
+
+        int before = _hp.Value;
+        int lethalDamage = Mathf.Max(before, maxHp);
+
+        var info = new DamageInfo(
+            amount: lethalDamage,
+            attacker: NetworkObject,
+            source: NetworkObject,
+            type: DamageType.Suicide,
+            point: transform.position,
+            normal: Vector3.up,
+            impulse: Vector3.zero);
+
+        int after = 0;
+        _hp.Value = after;
+
+        var result = new DamageResult(
+            applied: true,
+            killed: true,
+            rawDamage: lethalDamage,
+            finalDamage: before,
+            shieldAbsorbed: 0,
+            healthBefore: before,
+            healthAfter: after,
+            attacker: NetworkObject,
+            victim: NetworkObject,
+            type: DamageType.Suicide,
+            weaponId: 0,
+            rejectReason: DamageRejectReason.None);
+
+        HandleDeath(NetworkObject, result);
+    }
 
     /* ═════════ helpers ═════════ */
     void SetPlayable(bool yes)

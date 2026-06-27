@@ -910,7 +910,7 @@ namespace _Scripts.Game
                 DamageType.Explosion => "explosion",
                 DamageType.Impact => "impact",
                 DamageType.Environment => "environment",
-                DamageType.Self => "self",
+                DamageType.Suicide => "suicide",
                 _ => "eliminated"
             };
         }

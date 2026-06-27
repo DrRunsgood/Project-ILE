@@ -28,6 +28,7 @@ namespace _Scripts.Player
         bool _medkitUseRequested;
         bool _beaconUseRequested;
         bool _flagThrowRequested;
+        bool _suicideRequested;
         
         void Update()
         {
@@ -97,6 +98,8 @@ namespace _Scripts.Player
             if (Input.GetKeyDown(KeyCode.H)) _medkitUseRequested  = true;   // Med-kit
             if (Input.GetKeyDown(KeyCode.B)) _beaconUseRequested  = true;   // Beacon
             if (Input.GetKeyDown(KeyCode.T)) _flagThrowRequested  = true;   // Flag toss
+            
+            if (Input.GetKeyDown(KeyCode.K)) _suicideRequested = true; // Suicide / self-kill
         }
 
         /* ================================================================ */
@@ -133,6 +136,13 @@ namespace _Scripts.Player
         {
             bool v = _flagThrowRequested;
             _flagThrowRequested = false;
+            return v;
+        }
+        
+        public bool ConsumeSuicide()
+        {
+            bool v = _suicideRequested;
+            _suicideRequested = false;
             return v;
         }
         
