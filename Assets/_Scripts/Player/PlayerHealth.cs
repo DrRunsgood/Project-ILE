@@ -10,6 +10,7 @@ using _Scripts.Weapons;   // WeaponManager
 using _Scripts.Packs;
 using _Scripts.Game.CTF;
 using _Scripts.Combat;
+using _Scripts.Player.Sessions;
 
 [DisallowMultipleComponent]
 public sealed class PlayerHealth : NetworkBehaviour
@@ -211,6 +212,11 @@ public sealed class PlayerHealth : NetworkBehaviour
         RpcSetAlive(false);
 
         OnDied?.Invoke();
+        
+        PlayerIdentity identity = GetComponent<PlayerIdentity>();
+
+        if (PlayerSessionManager.Instance != null)
+            PlayerSessionManager.Instance.ServerMarkDead(identity);
 
         if (result.Victim != null)
             GameModeManager.Instance?.NotifyPlayerDied(this, result);

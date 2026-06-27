@@ -4,6 +4,7 @@ using FishNet.Connection;
 using FishNet.Object;
 using UnityEngine;
 using _Scripts.Weapons;
+using _Scripts.Player.Sessions;
 
 namespace _Scripts.Player
 {
@@ -71,6 +72,9 @@ namespace _Scripts.Player
 
             if (_weaponManager != null)
                 _weaponManager.DropAll();
+            
+            if (PlayerSessionManager.Instance != null && Owner != null)
+                PlayerSessionManager.Instance.ServerMarkDead(Owner);
 
             // TODO later:
             // - Drop carried flag.

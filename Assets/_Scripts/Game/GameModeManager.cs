@@ -6,6 +6,7 @@ using _Scripts.Game.CTF;
 using _Scripts.Combat;
 using _Scripts.Player;
 using _Scripts.Server;
+using _Scripts.Player.Sessions;
 using FishNet;
 
 namespace _Scripts.Game
@@ -103,19 +104,38 @@ namespace _Scripts.Game
         public override void OnStartServer()
         {
             base.OnStartServer();
+            
+            if (PlayerSessionManager.Instance != null)
+            {
+                PlayerSessionManager.Instance.OnSessionEligibilityChanged += HandleSessionEligibilityChanged;
+                PlayerSessionManager.Instance.OnSessionConnected += HandleSessionConnected;
+                PlayerSessionManager.Instance.OnSessionBodyLinked += HandleSessionBodyLinked;
+            }
 
             _mode.Value = startingMode;
 
             if (CanStartWarmup())
             {
                 if (_mode.Value == GameModeType.Arena)
-                    StartArenaPreRound();
+                    StartArenaBetweenRoundsOrWaiting();
                 else
                     StartWarmup();
             }
             else
             {
                 StartWaiting();
+            }
+        }
+        
+        public override void OnStopServer()
+        {
+            base.OnStopServer();
+
+            if (PlayerSessionManager.Instance != null)
+            {
+                PlayerSessionManager.Instance.OnSessionEligibilityChanged -= HandleSessionEligibilityChanged;
+                PlayerSessionManager.Instance.OnSessionConnected -= HandleSessionConnected;
+                PlayerSessionManager.Instance.OnSessionBodyLinked -= HandleSessionBodyLinked;
             }
         }
 
@@ -155,7 +175,7 @@ namespace _Scripts.Game
         {
             if (_mode.Value == GameModeType.Arena)
             {
-                StartArenaPreRound();
+                StartArenaBetweenRoundsOrWaiting();
                 return;
             }
 
@@ -286,7 +306,7 @@ namespace _Scripts.Game
             if (_state.Value == MatchState.Waiting)
             {
                 if (CanStartWarmup())
-                    StartArenaPreRound();
+                    StartArenaBetweenRoundsOrWaiting();
 
                 return;
             }
@@ -311,7 +331,7 @@ namespace _Scripts.Game
                     if (HasArenaMatchWinner())
                         EndMatch();
                     else
-                        StartArenaPreRound();
+                        StartArenaBetweenRoundsOrWaiting();
                     break;
 
                 case MatchState.PostMatch:
@@ -455,26 +475,63 @@ namespace _Scripts.Game
         [Server]
         void CheckArenaEliminationWin()
         {
-            if (TeamManager.Instance == null)
+            EvaluateArenaRoundEndFromSessions();
+        }
+        
+        [Server]
+        private bool HasEnoughArenaPlayersForRound()
+        {
+            if (PlayerSessionManager.Instance == null)
+                return true;
+
+            int teamAConnected = PlayerSessionManager.Instance.CountConnectedPlayersOnTeam(TeamId.TeamA);
+            int teamBConnected = PlayerSessionManager.Instance.CountConnectedPlayersOnTeam(TeamId.TeamB);
+
+            return teamAConnected > 0 && teamBConnected > 0;
+        }
+        
+        [Server]
+        private void StartArenaBetweenRoundsOrWaiting()
+        {
+            if (!HasEnoughArenaPlayersForRound())
+            {
+                Debug.Log("[GameModeManager] Arena waiting for players before next round.");
+                StartWaiting();
+                return;
+            }
+
+            StartArenaPreRound();
+        }
+        
+        [Server]
+        private void EvaluateArenaRoundEndFromSessions()
+        {
+            if (_mode.Value != GameModeType.Arena)
                 return;
 
-            int aliveA = TeamManager.Instance.CountAlive(TeamId.TeamA);
-            int aliveB = TeamManager.Instance.CountAlive(TeamId.TeamB);
+            if (_state.Value != MatchState.Live)
+                return;
+
+            if (PlayerSessionManager.Instance == null)
+                return;
+
+            int aliveA = PlayerSessionManager.Instance.CountConnectedEligiblePlayersOnTeam(TeamId.TeamA);
+            int aliveB = PlayerSessionManager.Instance.CountConnectedEligiblePlayersOnTeam(TeamId.TeamB);
+
+            if (aliveA > 0 && aliveB > 0)
+                return;
 
             if (aliveA <= 0 && aliveB <= 0)
             {
+                Debug.Log("[GameModeManager] Arena round ended with no eligible players alive. Tie/no-score.");
                 EndArenaRound(TeamId.None);
                 return;
             }
 
-            if (aliveA <= 0)
-            {
-                EndArenaRound(TeamId.TeamB);
-                return;
-            }
+            TeamId winner = aliveA > 0 ? TeamId.TeamA : TeamId.TeamB;
 
-            if (aliveB <= 0)
-                EndArenaRound(TeamId.TeamA);
+            Debug.Log($"[GameModeManager] Arena round winner by session elimination: {winner}");
+            EndArenaRound(winner);
         }
 
         #endregion
@@ -857,7 +914,50 @@ namespace _Scripts.Game
                 _ => "eliminated"
             };
         }
-        
         #endregion
+        
+        [Server]
+        private void HandleSessionEligibilityChanged(PlayerSession session)
+        {
+            if (_mode.Value != GameModeType.Arena)
+                return;
+
+            if (_state.Value == MatchState.Live)
+            {
+                EvaluateArenaRoundEndFromSessions();
+                return;
+            }
+
+            if (_state.Value == MatchState.Waiting)
+                TryResumeArenaFromWaiting();
+        }
+
+        [Server]
+        private void HandleSessionConnected(PlayerSession session)
+        {
+            TryResumeArenaFromWaiting();
+        }
+
+        [Server]
+        private void HandleSessionBodyLinked(PlayerSession session)
+        {
+            TryResumeArenaFromWaiting();
+        }
+
+        [Server]
+        private void TryResumeArenaFromWaiting()
+        {
+            if (_mode.Value != GameModeType.Arena)
+                return;
+
+            if (_state.Value != MatchState.Waiting)
+                return;
+
+            if (!HasEnoughArenaPlayersForRound())
+                return;
+
+            Debug.Log("[GameModeManager] Arena has enough players. Starting pre-round.");
+            StartArenaPreRound();
+        }
     }
 }

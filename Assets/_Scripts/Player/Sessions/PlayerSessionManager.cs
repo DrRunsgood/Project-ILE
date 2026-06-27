@@ -19,6 +19,8 @@ namespace _Scripts.Player.Sessions
         public event Action<PlayerSession> OnSessionBodyLinked;
         public event Action<PlayerSession> OnSessionBodyUnlinked;
         public event Action<PlayerSession> OnSessionIdentityChanged;
+        public event Action<PlayerSession> OnSessionLifeStateChanged;
+        public event Action<PlayerSession> OnSessionEligibilityChanged;
 
         private readonly Dictionary<NetworkConnection, PlayerSession> _sessionsByConnection = new();
         private readonly List<PlayerSession> _allSessions = new();
@@ -213,6 +215,9 @@ namespace _Scripts.Player.Sessions
                 return;
 
             session.SetSpawnedBody(spawnedObject);
+            
+            session.IsAlive = true;
+            session.IsEligibleThisRound = true;
 
             ApplySessionToSpawnedIdentity(session);
 
@@ -278,7 +283,110 @@ namespace _Scripts.Player.Sessions
 
             Debug.Log($"[PlayerSessionManager] Session disconnected. SessionId={session.SessionId}, ClientId={session.ClientId}, Name={session.DisplayName}");
 
+            OnSessionLifeStateChanged?.Invoke(session);
+            OnSessionEligibilityChanged?.Invoke(session);
             OnSessionDisconnected?.Invoke(session);
+        }
+        
+        public void ServerMarkSpawnedAlive(NetworkConnection conn)
+        {
+            if (!TryGetSession(conn, out PlayerSession session))
+                return;
+
+            session.IsAlive = true;
+            session.IsEligibleThisRound = true;
+
+            Debug.Log($"[PlayerSessionManager] Session alive/eligible. SessionId={session.SessionId}, ClientId={session.ClientId}, Team={session.Team}");
+
+            OnSessionLifeStateChanged?.Invoke(session);
+            OnSessionEligibilityChanged?.Invoke(session);
+        }
+
+        public void ServerMarkDead(NetworkConnection conn)
+        {
+            if (!TryGetSession(conn, out PlayerSession session))
+                return;
+
+
+            if (!session.IsAlive && !session.IsEligibleThisRound)
+                return;
+
+            session.IsAlive = false;
+            session.IsEligibleThisRound = false;
+
+            Debug.Log($"[PlayerSessionManager] Session dead/ineligible. SessionId={session.SessionId}, ClientId={session.ClientId}, Team={session.Team}");
+
+            OnSessionLifeStateChanged?.Invoke(session);
+            OnSessionEligibilityChanged?.Invoke(session);
+        }
+
+        public void ServerMarkDead(PlayerIdentity identity)
+        {
+            if (identity == null)
+                return;
+
+            foreach (PlayerSession session in _allSessions)
+            {
+                if (session == null)
+                    continue;
+
+                if (session.SpawnedIdentity != identity)
+                    continue;
+
+                session.IsAlive = false;
+                session.IsEligibleThisRound = false;
+
+                Debug.Log($"[PlayerSessionManager] Session dead/ineligible by identity. SessionId={session.SessionId}, ClientId={session.ClientId}, Team={session.Team}");
+
+                OnSessionLifeStateChanged?.Invoke(session);
+                OnSessionEligibilityChanged?.Invoke(session);
+                return;
+            }
+        }
+
+        public int CountConnectedEligiblePlayersOnTeam(TeamId team)
+        {
+            int count = 0;
+
+            foreach (PlayerSession session in _allSessions)
+            {
+                if (session == null)
+                    continue;
+
+                if (!session.IsConnected)
+                    continue;
+
+                if (!session.IsEligibleThisRound)
+                    continue;
+
+                if (session.Team != team)
+                    continue;
+
+                count++;
+            }
+
+            return count;
+        }
+
+        public int CountConnectedPlayersOnTeam(TeamId team)
+        {
+            int count = 0;
+
+            foreach (PlayerSession session in _allSessions)
+            {
+                if (session == null)
+                    continue;
+
+                if (!session.IsConnected)
+                    continue;
+
+                if (session.Team != team)
+                    continue;
+
+                count++;
+            }
+
+            return count;
         }
 
         private void ApplySessionToSpawnedIdentity(PlayerSession session)
