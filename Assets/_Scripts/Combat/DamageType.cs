@@ -7,6 +7,7 @@ namespace _Scripts.Combat
         Explosion = 2,
         Impact = 3,
         Environment = 4,
-        Suicide = 5
+        Suicide = 5,
+        OutOfBounds = 6,
     }
 }

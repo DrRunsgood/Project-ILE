@@ -327,6 +327,41 @@ public sealed class PlayerHealth : NetworkBehaviour
 
         HandleDeath(NetworkObject, result);
     }
+    
+    [Server]
+    public void ServerApplyOutOfBoundsDamage(int amount)
+    {
+        if (IsDead)
+            return;
+
+        amount = Mathf.Max(0, amount);
+        if (amount <= 0)
+            return;
+
+        int before = _hp.Value;
+        int after = Mathf.Max(0, before - amount);
+
+        _hp.Value = after;
+
+        bool killed = after <= 0;
+
+        var result = new DamageResult(
+            applied: true,
+            killed: killed,
+            rawDamage: amount,
+            finalDamage: before - after,
+            shieldAbsorbed: 0,
+            healthBefore: before,
+            healthAfter: after,
+            attacker: null,
+            victim: NetworkObject,
+            type: DamageType.OutOfBounds,
+            weaponId: 0,
+            rejectReason: DamageRejectReason.None);
+
+        if (killed)
+            HandleDeath(null, result);
+    }
 
     /* ═════════ helpers ═════════ */
     void SetPlayable(bool yes)
