@@ -32,9 +32,9 @@ namespace _Scripts.Game.Teams
             _players.Add(player);
 
             if (player.Team == TeamId.None)
-                player.ServerSetTeam(GetBalancedTeam());
-
-            Debug.Log($"[TeamManager] Registered {player.name} to {player.Team}");
+                Debug.LogWarning($"[TeamManager] Registered {player.name} with Team=None. This is valid for FFA/Deathmatch, but team modes should assign a team before registration.");
+            else
+                Debug.Log($"[TeamManager] Registered {player.name} to {player.Team}");
         }
 
         [Server]

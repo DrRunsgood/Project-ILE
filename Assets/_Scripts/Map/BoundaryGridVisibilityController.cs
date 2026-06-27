@@ -29,7 +29,7 @@ namespace _Scripts.Map
         private void Awake()
         {
             if (boundsManager == null)
-                boundsManager = FindFirstObjectByType<MapBoundsManager>();
+                boundsManager = FindAnyObjectByType<MapBoundsManager>();
 
             if (gridVisual == null)
                 gridVisual = GetComponent<BoundaryGridVisual>();

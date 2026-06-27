@@ -28,13 +28,13 @@ namespace _Scripts.Map
 
         private void Reset()
         {
-            boundsManager = FindFirstObjectByType<MapBoundsManager>();
+            boundsManager = FindAnyObjectByType<MapBoundsManager>();
         }
 
         private void OnValidate()
         {
             if (boundsManager == null)
-                boundsManager = FindFirstObjectByType<MapBoundsManager>();
+                boundsManager = FindAnyObjectByType<MapBoundsManager>();
 
             Apply();
         }

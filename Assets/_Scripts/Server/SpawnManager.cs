@@ -346,7 +346,7 @@ public class SpawnManager : NetworkBehaviour
             NetworkConnection conn = kvp.Key;
             NetworkObject nob = kvp.Value;
 
-            if (TeamManager.Instance != null && nob.TryGetComponent(out PlayerIdentity identity))
+            if (TeamManager.Instance != null && nob != null && nob.TryGetComponent(out PlayerIdentity identity))
                 TeamManager.Instance.UnregisterPlayer(identity);
 
             if (PlayerSessionManager.Instance != null)

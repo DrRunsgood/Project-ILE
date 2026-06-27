@@ -84,6 +84,7 @@ namespace _Scripts.Game
         #endregion
         
         bool _postMatchFlowRequested;
+        private bool _isStartingArenaPreRound;
 
         #region Unity / FishNet Lifecycle
 
@@ -361,7 +362,6 @@ namespace _Scripts.Game
                 case MatchState.Warmup:
                     if (CanStartMatch())
                     {
-                        ResetAllPlayerStats();
                         StartCTFMatch();
                     }
                     else
@@ -584,8 +584,7 @@ namespace _Scripts.Game
             ResetAllPlayerStats();
 
             CTFManager.Instance?.Server_ResetForMatchStart();
-
-            RoundResetManager.Instance?.ResetForArenaRound(); // Optional but useful if this clears world objects/inventories.
+            RoundResetManager.Instance?.ResetForCTFMatchStart(); // we used to use ResetForArenaRound - do we need any special resets?
             SpawnManager.Instance?.SpawnPendingPlayers();
             SpawnManager.Instance?.RespawnAllPlayers();
             SpawnManager.Instance?.SetAllPlayersFrozen(false);
@@ -755,10 +754,12 @@ namespace _Scripts.Game
         #endregion
 
         #region Stats
-
         [Server]
         void RecordKillDeath(PlayerHealth victim, NetworkObject killer)
         {
+            if (victim == null)
+                return;
+
             if (victim.TryGetComponent(out Player.PlayerStats victimStats))
                 victimStats.AddDeath();
 
@@ -780,6 +781,20 @@ namespace _Scripts.Game
         [Server]
         void ResetAllPlayerStats()
         {
+            if (PlayerSessionManager.Instance != null)
+            {
+                foreach (PlayerSession session in PlayerSessionManager.Instance.GetAllSessions())
+                {
+                    if (session == null || session.SpawnedObject == null)
+                        continue;
+
+                    if (session.SpawnedObject.TryGetComponent(out Player.PlayerStats stats))
+                        stats.ResetStats();
+                }
+
+                return;
+            }
+
             if (TeamManager.Instance == null)
                 return;
 
@@ -815,7 +830,7 @@ namespace _Scripts.Game
             return _mode.Value switch
             {
                 GameModeType.Deathmatch => ConnectedPlayerCount() >= 1,
-                GameModeType.Arena => ConnectedPlayerCount() >= 2,
+                GameModeType.Arena => HasEnoughArenaPlayersForRound(),
                 GameModeType.CTF => ConnectedPlayerCount() >= 2,
                 _ => true
             };
@@ -879,7 +894,8 @@ namespace _Scripts.Game
             bool isEnvironmental =
                 result.Attacker == null ||
                 result.Type == DamageType.Environment ||
-                result.Type == DamageType.Impact;
+                result.Type == DamageType.Impact ||
+                result.Type == DamageType.OutOfBounds;
 
             string sourceText = GetDamageSourceText(result);
 
@@ -911,6 +927,7 @@ namespace _Scripts.Game
                 DamageType.Impact => "impact",
                 DamageType.Environment => "environment",
                 DamageType.Suicide => "suicide",
+                DamageType.OutOfBounds => "out of bounds",
                 _ => "eliminated"
             };
         }
@@ -922,14 +939,10 @@ namespace _Scripts.Game
             if (_mode.Value != GameModeType.Arena)
                 return;
 
-            if (_state.Value == MatchState.Live)
-            {
-                EvaluateArenaRoundEndFromSessions();
+            if (_state.Value != MatchState.Live)
                 return;
-            }
 
-            if (_state.Value == MatchState.Waiting)
-                TryResumeArenaFromWaiting();
+            EvaluateArenaRoundEndFromSessions();
         }
 
         [Server]
@@ -947,6 +960,9 @@ namespace _Scripts.Game
         [Server]
         private void TryResumeArenaFromWaiting()
         {
+            if (_isStartingArenaPreRound)
+                return;
+
             if (_mode.Value != GameModeType.Arena)
                 return;
 
@@ -957,7 +973,17 @@ namespace _Scripts.Game
                 return;
 
             Debug.Log("[GameModeManager] Arena has enough players. Starting pre-round.");
-            StartArenaPreRound();
+
+            _isStartingArenaPreRound = true;
+
+            try
+            {
+                StartArenaPreRound();
+            }
+            finally
+            {
+                _isStartingArenaPreRound = false;
+            }
         }
     }
 }

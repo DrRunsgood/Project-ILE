@@ -212,16 +212,20 @@ public sealed class PlayerHealth : NetworkBehaviour
         RpcSetAlive(false);
 
         OnDied?.Invoke();
-        
-        PlayerIdentity identity = GetComponent<PlayerIdentity>();
 
-        if (PlayerSessionManager.Instance != null)
-            PlayerSessionManager.Instance.ServerMarkDead(identity);
-
+        // Notify game mode first while the match is still Live.
+        // This records K/D and kill feed before session eligibility ends the round.
         if (result.Victim != null)
             GameModeManager.Instance?.NotifyPlayerDied(this, result);
         else
             GameModeManager.Instance?.NotifyPlayerDied(this, killer);
+
+        // Mark session dead after game mode has recorded the death.
+        // This may trigger Arena elimination and move the round to PostRound.
+        PlayerIdentity identity = GetComponent<PlayerIdentity>();
+
+        if (PlayerSessionManager.Instance != null)
+            PlayerSessionManager.Instance.ServerMarkDead(identity);
 
         float delay = GameModeManager.Instance != null
             ? GameModeManager.Instance.GetRespawnDelay(this)
@@ -261,6 +265,9 @@ public sealed class PlayerHealth : NetworkBehaviour
         SetPlayable(true);
         ApplyAliveState(true); // server-side physics/hitboxes
         RpcSetAlive(true);     // clients/observers
+
+        if (PlayerSessionManager.Instance != null && Owner != null)
+            PlayerSessionManager.Instance.ServerMarkSpawnedAlive(Owner);
 
         GameModeManager.Instance?.NotifyPlayerRespawned(this);
         OnRespawned?.Invoke();

@@ -250,6 +250,9 @@ namespace _Scripts.Player.Sessions
 
                 session.ClearSpawnedBody();
 
+                session.IsAlive = false;
+                session.IsEligibleThisRound = false;
+
                 if (clearTeams)
                     session.Team = TeamId.None;
             }
