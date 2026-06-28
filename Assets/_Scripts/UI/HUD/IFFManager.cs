@@ -40,6 +40,14 @@ public sealed class IFFManager : MonoBehaviour
         LocalPlayerContext.OnLocalPlayerReady += HandleLocalPlayerReady;
         LocalPlayerContext.OnLocalPlayerCleared += HandleLocalPlayerCleared;
     }
+    
+    void OnEnable()
+    {
+        TryBindExistingLocalPlayer();
+
+        if (!targetCamera)
+            targetCamera = Camera.main;
+    }
 
     void OnDestroy()
     {
@@ -49,11 +57,24 @@ public sealed class IFFManager : MonoBehaviour
 
     void HandleLocalPlayerReady(AdvancedPredictedController controller)
     {
-        _localIdentity = controller.GetComponent<PlayerIdentity>();
+        if (controller == null)
+            return;
+
+        PlayerIdentity identity = controller.GetComponent<PlayerIdentity>();
+        if (identity == null)
+            return;
+
+        bool changed =
+            _localIdentity != identity ||
+            _localTransform != controller.transform;
+
+        _localIdentity = identity;
         _localTransform = controller.transform;
 
-        if (!targetCamera)
-            targetCamera = Camera.main;
+        targetCamera = Camera.main;
+
+        if (changed)
+            ClearWidgetState();
     }
 
     void HandleLocalPlayerCleared()
@@ -61,26 +82,23 @@ public sealed class IFFManager : MonoBehaviour
         _localIdentity = null;
         _localTransform = null;
 
-        foreach (IFFWidget w in _widgets.Values)
-        {
-            if (w != null)
-                Destroy(w.gameObject);
-        }
-
-        _widgets.Clear();
-        _nextLosCheck.Clear();
-        _losVisible.Clear();
-        _staleTargets.Clear();
+        ClearWidgetState();
     }
 
     void LateUpdate()
     {
         CleanupStaleWidgets();
-        
+
+        if (!_localIdentity || !_localTransform)
+            TryBindExistingLocalPlayer();
+
+        if (!targetCamera || !targetCamera.gameObject.activeInHierarchy)
+            targetCamera = Camera.main;
+
         if (!_localIdentity || !_localTransform || !targetCamera || !widgetPrefab)
             return;
-
-        PlayerIFFTarget[] targets = FindObjectsByType<PlayerIFFTarget>();
+        
+        PlayerIFFTarget[] targets = FindObjectsByType<PlayerIFFTarget>(FindObjectsInactive.Exclude);
 
         foreach (PlayerIFFTarget target in targets)
         {
@@ -137,7 +155,9 @@ public sealed class IFFManager : MonoBehaviour
         Vector3 toTarget = worldPos - targetCamera.transform.position;
         float distance = toTarget.magnitude;
 
-        bool teammate = target.Identity.Team == _localIdentity.Team;
+        bool teammate =
+            _localIdentity.Team != TeamId.None && target.Identity.Team != TeamId.None && target.Identity.Team == _localIdentity.Team;
+        
         float maxDistance = teammate ? teammateMaxDistance : enemyMaxDistance;
 
         if (distance > maxDistance)
@@ -245,5 +265,25 @@ public sealed class IFFManager : MonoBehaviour
             _nextLosCheck.Remove(target);
             _losVisible.Remove(target);
         }
+    }
+    
+    void TryBindExistingLocalPlayer()
+    {
+        if (LocalPlayerContext.IsReady && LocalPlayerContext.Controller != null)
+            HandleLocalPlayerReady(LocalPlayerContext.Controller);
+    }
+    
+    void ClearWidgetState()
+    {
+        foreach (IFFWidget w in _widgets.Values)
+        {
+            if (w != null)
+                Destroy(w.gameObject);
+        }
+
+        _widgets.Clear();
+        _nextLosCheck.Clear();
+        _losVisible.Clear();
+        _staleTargets.Clear();
     }
 }

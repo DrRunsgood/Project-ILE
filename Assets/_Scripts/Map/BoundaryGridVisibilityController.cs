@@ -1,6 +1,7 @@
 using FishNet;
 using FishNet.Object;
 using UnityEngine;
+using _Scripts.Player;
 
 namespace _Scripts.Map
 {
@@ -18,6 +19,8 @@ namespace _Scripts.Map
         [SerializeField] private float maxInsideAlpha = 0.65f;
         [SerializeField] private float fadeSpeed = 8f;
 
+        [SerializeField] private float localPlayerSearchInterval = 0.25f;
+        
         [Header("Material")]
         [SerializeField] private string alphaProperty = "_BoundaryAlpha";
 
@@ -25,34 +28,65 @@ namespace _Scripts.Map
         private MaterialPropertyBlock _mpb;
         private Transform _localPlayer;
         private float _currentAlpha;
+        private float _nextLocalPlayerSearchTime;
 
         private void Awake()
         {
             if (boundsManager == null)
                 boundsManager = FindAnyObjectByType<MapBoundsManager>();
 
-            if (gridVisual == null)
-                gridVisual = GetComponent<BoundaryGridVisual>();
+            if (_mpb == null)
+                _mpb = new MaterialPropertyBlock();
 
-            if (gridVisual == null)
-                gridVisual = GetComponentInChildren<BoundaryGridVisual>();
+            RefreshRenderers();
+            SetAlphaImmediate(0f);
+        }
+        
+        private void Start()
+        {
+            if (InstanceFinder.IsServerStarted && !InstanceFinder.IsClientStarted)
+            {
+                enabled = false;
+                return;
+            }
+        }
 
-            _renderers = gridVisual != null
-                ? gridVisual.GetRenderers()
-                : GetComponentsInChildren<Renderer>(true);
+        private void OnEnable()
+        {
+            if (boundsManager == null)
+                boundsManager = FindAnyObjectByType<MapBoundsManager>();
 
-            _mpb = new MaterialPropertyBlock();
-
+            RefreshRenderers();
+            
+            _localPlayer = null;
             SetAlphaImmediate(0f);
         }
 
         private void Update()
         {
-            if (boundsManager == null)
+            if (InstanceFinder.IsServerStarted && !InstanceFinder.IsClientStarted)
                 return;
+            
+            if (boundsManager == null)
+                boundsManager = FindAnyObjectByType<MapBoundsManager>();
 
-            if (_localPlayer == null)
-                TryFindLocalPlayer();
+            if (_renderers == null || _renderers.Length == 0)
+                RefreshRenderers();
+
+            if (boundsManager == null)
+            {
+                FadeTo(0f);
+                return;
+            }
+
+            if (_localPlayer == null || !_localPlayer.gameObject.activeInHierarchy)
+            {
+                if (Time.unscaledTime >= _nextLocalPlayerSearchTime)
+                {
+                    _nextLocalPlayerSearchTime = Time.unscaledTime + localPlayerSearchInterval;
+                    TryFindLocalPlayer();
+                }
+            }
 
             if (_localPlayer == null)
             {
@@ -66,34 +100,46 @@ namespace _Scripts.Map
 
             if (edgeDistance < 0f)
             {
-                // Player is outside. Boundary should be clearly visible.
                 targetAlpha = outsideVisibleAlpha;
             }
             else if (edgeDistance >= fadeStartDistance)
             {
-                // Far from edge. Invisible.
                 targetAlpha = 0f;
             }
             else
             {
-                // Fade in as player approaches edge.
                 float t = Mathf.InverseLerp(fadeStartDistance, fullyVisibleDistance, edgeDistance);
                 targetAlpha = Mathf.Lerp(0f, maxInsideAlpha, t);
             }
-
+            
             FadeTo(targetAlpha);
         }
 
         private void TryFindLocalPlayer()
         {
-            if (InstanceFinder.ClientManager == null)
-                return;
+            _localPlayer = null;
 
-            NetworkObject localPlayerObject = InstanceFinder.ClientManager.Connection?.FirstObject;
-            if (localPlayerObject == null)
-                return;
+            if (LocalPlayerContext.IsReady && LocalPlayerContext.Controller != null)
+            {
+                _localPlayer = LocalPlayerContext.Controller.transform;
 
-            _localPlayer = localPlayerObject.transform;
+                return;
+            }
+
+            PlayerIdentity[] identities = FindObjectsByType<PlayerIdentity>(FindObjectsInactive.Exclude);
+
+            foreach (var identity in identities)
+            {
+                if (identity == null)
+                    continue;
+                
+                if (!identity.IsOwner)
+                    continue;
+
+                _localPlayer = identity.transform;
+
+                return;
+            }
         }
 
         private void FadeTo(float targetAlpha)
@@ -150,6 +196,19 @@ namespace _Scripts.Map
 
                 r.SetPropertyBlock(_mpb);
             }
+        }
+        
+        private void RefreshRenderers()
+        {
+            if (gridVisual == null)
+                gridVisual = GetComponent<BoundaryGridVisual>();
+
+            if (gridVisual == null)
+                gridVisual = GetComponentInChildren<BoundaryGridVisual>();
+
+            _renderers = gridVisual != null
+                ? gridVisual.GetRenderers()
+                : GetComponentsInChildren<Renderer>(true);
         }
     }
 }

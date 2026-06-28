@@ -180,20 +180,17 @@ namespace _Scripts.Game
                 return;
             }
 
+            SpawnManager.Instance?.SpawnPendingPlayers();
             SpawnManager.Instance?.RespawnAllPlayers();
+            SpawnManager.Instance?.SetAllPlayersFrozen(false);
+
             SetState(MatchState.Warmup, warmupSeconds);
         }
 
         [Server]
-        public void StartMatch()
+        private void EnterLiveState()
         {
             SetState(MatchState.Live, matchSeconds);
-
-            // Later:
-            // - reset scores
-            // - respawn players
-            // - reset pickups
-            // - announce match start
         }
 
         [Server]
@@ -232,12 +229,13 @@ namespace _Scripts.Game
                     break;
 
                 case GameModeType.CTF:
-                    ResetCTFMatch();
+                    ResetCTFForLocalRestart();
                     StartWarmup();
                     break;
 
                 case GameModeType.Deathmatch:
                 default:
+                    ResetDeathmatchForLocalRestart();
                     StartWarmup();
                     break;
             }
@@ -282,8 +280,7 @@ namespace _Scripts.Game
                 case MatchState.Warmup:
                     if (CanStartMatch())
                     {
-                        ResetAllPlayerStats();
-                        StartMatch();
+                        StartDeathmatch();
                     }
                     else
                     {
@@ -376,7 +373,7 @@ namespace _Scripts.Game
 
                 case MatchState.PostMatch:
                     CompletePostMatchFlow();
-                    //ResetCTFMatch();
+                    //ResetCTFForLocalRestart();
                     //StartWarmup();
                     break;
             }
@@ -419,7 +416,7 @@ namespace _Scripts.Game
             _currentRound.Value++;
             SpawnManager.Instance?.SetAllPlayersFrozen(false);
 
-            SetState(MatchState.Live, matchSeconds);
+            EnterLiveState();
 
             // Later:
             // - enable scoring
@@ -549,6 +546,19 @@ namespace _Scripts.Game
         #endregion
 
         #region Deathmatch Logic
+        [Server]
+        void StartDeathmatch()
+        {
+            ResetAllPlayerStats();
+
+            RoundResetManager.Instance?.ResetForDeathmatchMatchStart();
+
+            SpawnManager.Instance?.SpawnPendingPlayers();
+            SpawnManager.Instance?.RespawnAllPlayers();
+            SpawnManager.Instance?.SetAllPlayersFrozen(false);
+
+            EnterLiveState();
+        }
 
         [Server]
         void HandleDeathmatchDeath(PlayerHealth victim, NetworkObject killer)
@@ -574,6 +584,7 @@ namespace _Scripts.Game
                 return;
 
             RecordKillDeath(victim, result);
+            BroadcastKillFeed(victim, result);
 
             NetworkObject killer = result.Attacker;
 
@@ -584,6 +595,18 @@ namespace _Scripts.Game
             {
                 EndMatch();
             }
+        }
+        
+        [Server]
+        void ResetDeathmatchForLocalRestart()
+        {
+            ResetAllPlayerStats();
+
+            RoundResetManager.Instance?.ResetForDeathmatchMatchStart();
+
+            SpawnManager.Instance?.SpawnPendingPlayers();
+            SpawnManager.Instance?.RespawnAllPlayers();
+            SpawnManager.Instance?.SetAllPlayersFrozen(false);
         }
 
         #endregion
@@ -601,14 +624,15 @@ namespace _Scripts.Game
             SpawnManager.Instance?.RespawnAllPlayers();
             SpawnManager.Instance?.SetAllPlayersFrozen(false);
 
-            SetState(MatchState.Live, matchSeconds);
+            EnterLiveState();
         }
         
         [Server]
-        void ResetCTFMatch()
+        void ResetCTFForLocalRestart()
         {
             ResetAllPlayerStats();
 
+            CTFManager.Instance?.Server_ResetForMatchStart();
             RoundResetManager.Instance?.ResetForCTFMatchStart();
 
             SpawnManager.Instance?.SpawnPendingPlayers();
@@ -649,7 +673,7 @@ namespace _Scripts.Game
                     if (_state.Value == MatchState.Live)
                     {
                         RecordKillDeath(victim, killer);
-                        CheckArenaEliminationWin();
+                        //CheckArenaEliminationWin();
                     }
                     break;
 
@@ -676,13 +700,16 @@ namespace _Scripts.Game
                     if (_state.Value == MatchState.Live)
                     {
                         RecordKillDeath(victim, result.Attacker);
-                        BroadcastKillFeed(victim, result); // CheckArenaEliminationWin();
+                        BroadcastKillFeed(victim, result);
                     }
                     break;
 
                 case GameModeType.CTF:
                     if (_state.Value == MatchState.Live || _state.Value == MatchState.Warmup)
+                    {
                         RecordKillDeath(victim, result);
+                        BroadcastKillFeed(victim, result);
+                    }
                     break;
             }
         }
@@ -971,9 +998,6 @@ namespace _Scripts.Game
         [Server]
         private void TryResumeArenaFromWaiting()
         {
-            if (_isStartingArenaPreRound)
-                return;
-
             if (_mode.Value != GameModeType.Arena)
                 return;
 
@@ -985,16 +1009,7 @@ namespace _Scripts.Game
 
             Debug.Log("[GameModeManager] Arena has enough players. Starting pre-round.");
 
-            _isStartingArenaPreRound = true;
-
-            try
-            {
-                StartArenaPreRound();
-            }
-            finally
-            {
-                _isStartingArenaPreRound = false;
-            }
+            StartArenaPreRound();
         }
     }
 }

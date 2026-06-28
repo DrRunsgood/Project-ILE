@@ -58,9 +58,22 @@ namespace _Scripts.Game
             RefreshCaches();
 
             ResetCommonWorldState();
+            
+            SpawnManager.Instance?.ResetAllPlayerInventoriesForRound();
+            
+            ResetRoundPickupSpawners();
+        }
+        
+        [Server]
+        public void ResetForDeathmatchMatchStart()
+        {
+            RefreshCaches();
 
-            // Intentionally not resetting inventories or pickup spawners yet.
-            // CTF is continuous-play; add only if match-start design requires it.
+            ResetCommonWorldState();
+            
+            SpawnManager.Instance?.ResetAllPlayerInventoriesForRound();
+            
+            ResetRoundPickupSpawners();
         }
 
         [Server]
