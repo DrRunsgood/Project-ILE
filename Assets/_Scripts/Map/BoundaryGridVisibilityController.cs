@@ -137,7 +137,6 @@ namespace _Scripts.Map
                     continue;
 
                 _localPlayer = identity.transform;
-
                 return;
             }
         }

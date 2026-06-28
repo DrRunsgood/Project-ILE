@@ -38,7 +38,7 @@ public sealed class IFFWidget : MonoBehaviour
         _rect.anchoredPosition = pos;
     }
 
-    public void SetData(string displayName, float health01, Color color, bool focused, float alpha)
+    public void SetData(Color color, float alpha)
     {
         if (canvasGroup)
             canvasGroup.alpha = alpha;
@@ -50,28 +50,13 @@ public sealed class IFFWidget : MonoBehaviour
             marker.gameObject.SetActive(true);
         }
 
-        bool showDetail = focused;
-
         if (nameText)
-        {
-            nameText.gameObject.SetActive(showDetail);
-            if (showDetail)
-            {
-                nameText.text = string.IsNullOrWhiteSpace(displayName)
-                    ? "Player"
-                    : displayName;
-                nameText.color = color;
-            }
-        }
+            nameText.gameObject.SetActive(false);
 
         if (healthBack)
-            healthBack.gameObject.SetActive(showDetail);
+            healthBack.gameObject.SetActive(false);
 
         if (healthFill)
-        {
-            healthFill.gameObject.SetActive(showDetail);
-            healthFill.color = color;
-            healthFill.fillAmount = Mathf.Clamp01(health01);
-        }
+            healthFill.gameObject.SetActive(false);
     }
 }

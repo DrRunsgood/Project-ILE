@@ -296,8 +296,13 @@ namespace _Scripts.Player.Sessions
             if (!TryGetSession(conn, out PlayerSession session))
                 return;
 
+            bool changed = !session.IsAlive || !session.IsEligibleThisRound;
+
             session.IsAlive = true;
             session.IsEligibleThisRound = true;
+
+            if (!changed)
+                return;
 
             Debug.Log($"[PlayerSessionManager] Session alive/eligible. SessionId={session.SessionId}, ClientId={session.ClientId}, Team={session.Team}");
 
@@ -335,6 +340,9 @@ namespace _Scripts.Player.Sessions
 
                 if (session.SpawnedIdentity != identity)
                     continue;
+
+                if (!session.IsAlive && !session.IsEligibleThisRound)
+                    return;
 
                 session.IsAlive = false;
                 session.IsEligibleThisRound = false;

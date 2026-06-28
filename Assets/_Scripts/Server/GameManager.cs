@@ -36,6 +36,12 @@ public class GameManager : NetworkBehaviour
         // Unsubscribe to prevent memory leaks.
         ServerManager.OnRemoteConnectionState -= HandleRemoteConnectionState;
     }
+    
+    private void OnDestroy()
+    {
+        if (ServerManager != null)
+            ServerManager.OnRemoteConnectionState -= HandleRemoteConnectionState;
+    }
 
     private void HandleRemoteConnectionState(NetworkConnection conn, RemoteConnectionStateArgs args)
     {
