@@ -22,10 +22,13 @@ public class SpawnManager : NetworkBehaviour
         Instance = this;
     }
 
-    void OnDestroy()
+    private void OnDestroy()
     {
         if (Instance == this)
             Instance = null;
+
+        if (ServerManager != null)
+            ServerManager.OnRemoteConnectionState -= HandleRemoteConnectionState;
     }
 
     public override void OnStartServer()

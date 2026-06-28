@@ -12,11 +12,13 @@ namespace _Scripts.Player
 
         private InputHandler _input;
         private PlayerHealth _health;
+        private AdvancedPredictedController _ctrl;
 
         private void Awake()
         {
             _input = GetComponent<InputHandler>();
             _health = GetComponent<PlayerHealth>();
+            _ctrl = GetComponent<AdvancedPredictedController>();
         }
 
         private void Update()
@@ -29,6 +31,11 @@ namespace _Scripts.Player
 
             if (_input == null || !_input.ConsumeSuicide())
                 return;
+
+            if (_ctrl != null && _ctrl.IsFrozen)
+                return;
+
+            Server_RequestSuicide();
 
             Server_RequestSuicide();
         }

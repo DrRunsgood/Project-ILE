@@ -389,16 +389,28 @@ namespace _Scripts.Game
         [Server]
         void StartArenaPreRound()
         {
-            if (_currentRound.Value == 0)
-                ResetAllPlayerStats();
+            if (_isStartingArenaPreRound)
+                return;
 
-            RoundResetManager.Instance?.ResetForArenaRound();
+            _isStartingArenaPreRound = true;
 
-            SpawnManager.Instance?.SpawnPendingPlayers();
-            SpawnManager.Instance?.RespawnAllPlayers();
-            SpawnManager.Instance?.SetAllPlayersFrozen(true);
+            try
+            {
+                SetState(MatchState.PreRound, warmupSeconds);
 
-            SetState(MatchState.PreRound, warmupSeconds);
+                if (_currentRound.Value == 0)
+                    ResetAllPlayerStats();
+
+                RoundResetManager.Instance?.ResetForArenaRound();
+
+                SpawnManager.Instance?.SpawnPendingPlayers();
+                SpawnManager.Instance?.RespawnAllPlayers();
+                SpawnManager.Instance?.SetAllPlayersFrozen(true);
+            }
+            finally
+            {
+                _isStartingArenaPreRound = false;
+            }
         }
 
         [Server]
@@ -663,8 +675,8 @@ namespace _Scripts.Game
                 case GameModeType.Arena:
                     if (_state.Value == MatchState.Live)
                     {
-                        RecordKillDeath(victim, result);
-                        CheckArenaEliminationWin();
+                        RecordKillDeath(victim, result.Attacker);
+                        BroadcastKillFeed(victim, result); // CheckArenaEliminationWin();
                     }
                     break;
 
@@ -775,7 +787,6 @@ namespace _Scripts.Game
         void RecordKillDeath(PlayerHealth victim, DamageResult result)
         {
             RecordKillDeath(victim, result.Attacker);
-            BroadcastKillFeed(victim, result);
         }
 
         [Server]

@@ -302,6 +302,9 @@ public sealed class PlayerHealth : NetworkBehaviour
     {
         if (IsDead)
             return;
+        
+        if (ctrl != null && ctrl.IsFrozen)
+            return;
 
         int before = _hp.Value;
         int lethalDamage = Mathf.Max(before, maxHp);

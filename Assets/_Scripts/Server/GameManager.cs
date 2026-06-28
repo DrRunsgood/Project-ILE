@@ -47,7 +47,7 @@ public class GameManager : NetworkBehaviour
         else if (args.ConnectionState == RemoteConnectionState.Stopped)
         {
             // Despawn the player for the disconnected client.
-            spawnManager.DespawnPlayer(conn);
+            //spawnManager.DespawnPlayer(conn);
         }
     }
 

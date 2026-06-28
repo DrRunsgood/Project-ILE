@@ -277,8 +277,8 @@ namespace _Scripts.Networking
                 if (ServerMapFlowManager.Instance != null)
                     clearTeams = ServerMapFlowManager.Instance.ShouldRebuildTeamsOnMapChange;
 
-                PlayerSessionManager.Instance?.ServerPrepareForMapChange(clearTeams);
                 SpawnManager.Instance?.DespawnAllPlayers();
+                PlayerSessionManager.Instance?.ServerPrepareForMapChange(clearTeams);
                 RoundResetManager.Instance?.PrepareForMapUnload();
 
                 // Give FishNet a couple ticks/frames to process despawns before Unity scene unload destroys objects.
