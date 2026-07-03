@@ -68,7 +68,11 @@ namespace _Scripts.Data
         [Range(0f,1f)] public float velocityInheritance = 0.7f;
         public float  gravityScale         = 0f;        // 0 = no gravity
         public float lifeTime       = 15f;              // projectile life
-        
+
+        [Header("Projectile Spawn Contact")]
+        [Tooltip("If true, immediate muzzle obstruction resolves as an immediate impact/explosion. Use true for rockets/discs, false for bouncing grenades.")]
+        public bool resolveImmediateMuzzleImpact = true;
+
         /* ───────── Aim Convergence ───────── */
         [Header("Aim Convergence")]
         [Tooltip("How camera/crosshair aim is resolved for muzzle-fired projectiles.")]

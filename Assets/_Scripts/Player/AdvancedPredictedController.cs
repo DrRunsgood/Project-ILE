@@ -221,7 +221,7 @@ namespace _Scripts.Player
         // MovementData
         private MovementData _md;
         
-        const float LookQuantScale = 1000f;
+        const float LookQuantScale = 2000f;
         
         #endregion
 
@@ -347,7 +347,10 @@ namespace _Scripts.Player
             if (IsOwner)
             {
                 var ih = _iH;
-                _md = new MovementData(TimeManager.Tick, ih.Move, ih.Look, ih.HeldButtons, _heartBeat);
+                //_md = new MovementData(TimeManager.Tick, ih.Move, ih.Look, ih.HeldButtons, _heartBeat);
+                Vector2 lookDelta = ih.ConsumeLookDelta();
+
+                _md = new MovementData(TimeManager.Tick, ih.Move, lookDelta, ih.HeldButtons, _heartBeat);
 
                 Replicate(_md);
             }

@@ -12,13 +12,13 @@ GameObject:
   - component: {fileID: 2313605069946618563}
   - component: {fileID: 830621418103231863}
   - component: {fileID: 1451465412514159687}
-  - component: {fileID: 2877665405076106222}
   - component: {fileID: 4356129245166151907}
   - component: {fileID: -8571736992089961157}
   - component: {fileID: 2760273553822079888}
   - component: {fileID: 3329046351917159825}
   - component: {fileID: 9074821108863026973}
   - component: {fileID: 3146740071011218296}
+  - component: {fileID: -4387231614100681132}
   m_Layer: 0
   m_Name: EnergyRifleGround
   m_TagString: Untagged
@@ -331,33 +331,6 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!54 &2877665405076106222
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2624510343394097245}
-  serializedVersion: 5
-  m_Mass: 1
-  m_LinearDamping: 2
-  m_AngularDamping: 0
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 1
-  m_Interpolate: 0
-  m_Constraints: 0
-  m_CollisionDetection: 0
 --- !u!65 &4356129245166151907
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -441,7 +414,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 14
+  <PrefabId>k__BackingField: 16
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 8690719981751549595
   SceneId: 0
@@ -460,6 +433,7 @@ MonoBehaviour:
   - {fileID: -8571736992089961157}
   - {fileID: 2760273553822079888}
   - {fileID: 9074821108863026973}
+  - {fileID: -4387231614100681132}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
   RuntimeParentNetworkBehaviour: {fileID: 0}
@@ -470,7 +444,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 1
-  _initializedTimestamp: -8584202372448469453
+  _initializedTimestamp: -8584185874339405079
 --- !u!114 &9074821108863026973
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -504,3 +478,20 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2624510343394097245}
   m_Mesh: {fileID: 0}
+--- !u!114 &-4387231614100681132
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2624510343394097245}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9962c30f71b5d4141b2c3e4f057648f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TimedDespawn
+  _componentIndexCache: 3
+  _addedNetworkObject: {fileID: 3329046351917159825}
+  _networkObjectCache: {fileID: 3329046351917159825}
+  defaultLifetime: 15
+  startOnServerSpawn: 0

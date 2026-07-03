@@ -19,6 +19,7 @@ GameObject:
   - component: {fileID: 6143423648781797828}
   - component: {fileID: 5755893219638473404}
   - component: {fileID: 897493491946049198}
+  - component: {fileID: -5799009840235242440}
   m_Layer: 0
   m_Name: EnergyPackGround
   m_TagString: Untagged
@@ -1357,7 +1358,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 1
+  <PrefabId>k__BackingField: 2
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 2102335331639221712
   SceneId: 0
@@ -1386,7 +1387,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 1
-  _initializedTimestamp: -8584255807311776750
+  _initializedTimestamp: -8584185874339405079
 --- !u!114 &-1057789110255863262
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1471,3 +1472,20 @@ MonoBehaviour:
     m_Bits: 3665
   reaction: 0
   lifeTime: -1
+--- !u!114 &-5799009840235242440
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 213622379308008471}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9962c30f71b5d4141b2c3e4f057648f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TimedDespawn
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 3310176995153915884}
+  _networkObjectCache: {fileID: 0}
+  defaultLifetime: 15
+  startOnServerSpawn: 0

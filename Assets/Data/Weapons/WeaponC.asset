@@ -26,7 +26,7 @@ MonoBehaviour:
   maxAmmo: 15
   ammoPerShot: 1
   projectilePrefab: {fileID: 8766701267539982643, guid: a184955b35dd708459f8a77ca92e00e8, type: 3}
-  projectileSpeed: 400
+  projectileSpeed: 500
   velocityInheritance: 1
   gravityScale: 0
   lifeTime: 3

@@ -61,7 +61,7 @@ namespace _Scripts.Game
             
             SpawnManager.Instance?.ResetAllPlayerInventoriesForRound();
             
-            ResetRoundPickupSpawners();
+            ResetMatchStartPickupSpawners();
         }
         
         [Server]
@@ -73,7 +73,7 @@ namespace _Scripts.Game
             
             SpawnManager.Instance?.ResetAllPlayerInventoriesForRound();
             
-            ResetRoundPickupSpawners();
+            ResetMatchStartPickupSpawners();
         }
 
         [Server]
@@ -106,6 +106,21 @@ namespace _Scripts.Game
                     continue;
 
                 spawner.ResetForRound();
+            }
+        }
+        
+        [Server]
+        void ResetMatchStartPickupSpawners()
+        {
+            if (_pickupSpawners == null)
+                return;
+
+            foreach (PickupSpawner spawner in _pickupSpawners)
+            {
+                if (spawner == null)
+                    continue;
+
+                spawner.ResetForMatchStart();
             }
         }
         

@@ -208,6 +208,15 @@ namespace _Scripts.Pickups.Spawning
         }
         
         [Server]
+        public void ResetForMatchStart()
+        {
+            if (respawnMode == PickupRespawnMode.Manual)
+                return;
+
+            ForceRespawnNow();
+        }
+        
+        [Server]
         public void ServerPrepareForMapUnload()
         {
             _respawnPending = false;

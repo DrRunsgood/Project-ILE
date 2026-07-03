@@ -49,7 +49,6 @@ public sealed class GrenadeProjectile : BaseProjectile
     public new void Init(Vector3 pos, Vector3 vel, uint tick, NetworkObject shooter)
     {
         base.Init(pos, vel, tick, shooter);
-        ResolvePenetration();
     }
 
     /* ═════════ Bounce correction RPC ═════════ */
@@ -87,7 +86,7 @@ public sealed class GrenadeProjectile : BaseProjectile
     protected override void ServerTick()
     {
         if (_despawning) return;
-        ResolvePenetration();
+
         float dt = (float)TimeManager.TickDelta;
 
         if (!_fuseExpired)
@@ -174,46 +173,6 @@ public sealed class GrenadeProjectile : BaseProjectile
     {
         h = default;
         return false;
-    }
-
-    void ResolvePenetration()
-    {
-        const int ITERATIONS = 3;
-        const float SKIN = 0.001f;
-        for (int step = 0; step < ITERATIONS; ++step)
-        {
-            bool moved = false;
-            int count = Physics.OverlapSphereNonAlloc(transform.position, def.castRadius, _buf, def.hitMask, QueryTriggerInteraction.Ignore);
-            for (int i = 0; i < count; ++i)
-            {
-                Collider col = _buf[i];
-                if (col == null || col.transform.root == _shooterRoot) continue;
-
-                Vector3 centre = transform.position;
-                Vector3 cp = col.ClosestPoint(centre);
-                Vector3 dir = centre - cp;
-                float dist = dir.magnitude;
-
-                if (dist < 1e-4f)
-                {
-                    dir = Vector3.up;
-                    dist = 0f;
-                }
-                else
-                {
-                    dir /= dist;
-                }
-
-                float penetration = def.castRadius - dist;
-                if (penetration > 0f)
-                {
-                    transform.position += dir * (penetration + SKIN);
-                    moved = true;
-                }
-                _buf[i] = null;
-            }
-            if (!moved) break;
-        }
     }
 }
 

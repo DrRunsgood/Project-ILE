@@ -341,6 +341,59 @@ MonoBehaviour:
   - {fileID: 0}
   - {fileID: 0}
   - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
   customFogDensityModifer: 1
   fogMat: {fileID: 0}
   volumetricsMat: {fileID: 0}
@@ -438,7 +491,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 375eef0084d44344ebf50cbba7c1eadb, type: 3}
   m_Name: Sky Module
   m_EditorClassIdentifier: 
-  showModuleInspector: 0
+  showModuleInspector: 1
   showSaveLoad: 0
   active: 1
   Settings:
@@ -1121,7 +1174,7 @@ MonoBehaviour:
     skyColorTint: {r: 1, g: 1, b: 1, a: 1}
     skyColorExponent: 2
   preset: {fileID: 11400000, guid: 44f43418b8d8b8142863e38d1e49e174, type: 2}
-  showSkyControls: 0
+  showSkyControls: 1
   showSkySunControls: 0
   showSkyMoonControls: 0
   showSkyStarsControls: 0
@@ -2010,7 +2063,7 @@ MonoBehaviour:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    temperature: 21.07297
+    temperature: 21.073233
     temperatureWeatherMod: 0
     temperatureCustomMod: 0
     temperatureChangingSpeed: 0.1
@@ -3965,7 +4018,7 @@ MonoBehaviour:
     customSunOffset: -8
     customSunRotation: 88
   preset: {fileID: 11400000, guid: 82acdd278499d74498ad37dd931734d1, type: 2}
-  showTimeControls: 1
+  showTimeControls: 0
   showLocationControls: 0
   LST: 20.595459
 --- !u!114 &4011421771873438716
@@ -4046,19 +4099,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a3e0fff1aca044c40b9f5dc9d0bfaaa3, type: 3}
   m_Name: Audio Module
   m_EditorClassIdentifier: 
-  showModuleInspector: 0
+  showModuleInspector: 1
   showSaveLoad: 0
   active: 1
   Settings:
     ambientClips:
-    - showEditor: 1
+    - showEditor: 0
       name: Day
       audioClip: {fileID: 8300000, guid: 3e0b793299afd7c4086f6dfcd604aaba, type: 3}
       audioMixerGroup: {fileID: -7356562420348432203, guid: c5196b1e1a81a964ab0079efa98e857b, type: 2}
       playBackType: 1
       myAudioSource: {fileID: 0}
       loop: 1
-      volume: 1
+      volume: 0.15
       volumeCurve:
         serializedVersion: 2
         m_Curve:
@@ -4102,7 +4155,7 @@ MonoBehaviour:
         m_PostInfinity: 2
         m_RotationOrder: 4
       maxVolume: 1
-    - showEditor: 1
+    - showEditor: 0
       name: Night
       audioClip: {fileID: 8300000, guid: eef01bfe93973f4419f0b3dd1b7a6a06, type: 3}
       audioMixerGroup: {fileID: -7356562420348432203, guid: c5196b1e1a81a964ab0079efa98e857b, type: 2}
@@ -4291,7 +4344,7 @@ MonoBehaviour:
   ambientVolumeModifier: 0
   weatherVolumeModifier: 0
   thunderVolumeModifier: 0
-  showAmbientSetupControls: 0
+  showAmbientSetupControls: 1
   showWeatherSetupControls: 0
   showThunderSetupControls: 0
   showAudioControls: 0
@@ -4426,9 +4479,9 @@ MonoBehaviour:
   preset: {fileID: 11400000, guid: 0fcdd472bd6a8ec429fc1e9bc978c4fa, type: 2}
   showCirrusCloudsControls: 0
   show2DCloudsControls: 0
-  cloudFlatBaseAnim: {x: 0.45471942, y: 0.27510148}
-  cloudFlatDetailAnim: {x: 0.2727787, y: -0.62441343}
-  cirrusAnim: {x: 0.22731715, y: -0.8624871}
+  cloudFlatBaseAnim: {x: -0.58030725, y: 0.27510148}
+  cloudFlatDetailAnim: {x: -0.9060235, y: -0.62441343}
+  cirrusAnim: {x: 0.7098352, y: -0.8624871}
 --- !u!114 &6137975383063632260
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5321,8 +5374,8 @@ MonoBehaviour:
   showDensityControls: 0
   showTextureControls: 0
   showWindControls: 0
-  cloudAnimLayer1: {x: -0.63479006, y: 0.27967656, z: 0.7336186}
+  cloudAnimLayer1: {x: 0.18524773, y: 0.27967656, z: -0.89150566}
   cloudAnimLayer2: {x: 0, y: 0, z: 0}
-  cloudAnimNonScaledLayer1: {x: 0.17095447, y: -0.06176722, z: -2.5376084}
+  cloudAnimNonScaledLayer1: {x: 0.8495452, y: -0.06176722, z: -5.9306936}
   cloudAnimNonScaledLayer2: {x: 0, y: 0, z: 0}
   weatherMap: {fileID: 0}

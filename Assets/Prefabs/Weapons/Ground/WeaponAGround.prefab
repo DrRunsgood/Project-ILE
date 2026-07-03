@@ -407,7 +407,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 6
+  <PrefabId>k__BackingField: 8
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 5025529081020324877
   SceneId: 0
@@ -426,6 +426,7 @@ MonoBehaviour:
   - {fileID: 2760273553822079888}
   - {fileID: 3642031733799321826}
   - {fileID: 1293488599731364664}
+  - {fileID: -8887434626871545149}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
   RuntimeParentNetworkBehaviour: {fileID: 0}
@@ -436,7 +437,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 1
-  _initializedTimestamp: -8584209140668072575
+  _initializedTimestamp: -8584185874339405079
 --- !u!114 &3642031733799321826
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -477,7 +478,7 @@ MonoBehaviour:
   _componentIndexCache: 2
   _addedNetworkObject: {fileID: 3329046351917159825}
   _networkObjectCache: {fileID: 3329046351917159825}
-  defaultLifetime: 5
+  defaultLifetime: 15
   startOnServerSpawn: 0
 --- !u!114 &-8887434626871545149
 MonoBehaviour:
@@ -491,6 +492,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eacabe7a1bf71de4d9f3b444accf5986, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PoolReset
-  _componentIndexCache: 255
+  _componentIndexCache: 3
   _addedNetworkObject: {fileID: 3329046351917159825}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 3329046351917159825}

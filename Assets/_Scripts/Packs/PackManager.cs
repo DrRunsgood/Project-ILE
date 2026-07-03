@@ -32,7 +32,6 @@ namespace _Scripts.Packs
         [SerializeField] LayerMask dropBlockMask = ~0;
         [SerializeField] float dropTossForward = 15f;
         [SerializeField] float pickupArmDelay = 0.5f;
-        [SerializeField] float dropLifetime = 60f;
 
         /* ───────── input & HUD ───────── */
         InputHandler _ih;
@@ -144,6 +143,9 @@ namespace _Scripts.Packs
             NetworkObject ground = PoolUtil.TakeFromPool(CurrentDef.groundPrefab);
             if (ground != null)
             {
+                if (ground.TryGetComponent(out _Scripts.Pickups.Spawning.SpawnedPickupLink link))
+                    link.Clear();
+                
                 ground.transform.SetPositionAndRotation(pos, rot);
                 ServerManager.Spawn(ground);
                 RoundScopedUtil.MarkRoundScoped(ground);
@@ -159,7 +161,7 @@ namespace _Scripts.Packs
                     pp.Arm(pickupArmDelay);
                 
                 if (ground.TryGetComponent(out TimedDespawn td))
-                    td.Arm(dropLifetime);
+                    td.ArmDefault();
             }
 
             if (heldNob)

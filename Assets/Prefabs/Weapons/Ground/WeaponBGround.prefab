@@ -13,12 +13,12 @@ GameObject:
   - component: {fileID: 1999986974740431946}
   - component: {fileID: 5251057516019160636}
   - component: {fileID: 4695636536343470454}
-  - component: {fileID: 9183105231354421722}
   - component: {fileID: 3167598444959115060}
   - component: {fileID: 5485059680744435840}
   - component: {fileID: 6152824508117397505}
   - component: {fileID: 307748800059226076}
   - component: {fileID: 5237746857513158558}
+  - component: {fileID: 7162866033879483109}
   m_Layer: 0
   m_Name: WeaponBGround
   m_TagString: Untagged
@@ -1306,33 +1306,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4954672404178306105}
   m_Mesh: {fileID: 0}
---- !u!54 &9183105231354421722
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4954672404178306105}
-  serializedVersion: 5
-  m_Mass: 1
-  m_LinearDamping: 2
-  m_AngularDamping: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 1
-  m_Interpolate: 0
-  m_Constraints: 0
-  m_CollisionDetection: 0
 --- !u!64 &3167598444959115060
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -1387,6 +1360,7 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 307748800059226076}
   defaultArmDelay: 0.15
   definition: {fileID: 11400000, guid: 63c3fbdc7fd562745a98ea0fd03bf99e, type: 2}
+  runtimeAmmo: -1
 --- !u!114 &307748800059226076
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1416,7 +1390,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 4
+  <PrefabId>k__BackingField: 6
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 4706519569494638779
   SceneId: 0
@@ -1434,6 +1408,8 @@ MonoBehaviour:
   NetworkBehaviours:
   - {fileID: 5485059680744435840}
   - {fileID: 6152824508117397505}
+  - {fileID: 5237746857513158558}
+  - {fileID: 7162866033879483109}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
   RuntimeParentNetworkBehaviour: {fileID: 0}
@@ -1444,7 +1420,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 1
-  _initializedTimestamp: -8584255864482771600
+  _initializedTimestamp: -8584185874339405079
 --- !u!114 &5237746857513158558
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1457,9 +1433,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8d4ef8c7f880c3941a58c7442d1ed1b6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.GamePhysics.KinematicMover
-  _componentIndexCache: 255
+  _componentIndexCache: 2
   _addedNetworkObject: {fileID: 307748800059226076}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 307748800059226076}
   gravityScale: 1
   bounciness: 0.3
   slideFriction: 15
@@ -1470,3 +1446,20 @@ MonoBehaviour:
     m_Bits: 3665
   reaction: 0
   lifeTime: -1
+--- !u!114 &7162866033879483109
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4954672404178306105}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9962c30f71b5d4141b2c3e4f057648f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TimedDespawn
+  _componentIndexCache: 3
+  _addedNetworkObject: {fileID: 307748800059226076}
+  _networkObjectCache: {fileID: 307748800059226076}
+  defaultLifetime: 15
+  startOnServerSpawn: 0

@@ -123,38 +123,65 @@ public sealed class HandGrenadeProjectile : BaseProjectile
     #endregion
 
     /* ───────────────────────────── */
-    #region Explosion overrides (unchanged except for LOS tweak)
-    protected override void ApplyExplosion(Vector3 centre, Vector3 shotDir, Collider directHitCol)
-    {
-        bool any = false;
-        if (directHitCol != null)
-            any |= DealDamageAndKnockback(directHitCol, centre, shotDir);
+    #region Explosion overrides
 
-        int cnt = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.playerMask,
-                                                QueryTriggerInteraction.Ignore);
+    protected override void ApplyExplosion(Vector3 centre, Vector3 shotDir, Vector3 fallbackImpulseDir, Collider directHitCol)
+    {
+        /*
+         * Grenade behavior differs from base projectile behavior:
+         * direct-hit collider is allowed to receive damage/knockback even if
+         * the overlap/LOS query would miss it.
+         */
+        if (directHitCol != null)
+            DealDamageAndKnockback(directHitCol, centre, shotDir, fallbackImpulseDir);
+
+        int cnt = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.playerMask, QueryTriggerInteraction.Ignore);
 
         for (int i = 0; i < cnt; ++i)
         {
             Collider c = _buf[i];
-            if (c == null || c == directHitCol) continue;
-            if (!ClearLineOfSight(centre, c))  continue;
 
-            any |= DealDamageAndKnockback(c, centre, shotDir);
+            if (c == null)
+                continue;
+
+            if (c == directHitCol)
+                continue;
+
+            if (!ClearLineOfSight(centre, c))
+                continue;
+
+            DealDamageAndKnockback(c, centre, shotDir, fallbackImpulseDir);
         }
+
+        ClearBuffer(cnt);
     }
 
     protected override void Explode(Vector3 pos, Vector3 normal, Collider directHitCol = null)
     {
-        ApplyExplosion(pos, _velocity.normalized, directHitCol);
-        RpcSpawnImpact(pos + normal * blastLift, normal);
+        Vector3 shotDir = _velocity.sqrMagnitude > 0.0001f
+            ? _velocity.normalized
+            : transform.forward;
+
+        Vector3 fallbackImpulseDir = normal.sqrMagnitude > 0.0001f
+            ? normal.normalized
+            : -shotDir;
+
+        if (fallbackImpulseDir.sqrMagnitude <= 0.0001f)
+            fallbackImpulseDir = Vector3.up;
+
+        ApplyExplosion(pos, shotDir, fallbackImpulseDir, directHitCol);
+
+        RpcSpawnImpact(pos + fallbackImpulseDir * blastLift, fallbackImpulseDir);
+
         DespawnSelf();
     }
 
-    // disable base sweep logic – grenade never detonates on impact
+// Disable base sweep logic. Grenade bounces/settles instead of detonating on impact.
     protected override bool Sweep(Vector3 from, Vector3 to, out RaycastHit hit)
     {
         hit = default;
         return false;
     }
+
     #endregion
 }

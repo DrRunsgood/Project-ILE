@@ -13,13 +13,15 @@ namespace _Scripts.Player
         public Vector2       Move        { get; private set; }   // –1…+1 per axis
         public Vector2       Look        { get; private set; }   // raw mouse delta
         public InputButtons  HeldButtons { get; private set; }   // held this frame
+        
+        Vector2 _lookAccum;
 
         /* -------------------------------------------------- */
         
         /* --------------- weapon hot-keys ---------------- */
         public int  WeaponSlotInput  { get; private set; }   // –1 / 0 / 1 / 2
         public int  MouseWheelDelta  { get; private set; }   // –1 / 0 / +1
-
+        
         bool _weaponDropRequested;   // “M”   – shown to WeaponManager
         bool _togglePackPressed;    // "F" - Activate/deactivate active packs
         bool _packDropRequested;     // “P”   – shown to PackManager
@@ -43,7 +45,11 @@ namespace _Scripts.Player
             /* 2) raw mouse delta */
             float lx = Input.GetAxisRaw("Mouse X");
             float ly = Input.GetAxisRaw("Mouse Y");
-            Look = new Vector2(lx, ly);
+
+            Vector2 frameLook = new Vector2(lx, ly);
+
+            Look = frameLook;          // optional: useful for debug/UI
+            _lookAccum += frameLook;   // authoritative tick-consumed look
 
             /* 3) buttons ----------------------------------- */
             InputButtons held  = InputButtons.None;
@@ -68,6 +74,13 @@ namespace _Scripts.Player
             HeldButtons = held;
 
             CaptureHotkeys();
+        }
+        
+        public Vector2 ConsumeLookDelta()
+        {
+            Vector2 value = _lookAccum;
+            _lookAccum = Vector2.zero;
+            return value;
         }
     
         void CaptureHotkeys()

@@ -15,7 +15,7 @@ MonoBehaviour:
   weaponId: 0
   damageType: 2
   displayName: Grenade Launcher
-  fireRate: 1
+  fireRate: 0.9
   killFeedName: 
   equipFireDelaySeconds: 0.5
   energyPerShot: 4
@@ -30,6 +30,8 @@ MonoBehaviour:
   velocityInheritance: 0.7
   gravityScale: 1.5
   lifeTime: 15
+  resolveImmediateMuzzleImpact: 0
+  ownerDirectCollisionIgnoreSeconds: 0.5
   convergenceMode: 0
   convergenceDistance: 1500
   aimMask:

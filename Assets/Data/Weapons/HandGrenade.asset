@@ -30,6 +30,7 @@ MonoBehaviour:
   velocityInheritance: 0.5
   gravityScale: 1
   lifeTime: 1.5
+  resolveImmediateMuzzleImpact: 0
   convergenceMode: 0
   convergenceDistance: 50
   aimMask:

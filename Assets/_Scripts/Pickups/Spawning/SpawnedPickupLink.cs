@@ -18,6 +18,13 @@ namespace _Scripts.Pickups.Spawning
             _bound = true;
         }
 
+        public void Clear()
+        {
+            _spawner = null;
+            _boundObject = null;
+            _bound = false;
+        }
+
         void OnDisable()
         {
             if (!_bound)
@@ -29,9 +36,7 @@ namespace _Scripts.Pickups.Spawning
             if (_spawner != null && _boundObject != null)
                 _spawner.NotifyPickupDespawned(_boundObject);
 
-            _spawner = null;
-            _boundObject = null;
-            _bound = false;
+            Clear();
         }
     }
 }

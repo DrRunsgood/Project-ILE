@@ -3,11 +3,12 @@ using FishNet.Object;
 using UnityEngine;
 using _Scripts.Data;
 using _Scripts.Packs;
+using _Scripts.Pickups.Spawning;
 
 namespace _Scripts.Weapons
 {
     [RequireComponent(typeof(Collider))]
-    public sealed class WeaponPickup : NetworkBehaviour
+    public sealed class WeaponPickup : NetworkBehaviour, ISpawnInitialized
     {
         [Header("Pickup")]
         [SerializeField] float defaultArmDelay = 0.15f;
@@ -26,6 +27,12 @@ namespace _Scripts.Weapons
                 : 0;
 
         static int ResolveAmmo(int value) => Mathf.Max(0, value);
+        
+        [Server]
+        public void ServerInitializeFromSpawner(PickupSpawnPayload payload)
+        {
+            ServerInitializeAmmoFromSpawner(payload.StartingAmmo);
+        }
 
         [Server]
         public void ServerSetRuntimeAmmo(int ammo)

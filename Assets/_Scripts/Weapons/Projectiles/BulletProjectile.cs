@@ -29,7 +29,7 @@ public class BulletProjectile : BaseProjectile
     /* Direct-hit only, no blast RPCs */
     protected override void Explode(Vector3 pos, Vector3 n, Collider col = null)
     {
-        if (col != null) DealDamageAndKnockback(col, pos, n);
+        if (col != null) DealDamageAndKnockback(col, pos, n, Vector3.zero);
         DespawnSelf();
     }
 

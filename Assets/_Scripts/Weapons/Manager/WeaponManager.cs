@@ -624,6 +624,9 @@ namespace _Scripts.Weapons
                 _weapons.RemoveAt(idx);
                 return;
             }
+            
+            if (ground.TryGetComponent(out _Scripts.Pickups.Spawning.SpawnedPickupLink link))
+                link.Clear();
 
             ground.transform.SetPositionAndRotation(pos, Quaternion.identity);
             ServerManager.Spawn(ground);
@@ -643,7 +646,7 @@ namespace _Scripts.Weapons
             }
 
             if (ground.TryGetComponent(out TimedDespawn td))
-                td.Arm(5f);
+                td.ArmDefault();
 
             _weapons.RemoveAt(idx);
 

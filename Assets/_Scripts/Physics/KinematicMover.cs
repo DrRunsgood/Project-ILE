@@ -59,20 +59,54 @@ namespace _Scripts.GamePhysics
     /*──────────── FishNet hooks ───────*/
         public override void OnStartServer()
         {
-            if (_spawnTick == 0) _spawnTick = TimeManager.Tick;   // scene‑placed
+            base.OnStartServer();
+
             TimeManager.OnTick += ServerTick;
-            _simulating = true;
+
+            // Do not auto-start movement.
+            // Spawner-created pickups should remain anchored until InitVelocity is explicitly called.
+            _velocity = Vector3.zero;
+            _spawnTick = TimeManager.Tick;
+            _simulating = false;
         }
-        public override void OnStopServer() =>
-            TimeManager.OnTick -= ServerTick;
+        public override void OnStopServer()
+        {
+            if (TimeManager != null)
+                TimeManager.OnTick -= ServerTick;
+
+            _velocity = Vector3.zero;
+            _simulating = false;
+            _spawnTick = 0;
+
+            base.OnStopServer();
+        }
 
         public override void OnStartClient()
         {
-            if (!IsServer) TimeManager.OnTick += ClientTick;      // host ticks once
+            base.OnStartClient();
+
+            if (!IsServer)
+            {
+                _velocity = Vector3.zero;
+                _simulating = false;
+                _spawnTick = TimeManager != null ? TimeManager.Tick : 0;
+
+                TimeManager.OnTick += ClientTick;
+            }
         }
         public override void OnStopClient()
         {
-            if (!IsServer) TimeManager.OnTick -= ClientTick;
+            if (!IsServer && TimeManager != null)
+                TimeManager.OnTick -= ClientTick;
+
+            if (!IsServer)
+            {
+                _velocity = Vector3.zero;
+                _simulating = false;
+                _spawnTick = 0;
+            }
+
+            base.OnStopClient();
         }
 
     /*──────────── Buffered init RPC ───*/

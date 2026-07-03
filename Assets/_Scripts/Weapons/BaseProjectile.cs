@@ -454,19 +454,34 @@ public abstract class BaseProjectile : NetworkBehaviour
             ? _velocity.normalized
             : transform.forward;
 
+        Vector3 impactNormal = normal.sqrMagnitude > 0.0001f
+            ? normal.normalized
+            : -shotDir;
+
         Vector3 explodePos = pos;
 
         if (def.castRadius > 0f)
             explodePos = pos - shotDir * def.castRadius;
 
-        ApplyExplosion(explodePos, shotDir, directHitCol);
+        ApplyExplosion(explodePos, shotDir, impactNormal, directHitCol);
 
         RpcSpawnImpact(explodePos, normal);
 
         DespawnSelf();
     }
 
-    protected virtual void ApplyExplosion(Vector3 centre, Vector3 shotDir, Collider directHitCol)
+    [Server]
+    public void ServerExplodeImmediately(Vector3 pos, Vector3 normal, Collider directHitCol = null)
+    {
+        if (_despawning || def == null)
+            return;
+
+        transform.position = pos;
+
+        Explode(pos, normal, directHitCol);
+    }
+    
+    protected virtual void ApplyExplosion(Vector3 centre, Vector3 shotDir, Vector3 fallbackImpulseDir, Collider directHitCol)
     {
         int cnt = Physics.OverlapSphereNonAlloc(
             centre,
@@ -487,28 +502,23 @@ public abstract class BaseProjectile : NetworkBehaviour
             if (!ClearLineOfSight(centre, c))
                 continue;
 
-            any |= DealDamageAndKnockback(c, centre, shotDir);
+            any |= DealDamageAndKnockback(c, centre, shotDir, fallbackImpulseDir);
         }
 
         if (!any && directHitCol != null)
-            DealDamageAndKnockback(directHitCol, centre, shotDir);
+            DealDamageAndKnockback(directHitCol, centre, shotDir, fallbackImpulseDir);
 
         ClearBuffer(cnt);
 
-        ApplyObjectiveImpulse(centre, shotDir, directHitCol);
+        ApplyObjectiveImpulse(centre, fallbackImpulseDir, directHitCol);
     }
 
-    protected virtual void ApplyObjectiveImpulse(Vector3 centre, Vector3 shotDir, Collider directHitCol)
+    protected virtual void ApplyObjectiveImpulse(Vector3 centre, Vector3 fallbackImpulseDir, Collider directHitCol)
     {
         if (def.knockbackForce <= 0f || def.blastRadius <= 0f)
             return;
 
-        int cnt = Physics.OverlapSphereNonAlloc(
-            centre,
-            def.blastRadius,
-            _buf,
-            def.objectiveMask,
-            QueryTriggerInteraction.Collide);
+        int cnt = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.objectiveMask, QueryTriggerInteraction.Collide);
 
         for (int i = 0; i < cnt; ++i)
         {
@@ -525,7 +535,7 @@ public abstract class BaseProjectile : NetworkBehaviour
             if (!ClearLineOfSight(centre, c))
                 continue;
 
-            Vector3 impulse = CalculateExplosionImpulse(c, centre, shotDir, out _);
+            Vector3 impulse = CalculateExplosionImpulse(c, centre, fallbackImpulseDir, out _);
             impulse *= def.objectiveKnockbackMultiplier;
 
             flag.Server_ApplyWeaponImpulse(impulse);
@@ -540,7 +550,7 @@ public abstract class BaseProjectile : NetworkBehaviour
 
             if (directFlag != null)
             {
-                Vector3 impulse = CalculateExplosionImpulse(directHitCol, centre, shotDir, out _);
+                Vector3 impulse = CalculateExplosionImpulse(directHitCol, centre, fallbackImpulseDir, out _);
                 impulse *= def.objectiveKnockbackMultiplier;
 
                 directFlag.Server_ApplyWeaponImpulse(impulse);
@@ -589,7 +599,7 @@ public abstract class BaseProjectile : NetworkBehaviour
         return false;
     }
 
-    protected virtual bool DealDamageAndKnockback(Collider col, Vector3 centre, Vector3 shotDir)
+    protected virtual bool DealDamageAndKnockback(Collider col, Vector3 centre, Vector3 shotDir, Vector3 fallbackImpulseDir)
     {
         Transform root = col.transform.root;
 
@@ -600,7 +610,7 @@ public abstract class BaseProjectile : NetworkBehaviour
         if (!hp.IsAlive)
             return false;
 
-        Vector3 impulse = CalculateExplosionImpulse(col, centre, shotDir, out float power);
+        Vector3 impulse = CalculateExplosionImpulse(col, centre, fallbackImpulseDir, out float power);
 
         int dmg = Mathf.Max(1, Mathf.RoundToInt(def.damage * power));
 
@@ -642,13 +652,17 @@ public abstract class BaseProjectile : NetworkBehaviour
             feedback.ServerNotifyHitMarker();
     }
 
-    protected Vector3 CalculateExplosionImpulse(Collider col, Vector3 centre, Vector3 shotDir, out float power)
+    protected Vector3 CalculateExplosionImpulse(Collider col, Vector3 centre, Vector3 fallbackImpulseDir, out float power)
     {
         Vector3 to = col.ClosestPoint(centre) - centre;
         float dist = to.magnitude;
 
+        Vector3 fallbackDir = fallbackImpulseDir.sqrMagnitude > 0.0001f
+            ? fallbackImpulseDir.normalized
+            : Vector3.up;
+
         Vector3 dir = dist < def.minDirThreshold
-            ? shotDir
+            ? fallbackDir
             : to.normalized;
 
         power = Mathf.Pow(
