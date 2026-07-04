@@ -193,6 +193,9 @@ namespace _Scripts.Player
         
         // Surface Probe
         private PlayerSurfaceProbe _surfaceProbe;
+        
+        // Camera follow
+        private FpsCameraFollow _fpsCameraFollow;
 
         // Wall Running
         private bool _canWallRun;
@@ -317,6 +320,7 @@ namespace _Scripts.Player
             {
                 LocalPlayerContext.Register(this);
                 _iH = GetComponent<InputHandler>();
+                _fpsCameraFollow = FindAnyObjectByType<FpsCameraFollow>();
 
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible   = false;
@@ -347,8 +351,16 @@ namespace _Scripts.Player
             if (IsOwner)
             {
                 var ih = _iH;
-                //_md = new MovementData(TimeManager.Tick, ih.Move, ih.Look, ih.HeldButtons, _heartBeat);
                 Vector2 lookDelta = ih.ConsumeLookDelta();
+                
+                bool zoomAllowed = !IsFrozen;
+                bool zoomHeld = ih.ZoomHeld;
+
+                if (_fpsCameraFollow != null)
+                {
+                    _fpsCameraFollow.SetZoomInput(zoomHeld, zoomAllowed);
+                    lookDelta *= _fpsCameraFollow.CurrentLookSensitivityMultiplier;
+                }
 
                 _md = new MovementData(TimeManager.Tick, ih.Move, lookDelta, ih.HeldButtons, _heartBeat);
 

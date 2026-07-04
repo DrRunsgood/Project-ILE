@@ -14,6 +14,8 @@ namespace _Scripts.Player
         public Vector2       Look        { get; private set; }   // raw mouse delta
         public InputButtons  HeldButtons { get; private set; }   // held this frame
         
+        public bool ZoomHeld { get; private set; }
+        
         Vector2 _lookAccum;
 
         /* -------------------------------------------------- */
@@ -70,6 +72,8 @@ namespace _Scripts.Player
             CaptureKey(ref held, ref down, KeyCode.Space,     InputButtons.Ski);
             CaptureKey(ref held, ref down, KeyCode.E,         InputButtons.WallRun);
             CaptureKey(ref held, ref down, KeyCode.Mouse0,    InputButtons.Fire);    // LMB
+            
+            ZoomHeld = Input.GetKey(KeyCode.Z);
 
             HeldButtons = held;
 

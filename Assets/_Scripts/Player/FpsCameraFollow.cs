@@ -9,6 +9,21 @@ public class FpsCameraFollow : MonoBehaviour
     Transform followTarget;
     Camera cam;
     InputHandler ih;
+    
+    [Header("Zoom")]
+    [SerializeField] bool enableZoom = true;
+    [SerializeField] float normalFov = 65f;
+    [SerializeField] float zoomFov = 30f;
+    [SerializeField] float zoomInTime = 0.08f;
+    [SerializeField] float zoomOutTime = 0.08f;
+    [SerializeField] float zoomSensitivityMultiplier = 0.45f;
+
+    float _fovVelocity;
+    bool _zoomHeld;
+    bool _zoomAllowed = true;
+
+    public bool IsZoomed => enableZoom && _zoomAllowed && _zoomHeld && !inThirdPerson;
+    public float CurrentLookSensitivityMultiplier => IsZoomed ? zoomSensitivityMultiplier : 1f;
 
     [Header("Hierarchy")]
     [SerializeField] Transform effectsRoot;
@@ -60,6 +75,9 @@ public class FpsCameraFollow : MonoBehaviour
             enabled = false;
             return;
         }
+        
+        normalFov = cam.fieldOfView;
+        cam.fieldOfView = normalFov;
 
         int fpIdx = LayerMask.NameToLayer(FP_LAYER);
         int tpIdx = LayerMask.NameToLayer(TP_LAYER);
@@ -104,6 +122,14 @@ public class FpsCameraFollow : MonoBehaviour
     void HandleLocalPlayerReady(AdvancedPredictedController controller)
     {
         SetTarget(controller);
+        
+        _zoomHeld = false;
+        _zoomAllowed = false;
+        _fovVelocity = 0f;
+
+        if (cam)
+            cam.fieldOfView = normalFov;
+        
         Debug.Log($"[FpsCameraFollow] Bound to local player: {controller.name}");
     }
 
@@ -139,6 +165,13 @@ public class FpsCameraFollow : MonoBehaviour
         _renderPitch = target.CurrentPitch;
         _renderYawVel = 0f;
         _renderPitchVel = 0f;
+        
+        _zoomHeld = false;
+        _zoomAllowed = true;
+        _fovVelocity = 0f;
+
+        if (cam)
+            cam.fieldOfView = normalFov;
 
         inThirdPerson = false;
         ApplyCulling(inThirdPerson);
@@ -169,6 +202,8 @@ public class FpsCameraFollow : MonoBehaviour
 
     void LateUpdate()
     {
+        UpdateZoomFov();
+        
         if (!target || !followTarget || !_targetAlive)
             return;
 
@@ -270,5 +305,36 @@ public class FpsCameraFollow : MonoBehaviour
     {
         _targetAlive = alive;
     }
+    
+    public void SetZoomInput(bool held, bool allowed)
+    {
+        _zoomHeld = held;
+        _zoomAllowed = allowed;
+    }
+    
+    void UpdateZoomFov()
+    {
+        if (!cam)
+            return;
+
+        float targetFov = IsZoomed ? zoomFov : normalFov;
+        float smoothTime = IsZoomed ? zoomInTime : zoomOutTime;
+
+        if (!enableZoom || smoothTime <= 0f)
+        {
+            cam.fieldOfView = targetFov;
+            _fovVelocity = 0f;
+            return;
+        }
+
+        cam.fieldOfView = Mathf.SmoothDamp(
+            cam.fieldOfView,
+            targetFov,
+            ref _fovVelocity,
+            Mathf.Max(0.001f, smoothTime),
+            Mathf.Infinity,
+            Time.deltaTime);
+    }
+    
 }
 
