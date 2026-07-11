@@ -201,7 +201,6 @@ namespace _Scripts.Weapons
             {
                 GameObject fp = Instantiate(pw.Definition.fpViewPrefab, firstPersonAnchor);
                 ResetLocal(fp.transform);
-                fp.transform.localScale = Vector3.one * 2f;
                 _fpViews[nob] = fp;
             }
         }
@@ -852,7 +851,6 @@ namespace _Scripts.Weapons
 
                 GameObject fp = Instantiate(pw.Definition.fpViewPrefab, firstPersonAnchor);
                 ResetLocal(fp.transform);
-                fp.transform.localScale = Vector3.one * 2f;
                 _fpViews[w.NetworkObj] = fp;
             }
 

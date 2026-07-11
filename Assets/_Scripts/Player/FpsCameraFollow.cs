@@ -279,7 +279,7 @@ public class FpsCameraFollow : MonoBehaviour
             fpAnchor.SetParent(cam.transform, false);
         }
 
-        fpAnchor.localPosition = new Vector3(0.5f, -0.5f, 0.5f);
+        fpAnchor.localPosition = new Vector3(0.25f, -0.25f, 0.25f);
         fpAnchor.localRotation = Quaternion.identity;
         fpAnchor.localScale = Vector3.one;
 

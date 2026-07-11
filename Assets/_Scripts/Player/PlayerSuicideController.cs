@@ -36,8 +36,6 @@ namespace _Scripts.Player
                 return;
 
             Server_RequestSuicide();
-
-            Server_RequestSuicide();
         }
 
         [ServerRpc(RequireOwnership = true)]

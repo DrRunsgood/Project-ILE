@@ -47,7 +47,8 @@ namespace _Scripts.Player
         public void RefreshGrounding(Rigidbody rb, Transform transform)
         {
             Vector3 checkPos = rb.position + _feetOffset;
-            IsGrounded = Physics.CheckSphere(checkPos, _feetRadius, _groundMask);
+
+            IsGrounded = Physics.CheckSphere(checkPos, _feetRadius, _groundMask, QueryTriggerInteraction.Ignore);
 
             IsOnSlope = false;
             SlopeHit = default;
@@ -55,14 +56,22 @@ namespace _Scripts.Player
             if (!IsGrounded)
                 return;
 
-            if (Physics.Raycast(checkPos, Vector3.down, out RaycastHit hit, _slopeCheckDistance, _groundMask)) //transform.position
+            // Try to get a real supporting normal.
+            if (Physics.Raycast(checkPos, Vector3.down, out RaycastHit hit,
+                    _slopeCheckDistance, _groundMask, QueryTriggerInteraction.Ignore))
             {
                 float angle = Vector3.Angle(Vector3.up, hit.normal);
-                if (angle < _maxSlopeAngle && angle != 0f)
+
+                // If the supporting normal is clearly too steep, treat it as not grounded.
+                // This preserves the old forgiving check but prevents obvious wall/steep false positives.
+                if (angle > _maxSlopeAngle)
                 {
-                    IsOnSlope = true;
-                    SlopeHit = hit;
+                    IsGrounded = false;
+                    return;
                 }
+
+                SlopeHit = hit;
+                IsOnSlope = angle > 0.1f;
             }
         }
 

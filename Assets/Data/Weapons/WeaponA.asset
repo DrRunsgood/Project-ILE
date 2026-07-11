@@ -22,7 +22,7 @@ MonoBehaviour:
   requiresEnergyPack: 0
   usesAmmo: 1
   ammoType: 1
-  spawnAmmo: 10
+  spawnAmmo: 15
   maxAmmo: 15
   ammoPerShot: 1
   projectilePrefab: {fileID: 1938724514370874692, guid: dffcccc3d1c6b0044adecae6241f6300, type: 3}
@@ -30,6 +30,7 @@ MonoBehaviour:
   velocityInheritance: 0.7
   gravityScale: 0
   lifeTime: 15
+  resolveImmediateMuzzleImpact: 1
   convergenceMode: 0
   convergenceDistance: 1500
   aimMask:

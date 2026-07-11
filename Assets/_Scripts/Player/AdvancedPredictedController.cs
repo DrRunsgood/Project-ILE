@@ -81,9 +81,14 @@ namespace _Scripts.Player
         [SerializeField] private float maxPitch = 90f;
 
         [Header("Movement Speeds")]
-        [SerializeField] private float walkSpeed = 5f;
+        [SerializeField] private float groundMoveSpeed = 5f;
         [SerializeField] private float sprintSpeed = 10f;
         [SerializeField] private float crouchSpeed = 2f;
+        
+        [Header("Ground Movement")]
+        [SerializeField] private float groundAcceleration = 60f;
+        [SerializeField] private float groundBraking = 80f;
+        [SerializeField] private float groundStopSpeed = 0.15f;
         
         [Header("Physics & Drag")]
         [SerializeField] private float groundDrag = 5f;
@@ -419,7 +424,7 @@ namespace _Scripts.Player
             if (IsFrozen) return;
             
             float dt = (float)TimeManager.TickDelta;
-            
+
             Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held);
             
             _energyModule.RegenEnergy(dt); // Regen Energy first
@@ -492,6 +497,7 @@ namespace _Scripts.Player
 
             if (_surfaceProbe.IsGrounded && Btn(held, InputButtons.Jump))
                 Jump();
+            
             
             _predictionRb.Simulate();
             
@@ -660,7 +666,7 @@ namespace _Scripts.Player
                     }
                     else if (Btn(held, InputButtons.Sprint))
                     {
-                        _state = MovementState.Sprinting;
+                        _state = MovementState.Walking;
                     }
                     else
                     {
@@ -696,11 +702,12 @@ namespace _Scripts.Player
 
 // --------------- MOVE PLAYER -----------------------------------------------       
 
+        /*
         private void MovePlayer(Vector2 move)
         {
             transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z); // reset crouch
 
-            if (_state == MovementState.Walking) _moveSpeed = walkSpeed;
+            if (_state == MovementState.Walking) _moveSpeed = groundMoveSpeed;
             else if (_state == MovementState.Sprinting) _moveSpeed = sprintSpeed;
             else if (_state == MovementState.Crouching)
             {
@@ -726,6 +733,54 @@ namespace _Scripts.Player
             {
                 _predictionRb.Velocity(new Vector3(_moveDirection.x * _moveSpeed, currentVelocity.y, _moveDirection.z * _moveSpeed));
             }
+        }
+        */
+        
+        private void MovePlayer(Vector2 move)
+        {
+            transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z); // reset crouch
+            
+            _moveSpeed = groundMoveSpeed;
+            
+            if (_state == MovementState.Crouching)
+            {
+                transform.localScale = new Vector3(transform.localScale.x, crouchYScale, transform.localScale.z);
+                _moveSpeed = crouchSpeed;
+            }
+
+            if (!_surfaceProbe.IsGrounded)
+                return;
+
+            Vector3 groundNormal = Vector3.up;
+
+            if (_surfaceProbe.SlopeHit.collider != null)
+                groundNormal = _surfaceProbe.SlopeHit.normal;
+
+            Vector3 wishDir = orientation.forward * move.y + orientation.right * move.x;
+            wishDir = Vector3.ProjectOnPlane(wishDir, groundNormal);
+
+            float wishMagnitude = Mathf.Clamp01(move.magnitude);
+
+            if (wishDir.sqrMagnitude > 0.0001f)
+                wishDir.Normalize();
+
+            Vector3 currentVelocity = _rb.linearVelocity;
+
+            // Treat "planar" as movement along the ground plane, not always world-horizontal.
+            Vector3 currentGroundVelocity = Vector3.ProjectOnPlane(currentVelocity, groundNormal);
+            Vector3 normalVelocity = currentVelocity - currentGroundVelocity;
+
+            Vector3 desiredGroundVelocity = wishDir * (_moveSpeed * wishMagnitude);
+
+            float accel = wishMagnitude > 0.01f ? groundAcceleration : groundBraking;
+
+            Vector3 newGroundVelocity = Vector3.MoveTowards(currentGroundVelocity,
+                desiredGroundVelocity, accel * (float)TimeManager.TickDelta);
+
+            if (wishMagnitude <= 0.01f && newGroundVelocity.magnitude <= groundStopSpeed)
+                newGroundVelocity = Vector3.zero;
+
+            _predictionRb.Velocity(normalVelocity + newGroundVelocity);
         }
 
         private void ControlEnv()

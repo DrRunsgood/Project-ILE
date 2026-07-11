@@ -1179,7 +1179,7 @@ MonoBehaviour:
   bounciness: 0.35
   slideFriction: 6
   stopSpeed: 0.05
-  sphereRadius: 0.15
+  sphereRadius: 0.05
   worldMask:
     serializedVersion: 2
     m_Bits: 4294967295

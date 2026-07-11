@@ -29,7 +29,7 @@ GameObject:
   - component: {fileID: -3267090812201351334}
   - component: {fileID: -437381816082525447}
   m_Layer: 6
-  m_Name: Player
+  m_Name: Player BU
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -83,9 +83,9 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 11
+  <PrefabId>k__BackingField: 9
   <SpawnableCollectionId>k__BackingField: 0
-  <AssetPathHash>k__BackingField: 5306845881338098766
+  <AssetPathHash>k__BackingField: 10869772642535071510
   SceneId: 0
   SerializedTransformProperties:
     Position: {x: 0, y: 0, z: 0}
@@ -113,7 +113,6 @@ MonoBehaviour:
   - {fileID: -8491762940690051033}
   - {fileID: 2049052762416851640}
   - {fileID: -3267090812201351334}
-  - {fileID: -437381816082525447}
   - {fileID: 3289860153973179968}
   - {fileID: 759703639484445222}
   InitializedParentNetworkBehaviour: {fileID: 0}
@@ -126,7 +125,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584178313024230076
+  _initializedTimestamp: -8584190369314432912
 --- !u!54 &7001912800235990901
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -173,8 +172,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 2
+  m_Radius: 1
+  m_Height: 4
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &2929346116547752253
@@ -234,26 +233,23 @@ MonoBehaviour:
   pitchSensitivity: 2
   minPitch: -90
   maxPitch: 90
-  groundMoveSpeed: 12
+  walkSpeed: 8
   sprintSpeed: 12
   crouchSpeed: 4
-  groundAcceleration: 60
-  groundBraking: 80
-  groundStopSpeed: 0.15
   groundDrag: 2.5
   airDrag: 0
   gripMat: {fileID: 13400000, guid: 72fc03409c59b7f45b02fa60009d721f, type: 2}
   skiMat: {fileID: 13400000, guid: 06f0a59c169905e4e8568d2b000122a3, type: 2}
   jumpForce: 10
-  jumpCooldown: 0.2
+  jumpCooldown: 0.5
   crouchYScale: 0.5
   maxSlopeAngle: 45
-  slopeCheckDistance: 1.05
+  slopeCheckDistance: 2.1
   groundMask:
     serializedVersion: 2
     m_Bits: 1024
-  feetOffset: {x: 0, y: -0.6, z: 0}
-  feetRadius: 0.5
+  feetOffset: {x: 0, y: -1.1, z: 0}
+  feetRadius: 1
   whatIsWall:
     serializedVersion: 2
     m_Bits: 2048
@@ -523,9 +519,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b41afc3e145b411408f0b14985dd85c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerOutOfBoundsController
-  _componentIndexCache: 14
+  _componentIndexCache: 255
   _addedNetworkObject: {fileID: 6832439599154668905}
-  _networkObjectCache: {fileID: 6832439599154668905}
+  _networkObjectCache: {fileID: 0}
   enableOutOfBounds: 1
   graceSeconds: 3
   damageTickInterval: 1
@@ -556,7 +552,7 @@ Transform:
   m_GameObject: {fileID: 1658271619301096103}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.4, z: 0}
+  m_LocalPosition: {x: 0, y: 0.8, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -574,7 +570,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Transforming.Beta.NetworkTickSmoother
-  _componentIndexCache: 15
+  _componentIndexCache: 14
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:
@@ -621,7 +617,7 @@ Transform:
   m_GameObject: {fileID: 2131316742793276113}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.4, z: 0}
+  m_LocalPosition: {x: 0, y: 0.8, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -731,7 +727,7 @@ GameObject:
   - component: {fileID: 8854438168527651508}
   - component: {fileID: 5543219099015207182}
   - component: {fileID: 5486347008128861531}
-  m_Layer: 13
+  m_Layer: 6
   m_Name: Visor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -997,8 +993,8 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 1
+  m_LocalScale: {x: 2, y: 2, z: 2}
+  m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 9097628081026700281}
   - {fileID: 8854438168527651508}
@@ -1076,7 +1072,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 16
+  _componentIndexCache: 15
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:
