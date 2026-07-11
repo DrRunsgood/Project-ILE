@@ -126,7 +126,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584178313024230076
+  _initializedTimestamp: -8584178182460440995
 --- !u!54 &7001912800235990901
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -234,20 +234,16 @@ MonoBehaviour:
   pitchSensitivity: 2
   minPitch: -90
   maxPitch: 90
-  groundMoveSpeed: 12
-  sprintSpeed: 12
+  groundMoveSpeed: 10
   crouchSpeed: 4
-  groundAcceleration: 60
+  groundAcceleration: 45
   groundBraking: 80
-  groundStopSpeed: 0.15
-  groundDrag: 2.5
-  airDrag: 0
-  gripMat: {fileID: 13400000, guid: 72fc03409c59b7f45b02fa60009d721f, type: 2}
-  skiMat: {fileID: 13400000, guid: 06f0a59c169905e4e8568d2b000122a3, type: 2}
+  groundStopSpeed: 0.2
+  playerPhysicsMaterial: {fileID: 13400000, guid: 72fc03409c59b7f45b02fa60009d721f, type: 2}
   jumpForce: 10
   jumpCooldown: 0.2
   crouchYScale: 0.5
-  maxSlopeAngle: 45
+  maxSlopeAngle: 55
   slopeCheckDistance: 1.05
   groundMask:
     serializedVersion: 2
@@ -295,6 +291,7 @@ MonoBehaviour:
   jpForwardAccel: 14
   jpLateralAccel: 10
   jpLateralFalloffK: 0.006
+  useSurfacePlaneSkiSteering: 0
 --- !u!114 &4486696069042159977
 MonoBehaviour:
   m_ObjectHideFlags: 0

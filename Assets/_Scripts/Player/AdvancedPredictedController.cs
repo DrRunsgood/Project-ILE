@@ -49,7 +49,6 @@ namespace _Scripts.Player
         {
             None,
             Walking,
-            Sprinting,
             WallRunning,
             Jetpacking,
             Skiing,
@@ -82,27 +81,18 @@ namespace _Scripts.Player
 
         [Header("Movement Speeds")]
         [SerializeField] private float groundMoveSpeed = 5f;
-        [SerializeField] private float sprintSpeed = 10f;
         [SerializeField] private float crouchSpeed = 2f;
         
         [Header("Ground Movement")]
-        [SerializeField] private float groundAcceleration = 60f;
+        [SerializeField] private float groundAcceleration = 45f;
         [SerializeField] private float groundBraking = 80f;
-        [SerializeField] private float groundStopSpeed = 0.15f;
-        
-        [Header("Physics & Drag")]
-        [SerializeField] private float groundDrag = 5f;
-        [SerializeField] private float airDrag = 0.1f;
-        
-        [Header("Physics Materials")]
-        [SerializeField] private PhysicsMaterial gripMat;
-        [SerializeField] private PhysicsMaterial skiMat;
+        [SerializeField] private float groundStopSpeed = 0.2f;
+
+        [Header("Physics Material")]
+        [SerializeField] private PhysicsMaterial playerPhysicsMaterial;
         
         [Header("Jumping")]
         [SerializeField] private float jumpForce = 5f;
-
-        [SerializeField] private float jumpCooldown = 0.5f;
-        private float _jumpCooldownRemaining = 0f;   
         
         [Header("Crouching")]
         [SerializeField] private float crouchYScale = 0.5f;
@@ -143,7 +133,7 @@ namespace _Scripts.Player
 
         [Header("Skiing Settings")]
         [SerializeField] private float skiControl = 0.1f;
-        [SerializeField] private float skiDrag = 0.1f;
+        [SerializeField] private float skiDrag = 0.02f;
         
         [Header("Energy Settings")]
         [SerializeField] private float maxEnergy = 100f;
@@ -296,12 +286,15 @@ namespace _Scripts.Player
             base.OnStartNetwork();
 
             _rb = GetComponent<Rigidbody>();
+            _rb.useGravity = false;
             _netObj = GetComponent<NetworkObject>();
             _predictionRb = new PredictionRigidbody();
             _predictionRb.Initialize(_rb);
             _weaponManager = GetComponent<WeaponManager>();
             _packMgr = GetComponent<PackManager>();
             _col = GetComponent<Collider>();
+            
+            SetPhysicMaterial(playerPhysicsMaterial);
             
             _energyModule = new PlayerEnergyModule(maxEnergy, energyRegenRate, maxEnergy);
             _lookModule = new PlayerLookModule(yawSensitivity, pitchSensitivity, minPitch, maxPitch, transform.eulerAngles.y, 0f);
@@ -329,8 +322,6 @@ namespace _Scripts.Player
 
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible   = false;
-
-                SetPhysicMaterial(gripMat);
             }
         }
 
@@ -338,7 +329,6 @@ namespace _Scripts.Player
         {
             base.OnStartServer();
             _energyModule.ResetEnergy();
-            SetPhysicMaterial(gripMat);
         }
 
         public override void OnStopNetwork()
@@ -434,6 +424,7 @@ namespace _Scripts.Player
             if (_pendingKnockback.HasValue) // Check incoming Knockback
             {
                 ApplyKnockback();
+                ApplyMovementGravity();
                 _predictionRb.Simulate();
                 return;
             }
@@ -494,6 +485,8 @@ namespace _Scripts.Player
                     MovePlayer(move);
                     break;
             }
+
+            ApplyMovementGravity();
 
             if (_surfaceProbe.IsGrounded && Btn(held, InputButtons.Jump))
                 Jump();
@@ -606,12 +599,6 @@ namespace _Scripts.Player
         {
             _predictionRb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         }
-
-        private void ResetJump()
-        {
-            //_readyToJump = true;  // DG - currently unused as we removed jump timer - will reimplement later
-        }
-
         #endregion
 
         #region Movement Methods
@@ -631,117 +618,125 @@ namespace _Scripts.Player
     
         private void UpdateMovementState(InputButtons held)
         {
+            // Jetpack overrides all other movement states.
             if (Btn(held, InputButtons.Jetpack))
             {
-                /* Already jet-packing? → keep going, Not jet-packing yet? → need at least jetpackFuelCutoff to ignite. */
-                if (_state == MovementState.Jetpacking ? Energy > 0f : Energy >= jetpackFuelCutoff)
+                bool canContinueJetting = _state == MovementState.Jetpacking ? Energy > 0f : Energy >= jetpackFuelCutoff;
+
+                if (canContinueJetting)
                 {
-                    // If we started jet-packing this frame, stop wall-run etc.
-                    if (_state != MovementState.Jetpacking && _state == MovementState.WallRunning)
+                    if (_state == MovementState.WallRunning)
                         StopWallRun();
 
                     _state = MovementState.Jetpacking;
-                    return;                     // jetpack overrides all other states
+                    return;
                 }
             }
-            
-            // If not already wall running, check for wall run initiation using the wall run key.
-            if (_state != MovementState.WallRunning)
+
+            // Preserve an active wallrun until its own update logic ends it.
+            if (_state == MovementState.WallRunning)
             {
-                _canWallRun = CanWallRun();
-                if (Btn(held, InputButtons.WallRun) && _canWallRun)
+                _state = MovementState.WallRunning;
+                return;
+            }
+
+            // Check for explicit wallrun initiation.
+            _canWallRun = CanWallRun();
+
+            if (Btn(held, InputButtons.WallRun) && _canWallRun)
+            {
+                StartWallRun();
+                _state = MovementState.WallRunning;
+                return;
+            }
+
+            // Ground-supported states.
+            if (_surfaceProbe.IsGrounded)
+            {
+                if (Btn(held, InputButtons.Ski))
                 {
-                    StartWallRun();
-                    _state = MovementState.WallRunning;
-                }
-                
-                else if (Btn(held, InputButtons.Ski))
                     _state = MovementState.Skiing;
-                
-                else if (_surfaceProbe.IsGrounded)
+                }
+                else if (Btn(held, InputButtons.Crouch))
                 {
-                    if (Btn(held, InputButtons.Crouch))
-                    {
-                        _state = MovementState.Crouching;
-                    }
-                    else if (Btn(held, InputButtons.Sprint))
-                    {
-                        _state = MovementState.Walking;
-                    }
-                    else
-                    {
-                        _state = MovementState.Walking;
-                    }
+                    _state = MovementState.Crouching;
                 }
                 else
                 {
-                    _state = MovementState.Airborne;
+                    _state = MovementState.Walking;
                 }
+
+                return;
             }
-            else
+
+            // Ski input remains buffered through Held, but does not replace
+            // airborne movement until valid ground contact exists.
+            _state = MovementState.Airborne;
+        }
+        
+        private Vector3 GetGroundNormal()
+        {
+            if (_surfaceProbe != null &&
+                _surfaceProbe.SlopeHit.collider != null)
             {
-                _state = MovementState.WallRunning;
+                return _surfaceProbe.SlopeHit.normal;
             }
-            
-            switch (_state) // Change material if skiing to remove friction
+
+            return Vector3.up;
+        }
+        
+        private void ApplyMovementGravity()
+        {
+            Vector3 gravity = Physics.gravity;
+
+            switch (_state)
             {
-                case MovementState.Skiing:
-                    SetPhysicMaterial(skiMat);
+                case MovementState.Walking:
+                case MovementState.Crouching:
+                {
+                    if (!_surfaceProbe.IsGrounded)
+                    {
+                        _predictionRb.AddForce(gravity, ForceMode.Acceleration);
+                        return;
+                    }
+
+                    Vector3 groundNormal = GetGroundNormal();
+
+                    float gravityIntoSurface = Vector3.Dot(gravity, groundNormal);
+
+                    if (gravityIntoSurface < 0f)
+                    {
+                        Vector3 supportGravity = groundNormal * gravityIntoSurface;
+                        _predictionRb.AddForce(supportGravity, ForceMode.Acceleration);
+                    }
+
                     break;
-                
+                }
+
+                case MovementState.Skiing:
+                case MovementState.Airborne:
+                case MovementState.Jetpacking:
+                case MovementState.None:
+                    _predictionRb.AddForce(gravity, ForceMode.Acceleration);
+                    break;
+
                 case MovementState.WallRunning:
-                    SetPhysicMaterial(skiMat);
                     break;
 
                 default:
-                    SetPhysicMaterial(gripMat);
+                    _predictionRb.AddForce(gravity, ForceMode.Acceleration);
                     break;
             }
-            
         }
 
 // --------------- MOVE PLAYER -----------------------------------------------       
 
-        /*
         private void MovePlayer(Vector2 move)
         {
-            transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z); // reset crouch
+            transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z);
 
-            if (_state == MovementState.Walking) _moveSpeed = groundMoveSpeed;
-            else if (_state == MovementState.Sprinting) _moveSpeed = sprintSpeed;
-            else if (_state == MovementState.Crouching)
-            {
-                transform.localScale = new Vector3(transform.localScale.x, crouchYScale, transform.localScale.z);
-                _moveSpeed = crouchSpeed;
-            }
-
-            _moveDirection = (orientation.forward * move.y) + (orientation.right * move.x);
-            _moveDirection.Normalize();
-
-            Vector3 currentVelocity = _rb.linearVelocity;
-            Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0f, currentVelocity.z);
-
-            float moveSpeedSq = _moveSpeed * _moveSpeed;
-            float horizontalSpeedSq = horizontalVelocity.sqrMagnitude;
-
-            if (_surfaceProbe.IsOnSlope && _state != MovementState.Skiing && _state != MovementState.Jetpacking && horizontalSpeedSq <= moveSpeedSq)
-            {
-                Vector3 slopeMoveDir = Vector3.ProjectOnPlane(_moveDirection, _surfaceProbe.SlopeHit.normal).normalized * _moveSpeed;
-                _predictionRb.Velocity(new Vector3(slopeMoveDir.x, currentVelocity.y, slopeMoveDir.z));
-            }
-            else if (_surfaceProbe.IsGrounded && horizontalSpeedSq <= moveSpeedSq)
-            {
-                _predictionRb.Velocity(new Vector3(_moveDirection.x * _moveSpeed, currentVelocity.y, _moveDirection.z * _moveSpeed));
-            }
-        }
-        */
-        
-        private void MovePlayer(Vector2 move)
-        {
-            transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z); // reset crouch
-            
             _moveSpeed = groundMoveSpeed;
-            
+
             if (_state == MovementState.Crouching)
             {
                 transform.localScale = new Vector3(transform.localScale.x, crouchYScale, transform.localScale.z);
@@ -751,12 +746,10 @@ namespace _Scripts.Player
             if (!_surfaceProbe.IsGrounded)
                 return;
 
-            Vector3 groundNormal = Vector3.up;
-
-            if (_surfaceProbe.SlopeHit.collider != null)
-                groundNormal = _surfaceProbe.SlopeHit.normal;
+            Vector3 groundNormal = GetGroundNormal();
 
             Vector3 wishDir = orientation.forward * move.y + orientation.right * move.x;
+
             wishDir = Vector3.ProjectOnPlane(wishDir, groundNormal);
 
             float wishMagnitude = Mathf.Clamp01(move.magnitude);
@@ -766,8 +759,8 @@ namespace _Scripts.Player
 
             Vector3 currentVelocity = _rb.linearVelocity;
 
-            // Treat "planar" as movement along the ground plane, not always world-horizontal.
             Vector3 currentGroundVelocity = Vector3.ProjectOnPlane(currentVelocity, groundNormal);
+
             Vector3 normalVelocity = currentVelocity - currentGroundVelocity;
 
             Vector3 desiredGroundVelocity = wishDir * (_moveSpeed * wishMagnitude);
@@ -779,30 +772,13 @@ namespace _Scripts.Player
 
             if (wishMagnitude <= 0.01f && newGroundVelocity.magnitude <= groundStopSpeed)
                 newGroundVelocity = Vector3.zero;
-
+            
             _predictionRb.Velocity(normalVelocity + newGroundVelocity);
         }
 
         private void ControlEnv()
         {
-            float drag;
-
-            switch (_state)
-            {
-                case MovementState.Airborne or MovementState.Jetpacking:
-                    drag = airDrag;
-                    break;
-                case MovementState.Skiing:
-                    drag = skiDrag;
-                    break;
-                case MovementState.WallRunning:
-                    drag = airDrag;
-                    break;
-                default:  // ground state
-                    drag = groundDrag;
-                    break;
-            }
-            _rb.linearDamping = drag;
+            _rb.linearDamping = _state == MovementState.Skiing ? skiDrag : 0f;
         }
 
         #endregion
@@ -955,9 +931,6 @@ namespace _Scripts.Player
             {
                 _predictionRb.AddForce(-_storedWallNormal * wallStickForce, ForceMode.Force);
             }
-
-            // 2. COUNTERACT GLOBAL GRAVITY
-            _predictionRb.AddForce(-Physics.gravity, ForceMode.Acceleration);
 
             // 3. MOVEMENT FORCE ALONG THE WALL (Horizontally), _wallRunDirection is already calculated in StartWallRun to be along the wall's surface.
             if (_wallRunDirection != Vector3.zero)
@@ -1160,170 +1133,55 @@ namespace _Scripts.Player
 
             _predictionRb.AddForce(lift + jetForce, ForceMode.Force);
         }
-
-        
-        /*
-        // --- Low-speed regime (equal ramp for any direction) ---
-        [SerializeField] float lowTargetSpeed   = 30f;    // desired low-speed cap (m/s)
-        [SerializeField] float blendWidth       = 10f;    // blend range into high-speed steering
-        [SerializeField] float lowBaseAccel     = 10f;    // accel strength while under lowTargetSpeed
-        [SerializeField] float strafeBias       = 1.0f;   // >1 treats wide A/D as pure strafe (removes forward leak)
-
-        // --- High-speed steering (momentum-respecting) ---
-        [SerializeField] float airTurnAccel     = 10f;    // lateral steering accel
-        [SerializeField] float airTurnFalloffK  = 0.0045f;// how fast steering weakens with speed
-        [SerializeField] float airTurnMinFactor = 0.5f;   // steering floor at high speed
-        [SerializeField] float airHorizHardCap  = 200f;   // optional horizontal speed clamp
-
-        // --- Retro-brake (S to bleed speed when moving forward) ---
-        [SerializeField] float retroBrakeStrength = 10f;  // braking accel magnitude
-        [SerializeField] float retroBrakeMinSpeed = 4f;   // don’t bother braking below this speed
-
-
-        private void ApplyAirControl(Vector2 move)
-        {
-            if (move.sqrMagnitude < 1e-6f) return;
-
-            // Wish vector (camera-relative), horizontal only.
-            Vector3 wish = orientation.forward * move.y + orientation.right * move.x;
-            wish.y = 0f;
-            float wishLen = wish.magnitude;
-            if (wishLen < 1e-6f) return;
-            wish /= wishLen;
-
-            // Horizontal velocity and speed.
-            Vector3 v   = _rb.linearVelocity;
-            Vector3 vH  = new Vector3(v.x, 0f, v.z);
-            float   s   = vH.magnitude;
-            Vector3 vDir = (s > 1e-6f) ? (vH / s) : wish;
-
-            // ---------- LOW-SPEED FORCE (isotropic cap) ----------
-            // If input is mostly strafe, strip forward so A/D doesn’t leak forward speed.
-            Vector3 lowForceDir = wish;
-            if (Mathf.Abs(move.x) > Mathf.Abs(move.y) * strafeBias)
-                lowForceDir -= Vector3.Project(lowForceDir, orientation.forward);
-            if (lowForceDir.sqrMagnitude > 1e-6f) lowForceDir.Normalize();
-            else                                   lowForceDir = wish;
-
-            // Equal ramp toward lowTargetSpeed regardless of direction.
-            float lowEff = Mathf.Clamp01((lowTargetSpeed - s) / Mathf.Max(1e-3f, lowTargetSpeed));
-            Vector3 lowForce = lowForceDir * (lowBaseAccel * lowEff);
-
-            // ---------- HIGH-SPEED FORCE (lateral steering, no speed injection) ----------
-            Vector3 highForce = Vector3.zero;
-            if (s > 1e-4f)
-            {
-                // Lateral component of wish (perpendicular to velocity) bends the path.
-                Vector3 lateral = wish - vDir * Vector3.Dot(wish, vDir);
-                float latMag = lateral.magnitude;
-                if (latMag > 1e-6f)
-                {
-                    lateral /= latMag;
-
-                    // Steering weakens with speed but keeps a floor.
-                    float steerFactor = airTurnMinFactor + (1f - airTurnMinFactor) / (1f + airTurnFalloffK * s);
-                    highForce = lateral * (airTurnAccel * steerFactor);
-                }
-            }
-
-            // ---------- BLEND BY SPEED ----------
-            float t = Mathf.Clamp01((s - lowTargetSpeed) / Mathf.Max(1e-3f, blendWidth));
-            Vector3 force = Vector3.Lerp(lowForce, highForce, t);
-
-            // ---------- RETRO-BRAKE (S key) ----------
-            // Only when pressing S and actually moving roughly forward relative to S (i.e., wish opposes vDir).
-            if (move.y < -0.2f && s > retroBrakeMinSpeed)
-            {
-                // Opposing factor: 0 when same direction, 1 when perfectly opposite.
-                float oppose = Mathf.Clamp01(-Vector3.Dot(vDir, wish));
-                if (oppose > 1e-3f)
-                {
-                    // Stronger braking as speed rises from min to lowTargetSpeed; above that, already in high-speed regime.
-                    float speedK = Mathf.Clamp01((s - retroBrakeMinSpeed) / Mathf.Max(1e-3f, (lowTargetSpeed - retroBrakeMinSpeed)));
-                    Vector3 brake = -vDir * (retroBrakeStrength * oppose * speedK);
-                    force += brake;
-                }
-            }
-
-            _predictionRb.AddForce(force, ForceMode.Acceleration);
-
-            // Optional safety cap (doesn’t fight terrain-earned speed much; just clamps extremes).
-            if (airHorizHardCap > 0f && s > airHorizHardCap)
-            {
-                Vector3 vNew = vDir * airHorizHardCap;
-                _rb.linearVelocity = new Vector3(vNew.x, v.y, vNew.z);
-            }
-        }
-
-
-
-        private void Jetpack(Vector2 move)
-        {
-            Vector3 directionalThrustComponent = Vector3.zero;
-
-                // Only calculate directional thrust if the player is giving WASD input
-                if (move.sqrMagnitude > 0.01f)
-                {
-                    // 1. Determine the world-space direction of the player's input
-                    Vector3 localMove = new Vector3(move.x, 0f, move.y);
-                    Vector3 worldMoveDir = orientation.TransformDirection(localMove).normalized;
-
-                    // 2. Get the player's current horizontal velocity and its speed
-                    Vector3 currentHorizontalVelocity = new Vector3(_rb.linearVelocity.x, 0, _rb.linearVelocity.z);
-                    
-                    // 3. Calculate the player's speed specifically along the desired thrust axis
-                    float speedInDesiredDirection = Vector3.Dot(currentHorizontalVelocity, worldMoveDir);
-
-                    // 4. Only apply directional thrust if we are not already moving too fast in that direction
-                    if (speedInDesiredDirection < 60f) //maxSpeedForDirectionalThrust
-                    {
-                        // Calculate a falloff multiplier to smoothly reduce thrust as we approach the max speed.
-                        // This is 1.0 at 0 speed, and falls off to 0.0 at maxSpeedForDirectionalThrust.
-                        // If speedInDesiredDirection is negative (moving opposite), Clamp01 makes it 0, so falloff is 1.0 (full power).
-                        float falloff = 1f - Mathf.Clamp01(speedInDesiredDirection / 60f); //maxSpeedForDirectionalThrust
-                        
-                        // The total potential magnitude for directional thrust
-                        float directionalThrustMagnitude = jetpackForce * (1f - jetUpliftRatio);
-
-                        // The final directional thrust is scaled by the falloff
-                        directionalThrustComponent = worldMoveDir * (directionalThrustMagnitude * falloff);
-                    }
-                    // If speedInDesiredDirection >= maxSpeedForDirectionalThrust, directionalThrustComponent remains Vector3.zero
-                }
-                // 5. Always calculate the upward lift component
-                Vector3 liftThrust = Vector3.up * (jetpackForce * jetUpliftRatio);
-
-                // 6. Combine lift and directional forces and apply them to the Rigidbody
-                Vector3 finalJetForce = liftThrust + directionalThrustComponent;
-                
-                _predictionRb.AddForce(finalJetForce, ForceMode.Force);
-        }
-        */
-        
         #endregion
         
 
         #region Skiing
-
+        
         private void PerformSkiMovement(Vector2 move)
         {
-            //if (!_isGrounded)
-              //  return;
-            
-            Vector3 currentVel = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
-            Vector3 baseDir = (currentVel.sqrMagnitude > 0.01f) ? currentVel.normalized : orientation.forward;
+            Vector3 groundNormal = GetGroundNormal();
 
-            // Process input and transform to world space
+            // Use velocity along the contacted surface rather than world-horizontal velocity.
+            Vector3 currentGroundVelocity =
+                Vector3.ProjectOnPlane(_rb.linearVelocity, groundNormal);
+
+            Vector3 baseDir;
+
+            if (currentGroundVelocity.sqrMagnitude > 0.01f)
+            {
+                baseDir = currentGroundVelocity.normalized;
+            }
+            else
+            {
+                baseDir = Vector3.ProjectOnPlane(orientation.forward, groundNormal);
+
+                if (baseDir.sqrMagnitude > 0.0001f)
+                    baseDir.Normalize();
+            }
+
+            // Preserve the current behavior: A/D steer laterally, S may steer backward, W does not actively add forward ski input.
             Vector3 rawInput = new Vector3(move.x, 0f, Mathf.Min(move.y, 0f));
-            Vector3 desiredDir = orientation.TransformDirection(rawInput).normalized;
 
-            // Blend input direction smoothly
-            Vector3 steerDir = Vector3.Lerp(baseDir, desiredDir, skiControl).normalized;
+            Vector3 desiredDir = orientation.TransformDirection(rawInput);
 
-            // Calculate steering force, proportional to current speed
-            Vector3 steeringForce = (steerDir - baseDir) * (currentVel.magnitude * 1f);
-            _predictionRb.AddForce(steeringForce, ForceMode.Force);
+            desiredDir = Vector3.ProjectOnPlane(desiredDir, groundNormal);
             
+            if (desiredDir.sqrMagnitude <= 0.0001f)
+                return;
+
+            desiredDir.Normalize();
+
+            Vector3 steerDir = Vector3.Lerp(baseDir, desiredDir, skiControl);
+
+            if (steerDir.sqrMagnitude <= 0.0001f)
+                return;
+
+            steerDir.Normalize();
+
+            Vector3 steeringForce = (steerDir - baseDir) * currentGroundVelocity.magnitude;
+
+            _predictionRb.AddForce(steeringForce, ForceMode.Force);
         }
 
         #endregion
