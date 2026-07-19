@@ -63,14 +63,9 @@ namespace _Scripts.Player
         [Header("References")]
         [SerializeField] private Transform orientation;
         [Tooltip("The parent object of the main character model to be hidden in first person.")]
-        [SerializeField] private GameObject mainBodyObject;
-        [SerializeField] private Transform headAnchor;
-        [SerializeField] private Transform viewOrigin;
-        [SerializeField] private Transform firePoint;
+        [SerializeField] private Transform aimAnchor;
         [SerializeField] Transform cameraFollowTarget;
         
-        public Transform ViewOrigin => viewOrigin;
-
         [Header("Look Settings")]
         [Tooltip("How fast we rotate horizontally.")]
         [SerializeField] private float yawSensitivity = 2f;
@@ -106,8 +101,33 @@ namespace _Scripts.Player
         [SerializeField] private Vector3 feetOffset = new Vector3(0f, -1f, 0f);
         [SerializeField] private float feetRadius = 0.5f;
         
+        [Header("Wall Surface Contact")]
+        [Tooltip("Layers queried for wallrun and wall-jump geometry.")]
+        [SerializeField] private LayerMask wallProbeMask;
+
+        [Tooltip("Layers that may never support wall movement. Assign the Ground terrain layer.")]
+        [SerializeField] private LayerMask wallInteractionBlockedMask;
+
+        [SerializeField] private float wallProbeRadius = 0.15f;
+
+        [Tooltip("Minimum angle between world-up and a valid wall normal.")]
+        [SerializeField] private float minWallSurfaceAngle = 75f;
+
+        [Tooltip("Maximum angle between world-up and a valid wall normal.")]
+        [SerializeField] private float maxWallSurfaceAngle = 100f;
+        
+        [Header("Wall Jump")]
+        [SerializeField] private float wallJumpProbeDistance = 0.9f;
+        [SerializeField] private float wallJumpAwayForce = 7f;
+        [SerializeField] private float wallJumpVerticalForce = 7f;
+
+        [Tooltip("Normal grounded jump lockout in seconds.")]
+        [SerializeField] private float jumpLockDuration = 0.3f;
+
+        [Tooltip("Wall-jump lockout in seconds.")]
+        [SerializeField] private float wallJumpLockDuration = 0.45f;
+        
         [Header("Wall Running")]
-        [SerializeField] private LayerMask whatIsWall;
         [SerializeField] private float wallJumpUpForce = 8f;
         [SerializeField] private float wallJumpSideForce = 6f;
         [SerializeField] private float targetWallRunSpeedSlow = 15f;
@@ -124,12 +144,10 @@ namespace _Scripts.Player
         [SerializeField] private float wallRunVerticalDampFactor = 10f; // How strongly to suppress vertical movement
 
         [Header("Jetpack Settings")]
-        [SerializeField] private float jetpackForce = 42f;
         [SerializeField] private float jetpackFuelBurnRate = 10f;
         [SerializeField] private float jetpackFuelCutoff = 5f;
-        [SerializeField] private float jetUpliftRatio = 0.75f;
-        [SerializeField] private float maxAdditionalForwardSpeed = 30f;
-        [SerializeField] private float maxAdditionalLateralSpeed = 40f;
+        [Tooltip("Minimum energy lost per second while actively jetting, even if configured regeneration exceeds burn.")]
+        [SerializeField] private float minimumJetNetBurnRate = 1f;
 
         [Header("Skiing Settings")]
         [SerializeField] private float skiControl = 0.1f;
@@ -142,9 +160,9 @@ namespace _Scripts.Player
         [Header("Debug / State Info")]
         [SerializeField] private MovementState _state;
         
-        public Transform CameraFollowTarget => cameraFollowTarget != null ? cameraFollowTarget : HeadAnchor;
+        public Transform CameraFollowTarget => cameraFollowTarget != null ? cameraFollowTarget : transform;
         public MovementState State => _state;
-        public Transform HeadAnchor => headAnchor;
+        public Transform AimAnchor => aimAnchor;
         public float CurrentPitch => _lookModule != null ? _lookModule.CurrentPitch : 0f;
 
         // SyncVar for soft death
@@ -166,9 +184,7 @@ namespace _Scripts.Player
         private Rigidbody _rb;
         private PredictionRigidbody _predictionRb;
         Collider _col;
-        private Renderer[] _mainBodyRenderers;
-
-        private float _moveSpeed;
+        
         private float _startYScale;
         
         // Input
@@ -179,9 +195,6 @@ namespace _Scripts.Player
         
         // Pack Manager
         private PackManager _packMgr;
-        
-        // Movement vector
-        private Vector3 _moveDirection;
         
         // For camera orientation
         private PlayerLookModule _lookModule;
@@ -201,11 +214,15 @@ namespace _Scripts.Player
         private float _targetWallRunSpeed;
         private Vector3 _storedWallNormal = Vector3.zero;
         private float _wallRunGraceTimer;
-        private float _currentWallRunSpeed; // Current speed for wall-running (maintained separately)
         
         // Energy
-        private PlayerEnergyModule _energyModule; // DG - New energy module
-        private float _burn;
+        private PlayerEnergyModule _energyModule; 
+        
+        // Jetpack
+        private bool _jetLockedOut;
+        
+        // Jump Lock
+        private byte _jumpLockTicks;
         
         // Public helpers
         public float Energy => _energyModule?.Energy ?? 0f;
@@ -220,6 +237,11 @@ namespace _Scripts.Player
         private MovementData _md;
         
         const float LookQuantScale = 2000f;
+        private const byte MovementStateMask = 0b0000_0111;
+        private const byte JetLockedOutMask = 0b0000_1000;
+        
+        private const byte HeartEventFlag = 0b0000_0001;
+        private const byte JumpPressedEventFlag = 0b0000_0010;
         
         #endregion
 
@@ -227,7 +249,7 @@ namespace _Scripts.Player
         // Replication struct
         public struct MovementData : IReplicateData
         {
-            public byte Heart;
+            public byte EventFlags;
             /* packed fields */
             private uint _tick;                     // Fish-Net needs this
             public  byte MoveXZ;                    // 4 bits
@@ -235,14 +257,20 @@ namespace _Scripts.Player
             public  InputButtons Held;              // held-down flags
 
             /* ctor helper you will call from OnTick() */
-            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart)
+            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart, bool jumpPressed)
             {
                 _tick   = tick;
                 MoveXZ  = NetUtils.MoveCodec.Pack(move.x, move.y);
                 LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * LookQuantScale), short.MinValue, short.MaxValue);
                 LookY = (short)Mathf.Clamp(Mathf.RoundToInt(look.y * LookQuantScale), short.MinValue, short.MaxValue);
                 Held    = held;
-                Heart  = (byte)(heart ? 1 : 0);
+                EventFlags = 0;
+
+                if (heart)
+                    EventFlags |= HeartEventFlag;
+
+                if (jumpPressed)
+                    EventFlags |= JumpPressedEventFlag;
             }
 
             /* IReplicateData boiler-plate */
@@ -259,18 +287,35 @@ namespace _Scripts.Player
             public ushort   Speed, Heading;
             public short    Vy;
             public byte     EnergyQ;
-            public MovementState State;
+            public byte StateFlags;
             public ushort   YawQ;
             public ushort    CurrentPitchQ;
+            public byte JumpLockTicks;
+            
 
-            public ReconciliationData(Vector3 pos, Vector3 vel, MovementState st, float yawDeg, float pitchDeg, byte energyQ)
+            public ReconciliationData(Vector3 pos, Vector3 vel, MovementState state, bool jetLockedOut,
+                byte jumpLockTicks, float yawDeg, float pitchDeg, byte energyQ)
             {
                 _tick = 0;
-                Position  = pos;
+
+                Position = pos;
                 EncodeVelocity(vel, out Speed, out Heading, out Vy);
-                EnergyQ   = energyQ;          // just store
-                State     = st;
-                YawQ = (ushort)Mathf.Clamp(Mathf.RoundToInt(((yawDeg % 360f + 360f) % 360f) * (65535f / 360f)), 0, 65535);
+
+                StateFlags = (byte)((byte)state & MovementStateMask);
+                JumpLockTicks = jumpLockTicks;
+
+                if (jetLockedOut)
+                    StateFlags |= JetLockedOutMask;
+
+                EnergyQ = energyQ;
+
+                YawQ = (ushort)Mathf.Clamp(
+                    Mathf.RoundToInt(
+                        ((yawDeg % 360f + 360f) % 360f) *
+                        (65535f / 360f)),
+                    0,
+                    65535);
+
                 CurrentPitchQ = QuantizePitch(pitchDeg);
             }
             public uint  GetTick() => _tick;
@@ -298,12 +343,9 @@ namespace _Scripts.Player
             
             _energyModule = new PlayerEnergyModule(maxEnergy, energyRegenRate, maxEnergy);
             _lookModule = new PlayerLookModule(yawSensitivity, pitchSensitivity, minPitch, maxPitch, transform.eulerAngles.y, 0f);
-            _surfaceProbe = new PlayerSurfaceProbe(maxSlopeAngle, slopeCheckDistance, groundMask, feetOffset, feetRadius, whatIsWall, wallCheckDistance, minJumpHeight);
-            
+            _surfaceProbe = new PlayerSurfaceProbe(maxSlopeAngle, slopeCheckDistance, groundMask, feetOffset, feetRadius, wallProbeMask,
+                wallInteractionBlockedMask, wallCheckDistance, wallProbeRadius, minWallSurfaceAngle, maxWallSurfaceAngle, minJumpHeight);            
             _startYScale = transform.localScale.y;
-            
-            if (mainBodyObject != null)
-                _mainBodyRenderers = mainBodyObject.GetComponentsInChildren<Renderer>(true);
             
             TimeManager.OnTick += OnTick;
             TimeManager.OnPostTick += OnPostTick;
@@ -347,6 +389,7 @@ namespace _Scripts.Player
             {
                 var ih = _iH;
                 Vector2 lookDelta = ih.ConsumeLookDelta();
+                bool jumpPressed = ih.ConsumeJumpPressed();
                 
                 bool zoomAllowed = !IsFrozen;
                 bool zoomHeld = ih.ZoomHeld;
@@ -357,7 +400,7 @@ namespace _Scripts.Player
                     lookDelta *= _fpsCameraFollow.CurrentLookSensitivityMultiplier;
                 }
 
-                _md = new MovementData(TimeManager.Tick, ih.Move, lookDelta, ih.HeldButtons, _heartBeat);
+                _md = new MovementData(TimeManager.Tick, ih.Move, lookDelta, ih.HeldButtons, _heartBeat, jumpPressed);
 
                 Replicate(_md);
             }
@@ -381,6 +424,8 @@ namespace _Scripts.Player
                 _rb.position,
                 _rb.linearVelocity,
                 _state,
+                _jetLockedOut,
+                _jumpLockTicks,
                 _lookModule.Yaw,
                 _lookModule.CurrentPitch,
                 _energyModule.QuantizeEnergy()
@@ -399,9 +444,13 @@ namespace _Scripts.Player
             _rb.linearVelocity = DecodeVelocity(data.Speed, data.Heading, data.Vy);
 
             // Correct movement state
-            _state = data.State;
+            _state =
+                (MovementState)(data.StateFlags & MovementStateMask);
 
-            _lookModule.ApplyLookState(yaw, pitch, _rb, headAnchor);
+            _jetLockedOut = (data.StateFlags & JetLockedOutMask) != 0;
+            _jumpLockTicks = data.JumpLockTicks;
+
+            _lookModule.ApplyLookState(yaw, pitch, _rb, aimAnchor);
             _energyModule.ApplyQuantizedEnergy(data.EnergyQ);
         }
         #endregion
@@ -414,12 +463,10 @@ namespace _Scripts.Player
             if (IsFrozen) return;
             
             float dt = (float)TimeManager.TickDelta;
-
-            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held);
             
-            _energyModule.RegenEnergy(dt); // Regen Energy first
+            if (_jumpLockTicks > 0) _jumpLockTicks--;
 
-            PackLogic(dt); // Check pack logic
+            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed);
             
             if (_pendingKnockback.HasValue) // Check incoming Knockback
             {
@@ -446,30 +493,30 @@ namespace _Scripts.Player
 
             // Update movement states
             UpdateMovementState(held);
-                
-            if (_state == MovementState.WallRunning) // Only update wall run state if actively wall running
+
+            if (_state == MovementState.WallRunning)
                 UpdateWallRunState();
-            
+
+            TryHandleJump(jumpPressed);
+
             ControlEnv();
             
+            bool wantsJetThisTick = _state == MovementState.Jetpacking;
+
+            bool jetPoweredThisTick = ResolveMovementEnergy(dt, wantsJetThisTick);
+
+            if (wantsJetThisTick && !jetPoweredThisTick) _state = MovementState.Airborne;
+
             switch (_state)
             {
-                
                 case MovementState.Jetpacking:
-                    ApplyAirControl(move); // optional air-control
-
-                    if (_energyModule.SpendEnergy(_burn * dt))
-                    {
-                        Jetpack(move); // apply impulses
-                    }
-                    else
-                    {
-                        _state = MovementState.Airborne;  // pack sputters out
-                    }
+                    ApplyPassiveAirShaping(move);
+                    ApplyJetpackMovement(move);
                     break;
-                
+
                 case MovementState.Airborne:
-                    ApplyAirControl(move); // Use the same air control helper
+                    ApplyPassiveAirShaping(move);
+                    ApplyPassiveAirBrake(move);
                     break;
 
                 case MovementState.Skiing:
@@ -477,8 +524,7 @@ namespace _Scripts.Player
                     break;
 
                 case MovementState.WallRunning:
-                    if (Btn(held, InputButtons.Jump)) WallJump();
-                    else PerformWallRunMovement();
+                    PerformWallRunMovement();
                     break;
 
                 default:
@@ -487,31 +533,19 @@ namespace _Scripts.Player
             }
 
             ApplyMovementGravity();
-
-            if (_surfaceProbe.IsGrounded && Btn(held, InputButtons.Jump))
-                Jump();
-            
+            ApplyPlanarSpeedResistance();
             
             _predictionRb.Simulate();
-            
-            if (viewOrigin != null && headAnchor != null)
-            {
-                viewOrigin.position = headAnchor.position;
-                viewOrigin.rotation = headAnchor.rotation;
-            }
 
             if (IsServer)
             {
-                Transform fireAnchor = viewOrigin != null ? viewOrigin : headAnchor;
+                //Transform fireAnchor = viewOrigin != null ? viewOrigin : aimAnchor;
+                Transform fireAnchor = aimAnchor != null ? aimAnchor : orientation;
 
                 if (fireAnchor != null)
                 {
-                    FirePose pose = new FirePose(
-                        fireAnchor.position,
-                        fireAnchor.forward,
-                        _rb.linearVelocity,
-                        TimeManager.Tick
-                    );
+                    FirePose pose = new FirePose(fireAnchor.position, fireAnchor.forward,
+                        _rb.linearVelocity, TimeManager.Tick);
 
                     if (_weaponManager != null)
                         _weaponManager.Server_ProcessFireInput(held, pose);
@@ -523,13 +557,15 @@ namespace _Scripts.Player
             }
         }
         #endregion
-
+        
         #region Quantization and Decompression
-        static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held)
+        static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed)
         {
             move = NetUtils.MoveCodec.Unpack(md.MoveXZ);
             look = new Vector2(md.LookX / LookQuantScale, md.LookY / LookQuantScale);
             held = md.Held;
+            jumpPressed =
+                (md.EventFlags & JumpPressedEventFlag) != 0;
         }
         
         // ─── Velocity polar helpers ───────────────────────────────
@@ -565,23 +601,20 @@ namespace _Scripts.Player
         #endregion
         
         #region Pack Logic
-        private void PackLogic(float dt)
+        private float GetEnergyPackBonusRate()
         {
-            _burn = jetpackFuelBurnRate; // No pack - default energy
+            if (_packMgr == null || _packMgr.CurrentId != PackId.Energy || _packMgr.CurrentDef == null)
+                return 0f;
             
-            if (_packMgr == null || _packMgr.CurrentId == PackId.None)
-                return; 
-            
-            if (_packMgr.CurrentId == PackId.Energy)
-                _burn = jetpackFuelBurnRate - _packMgr.CurrentDef.extraRegenPerSec;
-            
-            if (_packMgr.Active && _packMgr.CurrentId == PackId.Shield)
-            {
-                float shieldActiveDrain = _packMgr.CurrentDef.shieldDrainPerSec * dt;
+            return Mathf.Max(0f, _packMgr.CurrentDef.extraRegenPerSec);
+        }
+        
+        private float GetShieldDrainRate()
+        {
+            if (_packMgr == null || !_packMgr.Active || _packMgr.CurrentId != PackId.Shield || _packMgr.CurrentDef == null)
+                return 0f;
 
-                if (!_energyModule.SpendEnergy(shieldActiveDrain) && IsServer)
-                    _packMgr.ForceActive(false);
-            }
+            return Mathf.Max(0f, _packMgr.CurrentDef.shieldDrainPerSec);
         }
         #endregion
         
@@ -589,19 +622,81 @@ namespace _Scripts.Player
 
         private void ApplyRotation(float yawDeltaRaw, float pitchDeltaRaw)
         {
-            _lookModule.ApplyRotation(yawDeltaRaw, pitchDeltaRaw, _rb, headAnchor);
+            _lookModule.ApplyRotation(yawDeltaRaw, pitchDeltaRaw, _rb, aimAnchor);
         }
 
         #endregion
 
         #region Jump
-        private void Jump()
+        private bool TryHandleJump(bool jumpPressed)
+        {
+            if (!jumpPressed || _jumpLockTicks > 0)
+                return false;
+
+            if (_state == MovementState.WallRunning)
+            {
+                PerformWallRunJump();
+                return true;
+            }
+
+            if (_surfaceProbe.IsGrounded)
+            {
+                PerformGroundJump();
+                return true;
+            }
+
+            return TryPerformWallJump();
+        }
+
+        private void PerformGroundJump()
         {
             _predictionRb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+
+            _jumpLockTicks = SecondsToTickLock(jumpLockDuration);
+
+            _state = MovementState.Airborne;
         }
+
+        private bool TryPerformWallJump()
+        {
+            if (aimAnchor == null)
+                return false;
+
+            if (!_surfaceProbe.TryGetWallJumpContact(aimAnchor.position, aimAnchor.forward,
+                    wallJumpProbeDistance, out RaycastHit hit))
+            {
+                return false;
+            }
+
+            Vector3 jumpImpulse = hit.normal * wallJumpAwayForce + Vector3.up * wallJumpVerticalForce;
+
+            _predictionRb.AddForce(jumpImpulse, ForceMode.Impulse);
+
+            _jumpLockTicks = SecondsToTickLock(wallJumpLockDuration);
+
+            _state = MovementState.Airborne;
+
+            return true;
+        }
+
         #endregion
 
         #region Movement Methods
+        
+        private byte SecondsToTickLock(float seconds)
+        {
+            if (seconds <= 0f)
+                return 0;
+
+            float tickDelta = (float)TimeManager.TickDelta;
+
+            if (tickDelta <= 0f)
+                return 0;
+
+            int ticks = Mathf.CeilToInt(seconds / tickDelta);
+
+            return (byte)Mathf.Clamp(ticks, 1, byte.MaxValue);
+        }
         
         private void OnDrawGizmosSelected()
         {
@@ -618,8 +713,12 @@ namespace _Scripts.Player
     
         private void UpdateMovementState(InputButtons held)
         {
-            // Jetpack overrides all other movement states.
-            if (Btn(held, InputButtons.Jetpack))
+            // Once depleted, Jet remains locked until the ignition threshold is restored.
+            if (_jetLockedOut && Energy >= jetpackFuelCutoff)
+                _jetLockedOut = false;
+
+            // Jetpack overrides all other states when available.
+            if (Btn(held, InputButtons.Jetpack) && !_jetLockedOut)
             {
                 bool canContinueJetting = _state == MovementState.Jetpacking ? Energy > 0f : Energy >= jetpackFuelCutoff;
 
@@ -632,6 +731,7 @@ namespace _Scripts.Player
                     return;
                 }
             }
+            
 
             // Preserve an active wallrun until its own update logic ends it.
             if (_state == MovementState.WallRunning)
@@ -735,12 +835,12 @@ namespace _Scripts.Player
         {
             transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z);
 
-            _moveSpeed = groundMoveSpeed;
+            float moveSpeed = groundMoveSpeed;
 
             if (_state == MovementState.Crouching)
             {
                 transform.localScale = new Vector3(transform.localScale.x, crouchYScale, transform.localScale.z);
-                _moveSpeed = crouchSpeed;
+                moveSpeed = crouchSpeed;
             }
 
             if (!_surfaceProbe.IsGrounded)
@@ -763,7 +863,7 @@ namespace _Scripts.Player
 
             Vector3 normalVelocity = currentVelocity - currentGroundVelocity;
 
-            Vector3 desiredGroundVelocity = wishDir * (_moveSpeed * wishMagnitude);
+            Vector3 desiredGroundVelocity = wishDir * (moveSpeed * wishMagnitude);
 
             float accel = wishMagnitude > 0.01f ? groundAcceleration : groundBraking;
 
@@ -784,8 +884,7 @@ namespace _Scripts.Player
         #endregion
 
         #region Wall Run
-
-       
+    
         private void HandleWallLoss()
         {
             if (_state == MovementState.WallRunning)
@@ -827,9 +926,6 @@ namespace _Scripts.Player
             
             Vector3 playerVelocity = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
             float speed = playerVelocity.magnitude;
-            
-            // Initialize _currentWallRunSpeed to the player's initial speed
-            _currentWallRunSpeed = speed;
             
             if (speed < targetWallRunSpeedMid)      _targetWallRunSpeed = targetWallRunSpeedSlow;
             else if (speed < targetWallRunSpeedFast) _targetWallRunSpeed = targetWallRunSpeedMid;
@@ -961,7 +1057,7 @@ namespace _Scripts.Player
         private bool IsStillOnWall(out Vector3 currentWallNormal)
         {
             currentWallNormal = Vector3.zero;
-            if (Physics.Raycast(transform.position, -_storedWallNormal, out RaycastHit hit, wallCheckDistance, whatIsWall))
+            if (Physics.Raycast(transform.position, -_storedWallNormal, out RaycastHit hit, wallCheckDistance, wallProbeMask))
             {
                 currentWallNormal = hit.normal;
                 return currentWallNormal == _storedWallNormal;
@@ -977,20 +1073,21 @@ namespace _Scripts.Player
             _storedWallNormal = Vector3.zero;
             _wallRunDirection = Vector3.zero;
             _state = MovementState.Airborne;
-            _currentWallRunSpeed = 0f;
             _wallRunGraceTimer = 0f;
             _exitWallTimer = 0f;
         }
 
-        private void WallJump()
+        private void PerformWallRunJump()
         {
-            _exitingWall   = true;
-            _exitWallTimer = exitWallTime;
-            
-            Vector3 forceToApply = (Vector3.up * wallJumpUpForce) + (_storedWallNormal * wallJumpSideForce);
-            
+            Vector3 wallNormal = _storedWallNormal;
+
+            Vector3 forceToApply = Vector3.up * wallJumpUpForce + wallNormal * wallJumpSideForce;
+
             StopWallRun();
+
             _predictionRb.AddForce(forceToApply, ForceMode.Impulse);
+
+            _jumpLockTicks = SecondsToTickLock(wallJumpLockDuration);
         }
 
         #endregion
@@ -998,146 +1095,255 @@ namespace _Scripts.Player
        
         #region Airborne & Jetpack Control
 
-        // Low-speed “get moving” push
-        [SerializeField] float lowTargetSpeed   = 30f;   // forward-ish cap the low-speed push aims for
-        [SerializeField] float blendWidth       = 10f;   // range to blend into high-speed steering
-        [SerializeField] float lowBaseAccel     = 10f;   // strength of the low-speed push
-        [SerializeField] float strafeBias       = 1.0f;  // >1 treats wide A/D as pure strafe (removes forward leak)
-
-// High-speed steering (no speed injection)
-        [SerializeField] float airTurnAccel     = 10f;
-        [SerializeField] float airTurnFalloffK  = 0.0045f;
-        [SerializeField] float airTurnMinFactor = 1f;
-        [SerializeField] float airHorizHardCap  = 200f;
-
-// Retro-brake
-        [SerializeField] float retroBrakeStrength = 8f;
-        [SerializeField] float retroBrakeMinSpeed = 4f;
-
-// Jetpack shaping
-        [SerializeField] float jpForwardCruise   = 32f;  // forward cruise target while jetting
-        [SerializeField] float jpForwardAccel    = 14f;  // forward accel toward the cruise
-        [SerializeField] float jpLateralAccel    = 10f;  // lateral (direction change) accel
-        [SerializeField] float jpLateralFalloffK = 0.006f; // weaken lateral at high speed
-
         
-        private void ApplyAirControl(Vector2 move)
+        [Header("Jetpack - Lift")]
+        [Tooltip("Upward acceleration while jetting. Full gravity still applies.")]
+        [SerializeField] private float jetLiftAcceleration = 33f;
+
+        [Header("Passive Air Shaping")]
+        [SerializeField] private float airShapeAcceleration = 10f;
+        [SerializeField] private float airShapeStartSpeed = 12f;
+        [SerializeField] private float airShapeFullSpeed = 40f;
+        
+        [Header("High-Speed Air Shaping")]
+        [Tooltip("Speed where additional high-speed shaping begins.")]
+        [SerializeField] private float airShapeBoostStartSpeed = 60f;
+
+        [Tooltip("Speed where the additional shaping multiplier reaches its maximum.")]
+        [SerializeField] private float airShapeBoostFullSpeed = 100f;
+
+        [Tooltip("Maximum shaping multiplier at very high speed.")]
+        [SerializeField] private float airShapeHighSpeedMultiplier = 1.6f;
+
+        [Header("Passive Air Brake")]
+        [SerializeField] private float airBrakeAcceleration = 10f;
+
+        [Header("Air / Jet Input")]
+        [SerializeField] private float airInputDeadzone = 0.1f;
+        
+        private void GetPlanarMovementAxes(out Vector3 forward, out Vector3 right)
         {
-            if (move.sqrMagnitude < 1e-6f) return;
+            forward = orientation.forward;
+            forward.y = 0f;
 
-            // Wish (camera-relative), horizontal
-            Vector3 wish = orientation.forward * move.y + orientation.right * move.x;
-            wish.y = 0f;
-            float wishLen = wish.magnitude;
-            if (wishLen < 1e-6f) return;
-            wish /= wishLen;
+            if (forward.sqrMagnitude <= 0.0001f) forward = transform.forward;
 
-            // Horizontal velocity state
-            Vector3 v   = _rb.linearVelocity;
-            Vector3 vH  = new Vector3(v.x, 0f, v.z);
-            float   s   = vH.magnitude;
-            Vector3 vDir = (s > 1e-6f) ? (vH / s) : wish;
+            forward.Normalize();
 
-            // ---- LOW-SPEED: forward-friendly push (no strafe speed juicing) ----
-            Vector3 lowForceDir = wish;
-            if (Mathf.Abs(move.x) > Mathf.Abs(move.y) * strafeBias)
-                lowForceDir -= Vector3.Project(lowForceDir, orientation.forward);
-            if (lowForceDir.sqrMagnitude > 1e-6f) lowForceDir.Normalize(); else lowForceDir = wish;
+            right = orientation.right;
+            right.y = 0f;
 
-            // Only accelerate strongly if input aligns with current direction.
-            // Use ALONG speed for the ramp, not total s → strafing won’t “win”.
-            float along = Mathf.Max(0f, Vector3.Dot(vH, wish)); // forward-ish component only
-            float lowEff = Mathf.Clamp01((lowTargetSpeed - along) / Mathf.Max(1e-3f, lowTargetSpeed));
+            if (right.sqrMagnitude <= 0.0001f) right = Vector3.Cross(Vector3.up, forward);
 
-            // Slight analog feel: scale by raw input magnitude (pre-normalize)
-            float inputMag = Mathf.Clamp01(wishLen); // (already 1 for WASD; keep for pads)
-            Vector3 lowForce = lowForceDir * (lowBaseAccel * lowEff * inputMag);
-
-            // ---- HIGH-SPEED: lateral-only steering, no speed injection ----
-            Vector3 highForce = Vector3.zero;
-            if (s > 1e-4f)
-            {
-                Vector3 lateral = wish - vDir * Vector3.Dot(wish, vDir);
-                float latMag = lateral.magnitude;
-                if (latMag > 1e-6f)
-                {
-                    lateral /= latMag;
-                    float steerFactor = airTurnMinFactor + (1f - airTurnMinFactor) / (1f + airTurnFalloffK * s);
-                    highForce = lateral * (airTurnAccel * steerFactor);
-                }
-            }
-
-            // Blend by speed
-            float t = Mathf.Clamp01((s - lowTargetSpeed) / Mathf.Max(1e-3f, blendWidth));
-            Vector3 force = Vector3.Lerp(lowForce, highForce, t);
-
-            // ---- RETRO-BRAKE (S) ----
-            if (move.y < -0.2f && s > retroBrakeMinSpeed)
-            {
-                float oppose = Mathf.Clamp01(-Vector3.Dot(vDir, wish)); // 0..1, 1 when opposite
-                if (oppose > 1e-3f)
-                {
-                    float speedK = Mathf.Clamp01((s - retroBrakeMinSpeed) / Mathf.Max(1e-3f, (lowTargetSpeed - retroBrakeMinSpeed)));
-                    force += -vDir * (retroBrakeStrength * oppose * speedK);
-                }
-            }
-
-            _predictionRb.AddForce(force, ForceMode.Acceleration);
-
-            // Optional safety cap
-            if (airHorizHardCap > 0f && s > airHorizHardCap)
-            {
-                Vector3 vNew = vDir * airHorizHardCap;
-                _rb.linearVelocity = new Vector3(vNew.x, v.y, vNew.z);
-            }
+            right.Normalize();
         }
 
-        private void Jetpack(Vector2 move)
+        private float GetAirShapeAuthority(float planarSpeed)
         {
-            // Horizontal state
-            Vector3 v   = _rb.linearVelocity;
-            Vector3 vH  = new Vector3(v.x, 0f, v.z);
-            float   s   = vH.magnitude;
-            Vector3 vDir = (s > 1e-6f) ? (vH / s) : orientation.forward;
+            return Mathf.InverseLerp(airShapeStartSpeed, airShapeFullSpeed, planarSpeed);
+        }
 
-            // Wish, horizontal
-            Vector3 wish = orientation.forward * move.y + orientation.right * move.x;
-            wish.y = 0f;
-            float wLen = wish.magnitude;
-            if (wLen > 1e-6f) wish /= wLen;
+        private void ApplyPassiveAirShaping(Vector2 move)
+        {
+            if (Mathf.Abs(move.x) <= airInputDeadzone)
+                return;
 
-            Vector3 jetForce = Vector3.zero;
+            Vector3 planarVelocity = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
 
-            // 1) Forward thrust toward cruise (only from the forward-aligned component)
-            if (wLen > 1e-6f)
+            float planarSpeed = planarVelocity.magnitude;
+
+            if (planarSpeed <= 0.0001f)
+                return;
+
+            float authority = GetAirShapeAuthority(planarSpeed);
+
+            if (authority <= 0f)
+                return;
+
+            GetPlanarMovementAxes(out _, out Vector3 right);
+
+            Vector3 velocityDirection = planarVelocity / planarSpeed;
+            Vector3 sideWish = right * Mathf.Sign(move.x);
+            Vector3 shapingDirection = Vector3.ProjectOnPlane(sideWish, velocityDirection);
+
+            if (shapingDirection.sqrMagnitude <= 0.0001f)
+                return;
+
+            shapingDirection.Normalize();
+
+            float inputStrength = Mathf.Abs(move.x);
+            float highSpeedT = Mathf.InverseLerp(airShapeBoostStartSpeed, airShapeBoostFullSpeed, planarSpeed);
+            float highSpeedMultiplier = Mathf.Lerp(1f, airShapeHighSpeedMultiplier, highSpeedT);
+
+            Vector3 shapingAcceleration = shapingDirection * (airShapeAcceleration * authority * highSpeedMultiplier * inputStrength);
+
+            _predictionRb.AddForce(shapingAcceleration, ForceMode.Acceleration);
+        }
+        
+        private void ApplyPassiveAirBrake(Vector2 move)
+        {
+            if (move.y >= -airInputDeadzone)
+                return;
+
+            GetPlanarMovementAxes(out Vector3 forward, out _);
+
+            Vector3 planarVelocity = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
+
+            float forwardSpeed = Vector3.Dot(planarVelocity, forward);
+
+            // Passive airborne braking cannot accelerate backward.
+            if (forwardSpeed <= 0f)
+                return;
+
+            float dt = (float)TimeManager.TickDelta;
+
+            float brakeAcceleration = Mathf.Min(airBrakeAcceleration, forwardSpeed / Mathf.Max(dt, 0.0001f));
+
+            _predictionRb.AddForce(-forward * brakeAcceleration, ForceMode.Acceleration);
+        }
+        
+        
+        [Header("Jetpack - Simple Directional Thrust")]
+        [Tooltip("Planar acceleration supplied by full directional input while jetting.")]
+        [SerializeField] private float jetPlanarAcceleration = 14f;
+
+        [Tooltip("Fraction of vertical lift traded away at full directional input.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float jetDirectionalLiftTradeoff = 0.3f;
+        
+        [Header("Simple Jet - Forward Momentum Falloff")]
+        [Tooltip("Speed where jet thrust along the current trajectory begins weakening.")]
+        [SerializeField] private float jetTrajectoryFalloffStartSpeed = 30f;
+
+        [Tooltip("Speed where along-trajectory thrust reaches its minimum.")]
+        [SerializeField] private float jetTrajectoryFalloffEndSpeed = 50f;
+
+        [Range(0f, 1f)]
+        [Tooltip("Remaining jet thrust along the current trajectory at high speed.")]
+        [SerializeField] private float jetTrajectoryMinimumAuthority = 0.15f;
+        
+        /*
+        
+        private void ApplyJetpackMovement(Vector2 move)
+        {
+            GetPlanarMovementAxes(out Vector3 forward, out Vector3 right);
+
+            Vector3 planarInput = forward * move.y + right * move.x;
+
+            float inputMagnitude = Mathf.Clamp01(planarInput.magnitude);
+
+            Vector3 planarDirection = Vector3.zero;
+
+            if (planarInput.sqrMagnitude > 0.0001f)
+                planarDirection = planarInput.normalized;
+
+            Vector3 planarVelocity = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
+
+            float planarSpeed = planarVelocity.magnitude;
+
+            Vector3 adjustedPlanarDirection = planarDirection;
+
+            if (planarSpeed > 0.0001f &&
+                planarDirection.sqrMagnitude > 0.0001f)
             {
-                float align = Mathf.Max(0f, Vector3.Dot(wish, vDir)); // 0..1, forward-ish only
-                float along = Mathf.Max(0f, Vector3.Dot(vH, vDir));   // current forward speed
-                float need  = Mathf.Max(0f, jpForwardCruise - along);
-                float fwdPush = Mathf.Min(jpForwardAccel * align, need);
-                jetForce += vDir * fwdPush;
+                Vector3 velocityDirection = planarVelocity / planarSpeed;
 
-                // 2) Lateral bend (no speed injection; fades with speed)
-                Vector3 lateral = wish - vDir * Vector3.Dot(wish, vDir);
-                float latMag = lateral.magnitude;
-                if (latMag > 1e-6f)
-                {
-                    lateral /= latMag;
-                    float latFactor = 1f / (1f + jpLateralFalloffK * s);
-                    jetForce += lateral * (jpLateralAccel * latFactor);
-                }
+                // Split requested thrust into:
+                // 1. Along current travel direction
+                // 2. Perpendicular steering/strafe direction
+                Vector3 trajectoryComponent = Vector3.Project(planarDirection, velocityDirection);
+
+                Vector3 lateralComponent = planarDirection - trajectoryComponent;
+
+                float speedT = Mathf.InverseLerp(jetTrajectoryFalloffStartSpeed, jetTrajectoryFalloffEndSpeed, planarSpeed);
+
+                float trajectoryAuthority = Mathf.Lerp(1f, jetTrajectoryMinimumAuthority, speedT);
+
+                // Only diminish thrust that adds speed along the current trajectory.
+                // Opposing thrust remains available for braking/reversal.
+                if (Vector3.Dot(trajectoryComponent, velocityDirection) > 0f)
+                    trajectoryComponent *= trajectoryAuthority;
+
+                adjustedPlanarDirection = trajectoryComponent + lateralComponent;
             }
 
-            // 3) Lift (keep your existing ratio if you like)
-            Vector3 lift = Vector3.up * (jetpackForce * jetUpliftRatio);
+            float liftFraction = 1f - inputMagnitude * jetDirectionalLiftTradeoff;
 
-            _predictionRb.AddForce(lift + jetForce, ForceMode.Force);
+            Vector3 liftAcceleration = Vector3.up * (jetLiftAcceleration * liftFraction);
+
+            Vector3 planarAcceleration = adjustedPlanarDirection * (jetPlanarAcceleration * inputMagnitude);
+
+            _predictionRb.AddForce(liftAcceleration + planarAcceleration, ForceMode.Acceleration);
+        }
+        */
+        
+        
+        [Header("Planar Speed Resistance")]
+        [SerializeField] private float resistanceStartSpeed = 50f;
+        [SerializeField] private float resistanceFullSpeed = 120f;
+        [SerializeField] private float resistanceMaxAcceleration = 5f;
+
+        [Tooltip("Additional resistance while actively skiing.")]
+        [SerializeField] private float skiResistanceMultiplier = 1.0f;
+        
+        private void ApplyPlanarSpeedResistance()
+        {
+            Vector3 planarVelocity = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
+
+            float planarSpeed = planarVelocity.magnitude;
+
+            if (planarSpeed <= resistanceStartSpeed)
+                return;
+
+            float speedT = Mathf.InverseLerp(resistanceStartSpeed, resistanceFullSpeed, planarSpeed);
+
+            // Gentle near the threshold, stronger toward the upper band.
+            float resistanceCurve = speedT * speedT;
+
+            float stateMultiplier = _state == MovementState.Skiing ? skiResistanceMultiplier : 1f;
+
+            float resistanceAcceleration = resistanceMaxAcceleration * resistanceCurve * stateMultiplier;
+
+            _predictionRb.AddForce(-planarVelocity.normalized * resistanceAcceleration, ForceMode.Acceleration);
+        }
+        
+        
+        [Header("Legacy Jet Directional Limit")]
+        [Tooltip("Directional speed where requested planar jet thrust falls to zero.")]
+        [SerializeField] private float jetDirectionalTargetSpeed = 60f;
+        private void ApplyJetpackMovement(Vector2 move)
+        {
+            GetPlanarMovementAxes(out Vector3 forward, out Vector3 right);
+
+            Vector3 planarInput = forward * move.y + right * move.x;
+
+            float inputMagnitude = Mathf.Clamp01(planarInput.magnitude);
+
+            Vector3 directionalAcceleration = Vector3.zero;
+
+            if (planarInput.sqrMagnitude > 0.0001f)
+            {
+                Vector3 requestedDirection = planarInput.normalized;
+                Vector3 planarVelocity = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
+
+                float speedInRequestedDirection = Vector3.Dot(planarVelocity, requestedDirection);
+  
+                float directionalAuthority =
+                    1f - Mathf.Clamp01(speedInRequestedDirection / Mathf.Max(jetDirectionalTargetSpeed, 0.0001f));
+
+                directionalAcceleration = requestedDirection * (jetPlanarAcceleration * directionalAuthority * inputMagnitude);
+            }
+
+            float liftFraction = 1f - inputMagnitude * jetDirectionalLiftTradeoff;
+
+            Vector3 liftAcceleration = Vector3.up * (jetLiftAcceleration * liftFraction);
+
+            _predictionRb.AddForce(liftAcceleration + directionalAcceleration, ForceMode.Acceleration);
         }
         #endregion
         
 
         #region Skiing
-        
         private void PerformSkiMovement(Vector2 move)
         {
             Vector3 groundNormal = GetGroundNormal();
@@ -1181,7 +1387,7 @@ namespace _Scripts.Player
 
             Vector3 steeringForce = (steerDir - baseDir) * currentGroundVelocity.magnitude;
 
-            _predictionRb.AddForce(steeringForce, ForceMode.Force);
+            _predictionRb.AddForce(steeringForce, ForceMode.Acceleration);
         }
 
         #endregion
@@ -1223,36 +1429,119 @@ namespace _Scripts.Player
         #region respawn
         public void HardResetMovement(Vector3 position, Quaternion rotation)
         {
-            // Reset physics.
+            // Reset Rigidbody state.
             _rb.position = position;
             _rb.rotation = rotation;
-
             _rb.linearVelocity = Vector3.zero;
             _rb.angularVelocity = Vector3.zero;
+            _rb.linearDamping = 0f;
 
-            // Reset prediction wrapper.
+            // Reset prediction wrapper state.
             _predictionRb.Velocity(Vector3.zero);
 
-            // Reset gameplay state.
+            // Reset movement state.
             _state = MovementState.Airborne;
-            _pendingKnockback = null;
+            _jetLockedOut = false;
+            _jumpLockTicks = 0;
 
-            // Apply yaw from spawn rotation.
+            // Reset knockback state.
+            _pendingKnockback = null;
+            _pendingTempDrag = null;
+
+            // Reset player scale in case respawn occurs while crouched.
+            transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z);
+
+            // Reset wall-related transient state.
+            _surfaceProbe?.ClearWallProbe();
+
+            _canWallRun = false;
+            _exitingWall = false;
+
+            _wallRunTimer = 0f;
+            _exitWallTimer = 0f;
+            _wallRunGraceTimer = 0f;
+
+            _storedWallNormal = Vector3.zero;
+            _wallRunDirection = Vector3.zero;
+            _targetWallRunSpeed = 0f;
+
+            // Apply spawn-facing yaw and reset pitch.
             float yaw = rotation.eulerAngles.y;
 
-            _lookModule.ResetLook(_rb, headAnchor, yaw, 0f);
+            _lookModule.ResetLook(_rb, aimAnchor, yaw, 0f);
 
-            // Force transform alignment.
+            // Force transform alignment after all Rigidbody/reset operations.
             transform.SetPositionAndRotation(position, rotation);
         }
         
         public void ResetEnergy()
         {
             _energyModule.ResetEnergy();
+            _jetLockedOut = false;
         }
         #endregion
         
         #region energy
+        private bool ResolveMovementEnergy(float dt, bool wantsJetThisTick)
+        {
+            if (dt <= 0f)
+                return false;
+
+            float passiveRegenRate = _energyModule.BaseRegenRate + GetEnergyPackBonusRate();
+
+            float shieldDrainRate = GetShieldDrainRate();
+
+            /*
+             * JETTING - Passive regeneration offsets raw jet burn.
+             * Shield drain remains an additional shared-pool cost.
+             */
+            if (wantsJetThisTick && !_jetLockedOut)
+            {
+                float netJetBurnRate = jetpackFuelBurnRate - passiveRegenRate;
+
+                netJetBurnRate = Mathf.Max(minimumJetNetBurnRate, netJetBurnRate);
+
+                float totalDrainRate = netJetBurnRate + shieldDrainRate;
+
+                float tickCost = totalDrainRate * dt;
+
+                /*
+                 * Resolve payment before applying thrust.
+                 *
+                 * If the remaining pool cannot fully fund this tick,
+                 * deplete the pool, lock the jet, and do not apply thrust.
+                 */
+                if (Energy <= tickCost)
+                {
+                    _energyModule.SetEnergy(0f);
+                    _jetLockedOut = true;
+
+                    if (shieldDrainRate > 0f && IsServer)
+                        _packMgr.ForceActive(false);
+
+                    return false;
+                }
+
+                _energyModule.ConsumeForced(tickCost);
+                return true;
+            }
+
+            /*
+             * NOT JETTING - Apply regeneration and active shield drain as one net rate.
+             */
+            float netPassiveRate = passiveRegenRate - shieldDrainRate;
+
+            _energyModule.ApplyEnergyDelta(netPassiveRate * dt);
+
+            /* If active shield drain exhausted the pool,
+             * deactivate the shield authoritatively. */
+            
+            if (shieldDrainRate > 0f && Energy <= 0f && IsServer)
+                _packMgr.ForceActive(false);
+            
+            return false;
+        }
+        
         /*  Server-side helpers       */
         [Server] public int AbsorbDamageWithShield(int incoming)
         {
@@ -1282,23 +1571,11 @@ namespace _Scripts.Player
 
         void SetPhysicMaterial(PhysicsMaterial pm)
         {
+            if (_col == null || pm == null)
+                return;
+            
             if (_col.sharedMaterial != pm)
                 _col.sharedMaterial = pm;
         }
-        
-        #region Public API
-        public void SetMainBodyVisibility(bool isVisible)
-        {
-            if (_mainBodyRenderers == null) return;
-        
-            foreach (Renderer rend in _mainBodyRenderers)
-            {
-                if (rend == null)
-                    continue;
-
-                rend.enabled = isVisible;
-            }
-        }
-        #endregion
     }
 }

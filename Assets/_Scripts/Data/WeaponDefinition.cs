@@ -107,8 +107,9 @@ namespace _Scripts.Data
         [Range(0f, 2f)] public float objectiveKnockbackMultiplier = 1f;
 
     /* ───────── Prefabs & Effects ───────── */
-        [Header("Gun / FX")]
-        public GameObject    fpViewPrefab;  // Local visual game object for our first person player view
+        [Header("Presentation")]
+        public GameObject fpViewPrefab;
+        public GameObject tpViewPrefab;
         public NetworkObject heldPrefab;                // gun in hand for others
         public NetworkObject groundPrefab;
         

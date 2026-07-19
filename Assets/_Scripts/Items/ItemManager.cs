@@ -23,20 +23,22 @@ namespace _Scripts.Items
 
         /* ───────── cached refs ─────── */
         InputHandler _ih;
-        Transform    _viewOrigin;               // camera origin (beacon)
+        Transform    _aimAnchor;               // camera origin (beacon)
 
         public event Action<int, ItemSlot> OnInventoryChanged;
 
     /* ═══════════════════════════════════════════════════════════════ */
     #region Unity lifecycle
-        void Awake()
-        {
-            _ih         = GetComponent<InputHandler>();
-            _viewOrigin = GetComponent<AdvancedPredictedController>()?.ViewOrigin;
+    void Awake()
+    {
+        _ih = GetComponent<InputHandler>();
 
-            // First valid value will arrive via OnChange once the SyncVar syncs
-            _bits.OnChange += OnBitsChanged;
-        }
+        AdvancedPredictedController controller = GetComponent<AdvancedPredictedController>();
+
+        _aimAnchor = controller != null ? controller.AimAnchor : null;
+
+        _bits.OnChange += OnBitsChanged;
+    }
 
         void OnDestroy() => _bits.OnChange -= OnBitsChanged;
     #endregion
@@ -90,10 +92,13 @@ namespace _Scripts.Items
         {
             ItemDefinition def = ItemDatabase.Get(ItemId.Beacon);
 
-            if (def == null || def.useSpawnPrefab == null || _viewOrigin == null) return;
+            if (def == null || def.useSpawnPrefab == null || _aimAnchor == null)
+                return;
 
-            Vector3 start = _viewOrigin.position;
-            Vector3 dir   = _viewOrigin.forward;
+            Vector3 start = _aimAnchor.position;
+
+            Vector3 dir = _aimAnchor.forward;
+            
             const float maxRange = 10f;
 
             if (!Physics.Raycast(start, dir, out var hit, maxRange, Physics.AllLayers, QueryTriggerInteraction.Ignore))

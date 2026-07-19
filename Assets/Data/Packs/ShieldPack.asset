@@ -17,4 +17,4 @@ MonoBehaviour:
   groundPrefab: {fileID: 3334061059481593068, guid: c1bdca4fe2d97e647b0b36c01138ad0c, type: 3}
   hudIcon: {fileID: 0}
   extraRegenPerSec: 0
-  shieldDrainPerSec: 14
+  shieldDrainPerSec: 16.5

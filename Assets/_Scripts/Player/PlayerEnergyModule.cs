@@ -12,6 +12,8 @@ namespace _Scripts.Player
 
         public float Energy => _energy;
         public float MaxEnergy => _maxEnergy;
+        
+        public float BaseRegenRate => _energyRegenRate;
 
         public PlayerEnergyModule(float maxEnergy, float energyRegenRate, float startingEnergy)
         {
@@ -32,18 +34,35 @@ namespace _Scripts.Player
 
         public bool SpendEnergy(float amount)
         {
-            if (_energy <= 0.17f)
+            if (amount <= 0f)
+                return true;
+
+            if (_energy < amount)
                 return false;
 
-            float consumed = Mathf.Min(amount, _energy);
-            _energy -= consumed;
+            _energy -= amount;
             return true;
         }
 
-        public void RegenEnergy(float dt)
+        public void RegenEnergy(float dt, float bonusRate = 0f)
         {
-            if (_energy < _maxEnergy)
-                _energy = Mathf.Min(_maxEnergy, _energy + _energyRegenRate * dt);
+            if (dt <= 0f || _energy >= _maxEnergy)
+                return;
+
+            float totalRegenRate =
+                Mathf.Max(0f, _energyRegenRate + bonusRate);
+
+            _energy = Mathf.Min(
+                _maxEnergy,
+                _energy + totalRegenRate * dt);
+        }
+        
+        public void ApplyEnergyDelta(float amount)
+        {
+            if (Mathf.Approximately(amount, 0f))
+                return;
+
+            _energy = Mathf.Clamp(_energy + amount, 0f, _maxEnergy);
         }
 
         public void ConsumeForced(float amount)

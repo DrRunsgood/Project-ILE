@@ -16,9 +16,24 @@ namespace _Scripts.Weapons
     {
         #region Inspector
 
-        [Header("Anchors")]
-        [SerializeField] Transform firstPersonAnchor;
-        [SerializeField] Transform _anchor;
+        [Header("Weapon Anchors")]
+        [SerializeField] private Transform firstPersonAnchor;
+
+        [Tooltip("Raw authoritative/networked weapon objects.")]
+        [SerializeField] private Transform gameplayWeaponAnchor;
+
+        [Tooltip("Smoothed presentation-only third-person weapon models.")]
+        [SerializeField] private Transform thirdPersonWeaponAnchor;
+        
+        [Tooltip("Presentation pivot beneath GraphicsRoot which receives replicated aim pitch.")]
+        [SerializeField] private Transform thirdPersonAimPivot;
+        
+        [Header("Third-Person Aim Presentation")]
+        [SerializeField] private float thirdPersonPitchSmoothTime = 0.035f;
+
+        private float _renderPitch;
+        private float _renderPitchVelocity;
+        private bool _renderPitchInitialized;
 
         [Header("Defaults")]
         [SerializeField] WeaponDefinition[] defaultQuickItems;
@@ -28,12 +43,13 @@ namespace _Scripts.Weapons
         [SerializeField] float dropSafetyRadius = 0.2f;
         [SerializeField] float dropBackoff = 0.02f;
         [SerializeField] LayerMask dropBlockMask = ~0;
-
         #endregion
+        
+        private AdvancedPredictedController _controller;
 
         #region Public API
 
-        public Transform WeaponAnchor => _anchor;
+        public Transform WeaponAnchor => gameplayWeaponAnchor;
 
         public WeaponDefinition ActiveDefinition
         {
@@ -64,6 +80,7 @@ namespace _Scripts.Weapons
 
         readonly List<WeaponInstance> _weapons = new();
         readonly Dictionary<NetworkObject, GameObject> _fpViews = new();
+        readonly Dictionary<NetworkObject, GameObject> _tpViews = new();
         readonly SyncVar<NetworkObject> _activeNob = new(null);
         readonly SyncVar<int> _activeAmmo = new(0);
         readonly SyncVar<int> _activeMaxAmmo = new(0);
@@ -79,7 +96,9 @@ namespace _Scripts.Weapons
 
         void Awake()
         {
-            EnsureWeaponAnchor();
+            ValidateWeaponAnchors();
+            
+            _controller = GetComponent<AdvancedPredictedController>();
 
             _ih = GetComponent<InputHandler>();
             _activeNob.OnChange += OnActiveWeaponChanged;
@@ -107,14 +126,22 @@ namespace _Scripts.Weapons
             RpcClient_SyncFullInventory(conn, list);
         }
 
-        void EnsureWeaponAnchor()
+        void ValidateWeaponAnchors()
         {
-            if (_anchor != null)
-                return;
+            if (gameplayWeaponAnchor == null)
+            {
+                Debug.LogError($"{name}: GameplayWeaponAnchor is not assigned.", this);
+            }
 
-            Transform gfx = transform.Find("Graphics") ?? transform;
-            _anchor = gfx.Find("HeldWeapons") ?? new GameObject("HeldWeapons").transform;
-            _anchor.SetParent(gfx, false);
+            if (thirdPersonAimPivot == null)
+            {
+                Debug.LogError($"{name}: ThirdPersonAimPivot is not assigned.", this);
+            }
+
+            if (thirdPersonWeaponAnchor == null)
+            {
+                Debug.LogError($"{name}: ThirdPersonWeaponAnchor is not assigned.", this);
+            }
         }
 
         void OnActiveWeaponChanged(NetworkObject prev, NetworkObject next, bool asServer)
@@ -126,6 +153,32 @@ namespace _Scripts.Weapons
         }
 
         #endregion
+        
+        private void LateUpdate()
+        {
+            if (_controller == null || thirdPersonAimPivot == null)
+                return;
+
+            float targetPitch = _controller.CurrentPitch;
+
+            if (!_renderPitchInitialized)
+            {
+                _renderPitch = targetPitch;
+                _renderPitchVelocity = 0f;
+                _renderPitchInitialized = true;
+            }
+            else if (thirdPersonPitchSmoothTime > 0f)
+            {
+                _renderPitch = Mathf.SmoothDampAngle(_renderPitch, targetPitch, ref _renderPitchVelocity,
+                    thirdPersonPitchSmoothTime, Mathf.Infinity, Time.deltaTime);
+            }
+            else
+            {
+                _renderPitch = targetPitch;
+            }
+
+            thirdPersonAimPivot.localRotation = Quaternion.Euler(_renderPitch, 0f, 0f);
+        }
         
         #region Fire Input
 
@@ -171,51 +224,121 @@ namespace _Scripts.Weapons
             if (nob == null)
                 return;
 
-            nob.transform.SetParent(_anchor, false);
+            nob.transform.SetParent(gameplayWeaponAnchor, false);
+
             ResetLocal(nob.transform);
 
-            if (!_weapons.Exists(w => w.NetworkObj == nob))
-                _weapons.Add(new WeaponInstance(null, nob));
+            WeaponInstance weapon = _weapons.Find(w => w.NetworkObj == nob);
 
-            if (!nob.TryGetComponent(out ProjectileWeapon pw))
-                return;
-
-            pw.CachePlayerRefs(this, _ih);
-
-            if (pw.isHiddenQuickItem)
-                return;
-
-            int defaultLayer = LayerMask.NameToLayer("Default");
-            int tpLayer = LayerMask.NameToLayer("TP_Only");
-
-            foreach (Transform t in nob.GetComponentsInChildren<Transform>(true))
-                t.gameObject.layer = defaultLayer;
-
-            if (IsOwner)
+            if (weapon == null)
             {
-                foreach (Transform t in nob.GetComponentsInChildren<Transform>(true))
-                    t.gameObject.layer = tpLayer;
+                weapon = new WeaponInstance(null, nob);
+                _weapons.Add(weapon);
             }
 
-            if (IsOwner && !_fpViews.ContainsKey(nob) && pw.Definition?.fpViewPrefab)
+            if (!nob.TryGetComponent(out ProjectileWeapon projectileWeapon))
+                return;
+            
+
+            projectileWeapon.CachePlayerRefs(this, _ih);
+
+            if (projectileWeapon.isHiddenQuickItem)
+                return;
+
+            SetRenderersEnabled(nob.gameObject, false);
+
+            CreateFirstPersonViewIfNeeded(weapon);
+
+            CreateThirdPersonViewIfNeeded(weapon);
+        }
+        
+        private void CreateFirstPersonViewIfNeeded(WeaponInstance weapon)
+        {
+            if (!IsOwner)
+                return;
+
+            if (firstPersonAnchor == null)
+                return;
+
+            if (weapon?.NetworkObj == null)
+                return;
+
+            if (_fpViews.ContainsKey(weapon.NetworkObj))
+                return;
+
+            if (!weapon.NetworkObj.TryGetComponent(out ProjectileWeapon projectileWeapon))
             {
-                GameObject fp = Instantiate(pw.Definition.fpViewPrefab, firstPersonAnchor);
-                ResetLocal(fp.transform);
-                _fpViews[nob] = fp;
+                return;
             }
+
+            if (projectileWeapon.isHiddenQuickItem)
+                return;
+
+            GameObject prefab = projectileWeapon.Definition?.fpViewPrefab;
+
+            if (prefab == null)
+                return;
+
+            GameObject view = Instantiate(prefab, firstPersonAnchor, false);
+
+            ResetLocal(view.transform);
+
+            _fpViews[weapon.NetworkObj] =
+                view;
+        }
+        
+        private void CreateThirdPersonViewIfNeeded(
+            WeaponInstance weapon)
+        {
+            if (weapon?.NetworkObj == null)
+                return;
+
+            if (_tpViews.ContainsKey(weapon.NetworkObj))
+                return;
+
+            if (!weapon.NetworkObj.TryGetComponent(out ProjectileWeapon projectileWeapon))
+                return;
+
+            if (projectileWeapon.isHiddenQuickItem)
+                return;
+
+            GameObject prefab = projectileWeapon.Definition?.tpViewPrefab;
+
+            if (prefab == null || thirdPersonWeaponAnchor == null)
+                return;
+            
+
+            GameObject view = Instantiate(prefab, thirdPersonWeaponAnchor, false);
+
+            ResetLocal(view.transform);
+
+            int viewLayer = LayerMask.NameToLayer(IsOwner ? "TP_Only" : "Default");
+
+            SetLayerRecursively(view, viewLayer);
+
+            _tpViews[weapon.NetworkObj] =
+                view;
         }
 
         void RefreshActive()
         {
-            NetworkObject want = _activeNob.Value;
+            NetworkObject wanted = _activeNob.Value;
 
-            foreach (WeaponInstance w in _weapons)
+            foreach (WeaponInstance weapon in _weapons)
             {
-                bool active = w.NetworkObj == want;
-                w.SetActive(active);
+                bool active = weapon.NetworkObj == wanted;
 
-                if (IsOwner && _fpViews.TryGetValue(w.NetworkObj, out GameObject fp))
-                    fp.SetActive(active);
+                weapon.SetActive(active);
+
+                if (IsOwner && _fpViews.TryGetValue(weapon.NetworkObj, out GameObject fpView))
+                {
+                    fpView.SetActive(active);
+                }
+
+                if (_tpViews.TryGetValue(weapon.NetworkObj, out GameObject tpView))
+                {
+                    tpView.SetActive(active);
+                }
             }
         }
 
@@ -252,6 +375,12 @@ namespace _Scripts.Weapons
             {
                 Destroy(fp);
                 _fpViews.Remove(nob);
+            }
+            
+            if (_tpViews.TryGetValue(nob, out GameObject tpView))
+            {
+                Destroy(tpView);
+                _tpViews.Remove(nob);
             }
 
             RefreshActive();
@@ -321,7 +450,7 @@ namespace _Scripts.Weapons
             if (nob == null)
                 return false;
 
-            nob.transform.SetParent(_anchor, false);
+            nob.transform.SetParent(gameplayWeaponAnchor, false);
             ResetLocal(nob.transform);
             ServerManager.Spawn(nob, Owner);
 
@@ -822,37 +951,43 @@ namespace _Scripts.Weapons
 
         #endregion
         
-        public void SetFirstPersonAnchor(Transform anchor)
+        static void SetRenderersEnabled(GameObject root, bool enabled)
         {
-            if (!IsOwner)
+            if (root == null)
                 return;
 
-            if (anchor == null)
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+
+            foreach (Renderer renderer in renderers)
+            {
+                if (renderer != null)
+                    renderer.enabled = enabled;
+            }
+        }
+        
+        private static void SetLayerRecursively(GameObject root, int layer)
+        {
+            if (root == null || layer < 0)
+                return;
+
+            Transform[] children = root.GetComponentsInChildren<Transform>(true);
+
+            foreach (Transform child in children)
+            {
+                if (child != null)
+                    child.gameObject.layer = layer;
+            }
+        }
+        
+        public void SetFirstPersonAnchor(Transform anchor)
+        {
+            if (!IsOwner || anchor == null)
                 return;
 
             firstPersonAnchor = anchor;
 
-            foreach (WeaponInstance w in _weapons)
-            {
-                if (w.NetworkObj == null)
-                    continue;
-
-                if (_fpViews.ContainsKey(w.NetworkObj))
-                    continue;
-
-                if (!w.NetworkObj.TryGetComponent(out ProjectileWeapon pw))
-                    continue;
-
-                if (pw.isHiddenQuickItem)
-                    continue;
-
-                if (pw.Definition == null || pw.Definition.fpViewPrefab == null)
-                    continue;
-
-                GameObject fp = Instantiate(pw.Definition.fpViewPrefab, firstPersonAnchor);
-                ResetLocal(fp.transform);
-                _fpViews[w.NetworkObj] = fp;
-            }
+            foreach (WeaponInstance weapon in _weapons)
+                CreateFirstPersonViewIfNeeded(weapon);
 
             RefreshActive();
         }

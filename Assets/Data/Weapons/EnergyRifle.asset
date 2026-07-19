@@ -30,6 +30,7 @@ MonoBehaviour:
   velocityInheritance: 0
   gravityScale: 0
   lifeTime: 2
+  resolveImmediateMuzzleImpact: 1
   convergenceMode: 0
   convergenceDistance: 1500
   aimMask:
@@ -54,6 +55,7 @@ MonoBehaviour:
     m_Bits: 0
   objectiveKnockbackMultiplier: 1
   fpViewPrefab: {fileID: 2624510343394097245, guid: bca7417cbf28b7f408172746dc89ed0d, type: 3}
+  tpViewPrefab: {fileID: 2624510343394097245, guid: 832c6d23c78df0b45b7a725ce25672ad, type: 3}
   heldPrefab: {fileID: 3329046351917159825, guid: 44d64ea40d9dce845843aed8dff10363, type: 3}
   groundPrefab: {fileID: 3329046351917159825, guid: 0860383791dc31346abe58c9be85218b, type: 3}
   impactVfxKey: VFX/RocketExplosion

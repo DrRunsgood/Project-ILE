@@ -27,6 +27,9 @@ public class FpsCameraFollow : MonoBehaviour
 
     [Header("Hierarchy")]
     [SerializeField] Transform effectsRoot;
+    
+    [Header("Weapon Presentation")]
+    [SerializeField] private Transform firstPersonItemsAnchor;
 
     [Header("Position Smoothing")]
     [Tooltip("Enable camera-side render smoothing. This is separate from FishNet tick smoothing.")]
@@ -135,9 +138,6 @@ public class FpsCameraFollow : MonoBehaviour
 
     void HandleLocalPlayerCleared()
     {
-        if (target != null)
-            target.SetMainBodyVisibility(true);
-
         target = null;
         followTarget = null;
         ih = null;
@@ -146,9 +146,6 @@ public class FpsCameraFollow : MonoBehaviour
 
     public void SetTarget(AdvancedPredictedController t)
     {
-        if (target != null && target != t)
-            target.SetMainBodyVisibility(true);
-
         target = t;
         followTarget = t ? t.CameraFollowTarget : null;
         ih = t ? t.GetComponent<InputHandler>() : null;
@@ -262,36 +259,31 @@ public class FpsCameraFollow : MonoBehaviour
         return Quaternion.Euler(_renderPitch, _renderYaw, 0f);
     }
 
-    void SetupFirstPersonWeaponAnchor()
+    private void SetupFirstPersonWeaponAnchor()
     {
-        if (target == null || cam == null)
+        if (target == null)
             return;
 
-        if (!target.TryGetComponent(out WeaponManager wm))
-            return;
-
-        Transform fpAnchor = cam.transform.Find("FirstPersonItems");
-
-        if (fpAnchor == null)
+        if (firstPersonItemsAnchor == null)
         {
-            GameObject anchorGo = new GameObject("FirstPersonItems");
-            fpAnchor = anchorGo.transform;
-            fpAnchor.SetParent(cam.transform, false);
+            Debug.LogError("[FpsCameraFollow] FirstPersonItems anchor is not assigned.", this);
+
+            return;
         }
 
-        fpAnchor.localPosition = new Vector3(0.25f, -0.25f, 0.25f);
-        fpAnchor.localRotation = Quaternion.identity;
-        fpAnchor.localScale = Vector3.one;
+        if (!target.TryGetComponent(out WeaponManager weaponManager))
+        {
+            Debug.LogError($"[FpsCameraFollow] {target.name} has no WeaponManager.", target);
 
-        wm.SetFirstPersonAnchor(fpAnchor);
+            return;
+        }
+
+        weaponManager.SetFirstPersonAnchor(firstPersonItemsAnchor);
     }
 
     void UpdateView(bool isThirdPerson)
     {
         ApplyCulling(isThirdPerson);
-
-        if (target != null)
-            target.SetMainBodyVisibility(isThirdPerson);
     }
 
     void ApplyCulling(bool tpMode)

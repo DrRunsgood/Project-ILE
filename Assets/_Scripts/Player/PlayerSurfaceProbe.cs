@@ -12,111 +12,202 @@ namespace _Scripts.Player
         private readonly Vector3 _feetOffset;
         private readonly float _feetRadius;
 
-        private readonly LayerMask _wallMask;
+        private readonly LayerMask _wallProbeMask;
+        private readonly LayerMask _wallInteractionBlockedMask;
+
         private readonly float _wallCheckDistance;
+        private readonly float _wallProbeRadius;
+        private readonly float _minWallAngle;
+        private readonly float _maxWallAngle;
         private readonly float _minJumpHeight;
 
         public bool IsGrounded { get; private set; }
         public bool IsOnSlope { get; private set; }
-        public RaycastHit SlopeHit { get; private set; }
 
+        public RaycastHit GroundHit { get; private set; }
+
+        // Compatibility with the controller's current naming.
+        public RaycastHit SlopeHit => GroundHit;
+
+        public Vector3 GroundNormal =>
+            GroundHit.collider != null
+                ? GroundHit.normal
+                : Vector3.up;
+
+        public bool HasWallContact { get; private set; }
         public bool WallLeft { get; private set; }
         public bool WallRight { get; private set; }
-        public Vector3 WallNormal { get; private set; } = Vector3.zero;
 
-        public PlayerSurfaceProbe(
-            float maxSlopeAngle,
-            float slopeCheckDistance,
-            LayerMask groundMask,
-            Vector3 feetOffset,
-            float feetRadius,
-            LayerMask wallMask,
-            float wallCheckDistance,
-            float minJumpHeight)
+        public RaycastHit WallHit { get; private set; }
+
+        public Vector3 WallNormal => WallHit.collider != null ? WallHit.normal : Vector3.zero;
+
+        public PlayerSurfaceProbe(float maxSlopeAngle, float slopeCheckDistance, LayerMask groundMask, Vector3 feetOffset,
+            float feetRadius, LayerMask wallProbeMask, LayerMask wallInteractionBlockedMask, float wallCheckDistance,
+            float wallProbeRadius, float minWallAngle, float maxWallAngle, float minJumpHeight)
         {
             _maxSlopeAngle = maxSlopeAngle;
             _slopeCheckDistance = slopeCheckDistance;
             _groundMask = groundMask;
+
             _feetOffset = feetOffset;
             _feetRadius = feetRadius;
-            _wallMask = wallMask;
+
+            _wallProbeMask = wallProbeMask;
+            _wallInteractionBlockedMask = wallInteractionBlockedMask;
+
             _wallCheckDistance = wallCheckDistance;
+            _wallProbeRadius = wallProbeRadius;
+            _minWallAngle = minWallAngle;
+            _maxWallAngle = maxWallAngle;
             _minJumpHeight = minJumpHeight;
         }
 
-        public void RefreshGrounding(Rigidbody rb, Transform transform)
+        public void RefreshGrounding(Rigidbody rb, Transform playerTransform)
         {
-            Vector3 checkPos = rb.position + _feetOffset;
-
-            IsGrounded = Physics.CheckSphere(checkPos, _feetRadius, _groundMask, QueryTriggerInteraction.Ignore);
-
+            IsGrounded = false;
             IsOnSlope = false;
-            SlopeHit = default;
+            GroundHit = default;
 
-            if (!IsGrounded)
+            Vector3 feetPosition = rb.position + _feetOffset;
+
+            bool touchingGround = Physics.CheckSphere(feetPosition, _feetRadius, _groundMask, QueryTriggerInteraction.Ignore);
+
+            if (!touchingGround)
                 return;
 
-            // Try to get a real supporting normal.
-            if (Physics.Raycast(checkPos, Vector3.down, out RaycastHit hit,
+            Vector3 castOrigin = feetPosition + Vector3.up * 0.1f;
+
+            float castRadius = Mathf.Max(0.01f, _feetRadius * 0.9f);
+
+            if (!Physics.SphereCast(castOrigin, castRadius, Vector3.down, out RaycastHit hit,
                     _slopeCheckDistance, _groundMask, QueryTriggerInteraction.Ignore))
-            {
-                float angle = Vector3.Angle(Vector3.up, hit.normal);
+                return;
+            
 
-                // If the supporting normal is clearly too steep, treat it as not grounded.
-                // This preserves the old forgiving check but prevents obvious wall/steep false positives.
-                if (angle > _maxSlopeAngle)
-                {
-                    IsGrounded = false;
-                    return;
-                }
+            float slopeAngle = Vector3.Angle(Vector3.up, hit.normal);
 
-                SlopeHit = hit;
-                IsOnSlope = angle > 0.1f;
-            }
+            if (slopeAngle > _maxSlopeAngle)
+                return;
+
+            GroundHit = hit;
+            IsGrounded = true;
+            IsOnSlope = slopeAngle > 0.1f;
         }
 
-        public void RefreshWallProbe(Transform transform, Transform orientation)
+        /// <summary>
+        /// Persistent wallrun-style probe.
+        /// Uses the player's forward-facing orientation.
+        /// </summary>
+        public bool RefreshWallProbe(Transform playerTransform, Transform orientation)
         {
-            Vector3 rayOrigin = transform.position;
-            Vector3 rayDirection = orientation.forward;
+            Vector3 origin = playerTransform.position;
 
-            WallLeft = false;
-            WallRight = false;
-            WallNormal = Vector3.zero;
+            Vector3 direction = orientation.forward;
 
-            if (!Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, _wallCheckDistance, _wallMask))
-                return;
+            bool foundWall = TryGetWallContact(origin, direction, _wallCheckDistance, out RaycastHit hit);
 
-            // Reject floor / ceiling-ish surfaces
-            if (Mathf.Abs(Vector3.Dot(hit.normal, Vector3.up)) >= 0.1f)
-                return;
+            ClearWallProbe();
 
-            WallNormal = hit.normal;
+            if (!foundWall)
+                return false;
 
-            float side = Vector3.Dot(orientation.right, WallNormal);
+            WallHit = hit;
+            HasWallContact = true;
+
+            float side = Vector3.Dot(orientation.right, hit.normal);
+
             WallRight = side > 0f;
-            WallLeft = side <= 0f;
+            WallLeft = !WallRight;
+
+            return true;
         }
 
-        public bool IsAboveMinJumpHeight(Transform transform)
+        /// <summary>
+        /// Discrete look-directed query for airborne wall jumping.
+        /// Near-contact is sufficient; physical collider contact is not required.
+        /// </summary>
+        public bool TryGetWallJumpContact(Vector3 origin, Vector3 lookDirection, float distance, out RaycastHit hit)
         {
-            return !Physics.Raycast(transform.position, Vector3.down, _minJumpHeight, _groundMask);
+            return TryGetWallContact(origin, lookDirection, distance, out hit);
+        }
+
+        private bool TryGetWallContact(Vector3 origin, Vector3 direction, float distance, out RaycastHit hit)
+        {
+            hit = default;
+
+            if (direction.sqrMagnitude <= 0.0001f)
+                return false;
+
+            direction.Normalize();
+
+            if (!Physics.SphereCast(origin, _wallProbeRadius, direction, out hit,
+                    distance, _wallProbeMask, QueryTriggerInteraction.Ignore))
+                return false;
+            
+
+            if (!IsWallSurfaceValid(hit))
+            {
+                hit = default;
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool IsWallSurfaceValid(RaycastHit hit)
+        {
+            if (hit.collider == null || hit.collider.isTrigger)
+                return false;
+            
+            int colliderLayerMask = 1 << hit.collider.gameObject.layer;
+
+            // Terrain and other explicitly blocked surfaces cannot
+            // participate in wall movement.
+            if ((_wallInteractionBlockedMask.value & colliderLayerMask) != 0)
+                return false;
+            
+            /*
+             * Angle is measured between world-up and the surface normal:
+             *
+             * 0 degrees   = upward-facing floor
+             * 90 degrees  = vertical wall
+             * 180 degrees = downward-facing ceiling
+             *
+             * Starting range:
+             * 75 to 100 degrees
+             */
+            float surfaceAngle = Vector3.Angle(Vector3.up, hit.normal);
+
+            return surfaceAngle >= _minWallAngle && surfaceAngle <= _maxWallAngle;
+        }
+
+        public bool IsAboveMinJumpHeight(Transform playerTransform)
+        {
+            return !Physics.Raycast(playerTransform.position, Vector3.down,
+                _minJumpHeight, _groundMask, QueryTriggerInteraction.Ignore);
         }
 
         public void ClearWallProbe()
         {
+            HasWallContact = false;
             WallLeft = false;
             WallRight = false;
-            WallNormal = Vector3.zero;
+            WallHit = default;
         }
 
-        public void DrawGroundGizmo(Rigidbody rb)
+        public void DrawGroundGizmo(
+            Rigidbody rb)
         {
             if (rb == null)
                 return;
 
-            Vector3 checkPos = rb.position + _feetOffset;
-            Gizmos.DrawWireSphere(checkPos, _feetRadius);
+            Vector3 checkPosition =
+                rb.position + _feetOffset;
+
+            Gizmos.DrawWireSphere(
+                checkPosition,
+                _feetRadius);
         }
     }
 }

@@ -55,6 +55,7 @@ MonoBehaviour:
     m_Bits: 256
   objectiveKnockbackMultiplier: 1
   fpViewPrefab: {fileID: 2624510343394097245, guid: dd81737ac1239aa4f9c0b1e894b3375d, type: 3}
+  tpViewPrefab: {fileID: 2624510343394097245, guid: 4de3f525f4af1bf479bfe6cdf0e24def, type: 3}
   heldPrefab: {fileID: 3329046351917159825, guid: 666f80d10f158d64eb0e123a4c75cba8, type: 3}
   groundPrefab: {fileID: 3329046351917159825, guid: a9ad3a53bcdd17548b7e6cf9001fc02f, type: 3}
   impactVfxKey: VFX/RocketExplosion

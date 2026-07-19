@@ -33,6 +33,7 @@ namespace _Scripts.Player
         bool _beaconUseRequested;
         bool _flagThrowRequested;
         bool _suicideRequested;
+        private bool _jumpPressedBuffered;
         
         void Update()
         {
@@ -56,6 +57,8 @@ namespace _Scripts.Player
             /* 3) buttons ----------------------------------- */
             InputButtons held  = InputButtons.None;
             InputButtons down  = InputButtons.None;
+            
+            
 
             // helper local function
             static void CaptureKey(ref InputButtons h, ref InputButtons d,
@@ -76,6 +79,9 @@ namespace _Scripts.Player
             ZoomHeld = Input.GetKey(KeyCode.Z);
 
             HeldButtons = held;
+            
+            if ((down & InputButtons.Jump) != 0)
+                _jumpPressedBuffered = true;
 
             CaptureHotkeys();
         }
@@ -161,6 +167,13 @@ namespace _Scripts.Player
             bool v = _suicideRequested;
             _suicideRequested = false;
             return v;
+        }
+        
+        public bool ConsumeJumpPressed()
+        {
+            bool pressed = _jumpPressedBuffered;
+            _jumpPressedBuffered = false;
+            return pressed;
         }
         
         // one-shot accessors – UI or managers read once per frame

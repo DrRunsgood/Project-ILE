@@ -22,8 +22,9 @@ namespace _Scripts.Weapons
         [Header("Spawn Settings")]
         [Tooltip("How far in front of the fire origin the projectile should appear.")]
         [SerializeField] float spawnOffset = 0.25f;
-        [Tooltip("Optional muzzle/fire point. If empty, this weapon auto-finds a child named FirePoint.")]
-        [SerializeField] Transform firePoint;
+        [Tooltip("Required authoritative muzzle transform for regular projectile weapons. " +
+                 "Assign the FirePoint on the networked held/gameplay prefab.")]
+        [SerializeField] private Transform firePoint;
 
         [Header("Spawn Safety")]
         [SerializeField] float spawnSafetyRadiusOverride = -1f;
@@ -57,6 +58,7 @@ namespace _Scripts.Weapons
         uint _fireIntervalTicks;
         uint _nextServerFireTick;  // authoritative server cooldown
         uint _nextLocalFireAudioTick;
+        private bool _missingFirePointReported;
         
         static readonly RaycastHit[] AimHits = new RaycastHit[16];
 
@@ -71,42 +73,43 @@ namespace _Scripts.Weapons
             _shooterNO = wm != null ? wm.NetworkObject : null;
         }
         
-        Transform GetFirePoint()
+        private bool TryGetAuthoritativeFirePoint(out Transform result)
         {
-            if (firePoint != null)
-                return firePoint;
+            result = firePoint;
 
-            Transform found = transform.Find("FirePoint");
+            if (result != null)
+                return true;
 
-            if (found != null)
+            if (!_missingFirePointReported)
             {
-                firePoint = found;
-                return firePoint;
+                string weaponName = def != null && !string.IsNullOrWhiteSpace(def.displayName) ? def.displayName : name;
+
+                Debug.LogError(
+                    $"[ProjectileWeapon] '{weaponName}' has no authoritative FirePoint assigned. " +
+                    "The shot was rejected. Assign FirePoint on the networked held prefab.",
+                    this);
+
+                _missingFirePointReported = true;
             }
 
-            Transform[] children = GetComponentsInChildren<Transform>(true);
-
-            for (int i = 0; i < children.Length; i++)
-            {
-                if (children[i] != null && children[i].name == "FirePoint")
-                {
-                    firePoint = children[i];
-                    return firePoint;
-                }
-            }
-
-            return transform;
+            return false;
         }
 
 #if UNITY_EDITOR
-        void OnValidate()
+        private void OnValidate()
         {
-            if (firePoint == null)
-            {
-                Transform found = transform.Find("FirePoint");
+            bool requiresFirePoint =
+                def != null &&
+                !def.hiddenQuickItem;
 
-                if (found != null)
-                    firePoint = found;
+            if (requiresFirePoint && firePoint == null)
+            {
+                Debug.LogWarning($"[ProjectileWeapon] '{name}' requires an authoritative FirePoint assignment.", this);
+            }
+
+            if (firePoint != null && firePoint != transform && !firePoint.IsChildOf(transform))
+            {
+                Debug.LogWarning($"[ProjectileWeapon] FirePoint on '{name}' is not a child of the gameplay weapon prefab.", this);
             }
         }
 #endif
@@ -172,15 +175,20 @@ namespace _Scripts.Weapons
             if (!IsActive)
                 return false;
 
+            if (!TryGetAuthoritativeFirePoint(out Transform muzzle))
+                return false;
+            
+
             EnsureFireTimingInitialized();
 
             Vector3 viewOrigin = pose.Position;
+
             Vector3 viewDir = GetSafeDirection(pose.Direction, transform.forward);
 
-            Transform muzzle = GetFirePoint();
-            Vector3 muzzleOrigin = muzzle != null ? muzzle.position : viewOrigin;
+            Vector3 muzzleOrigin = muzzle.position;
 
             Vector3 aimPoint = ResolveAimPoint(viewOrigin, viewDir);
+
             Vector3 fireDir = ResolveMuzzleFireDirection(muzzleOrigin, aimPoint, viewDir);
 
             Vector3 shooterVelocity = pose.Velocity;
