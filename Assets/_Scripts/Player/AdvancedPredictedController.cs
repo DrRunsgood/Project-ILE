@@ -6,6 +6,7 @@ using FishNet.Transporting;
 using FishNet.Object.Synchronizing;
 using _Scripts.Packs;
 using _Scripts.Weapons;
+using System;
 
 namespace _Scripts.Player
 {
@@ -165,6 +166,9 @@ namespace _Scripts.Player
         public Transform AimAnchor => aimAnchor;
         public float CurrentPitch => _lookModule != null ? _lookModule.CurrentPitch : 0f;
 
+        public event Action OnLocalPoseResetApplied;
+        public event Action<byte, Vector3, Quaternion> OnObserverPoseResetReceived;
+
         // SyncVar for soft death
         readonly SyncVar<bool> _isFrozen = new(false);
         
@@ -202,9 +206,6 @@ namespace _Scripts.Player
         // Surface Probe
         private PlayerSurfaceProbe _surfaceProbe;
         
-        // Camera follow
-        private FpsCameraFollow _fpsCameraFollow;
-
         // Wall Running
         private bool _canWallRun;
         private bool _exitingWall;
@@ -224,6 +225,11 @@ namespace _Scripts.Player
         // Jump Lock
         private byte _jumpLockTicks;
         
+        // Pose Reset
+        private byte _poseResetSequence;
+        private byte _lastAppliedPoseResetSequence;
+        private bool _poseResetSequenceInitialized;
+        
         // Public helpers
         public float Energy => _energyModule?.Energy ?? 0f;
         public bool ShieldActive => _packMgr && _packMgr.Active && _packMgr.CurrentId == PackId.Shield;
@@ -232,16 +238,14 @@ namespace _Scripts.Player
         private Vector3? _pendingKnockback;
         private float? _pendingTempDrag;
         private bool _heartBeat;  // Used to mark replicate packet dirty when receiving knockback to keep kb responsive but keep network efficienies
-
-        // MovementData
-        private MovementData _md;
         
-        const float LookQuantScale = 2000f;
+        const float LookQuantScale = 512f;
         private const byte MovementStateMask = 0b0000_0111;
         private const byte JetLockedOutMask = 0b0000_1000;
         
-        private const byte HeartEventFlag = 0b0000_0001;
-        private const byte JumpPressedEventFlag = 0b0000_0010;
+        private const byte MoveMask = 0b0000_1111;
+        private const byte HeartEventFlag = 0b0001_0000;
+        private const byte JumpPressedEventFlag = 0b0010_0000;
         
         #endregion
 
@@ -249,34 +253,33 @@ namespace _Scripts.Player
         // Replication struct
         public struct MovementData : IReplicateData
         {
-            public byte EventFlags;
-            /* packed fields */
-            private uint _tick;                     // Fish-Net needs this
-            public  byte MoveXZ;                    // 4 bits
-            public  short LookX, LookY;             // deltas
-            public  InputButtons Held;              // held-down flags
+            private uint _tick;
 
-            /* ctor helper you will call from OnTick() */
+            public byte MoveAndEvents;
+            public short LookX;
+            public short LookY;
+            public InputButtons Held;
+
             public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart, bool jumpPressed)
             {
-                _tick   = tick;
-                MoveXZ  = NetUtils.MoveCodec.Pack(move.x, move.y);
+                _tick = tick;
+
+                MoveAndEvents = (byte)(NetUtils.MoveCodec.Pack(move.x, move.y) & MoveMask);
+
+                if (heart) MoveAndEvents |= HeartEventFlag;
+
+                if (jumpPressed) MoveAndEvents |= JumpPressedEventFlag;
+
                 LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * LookQuantScale), short.MinValue, short.MaxValue);
+
                 LookY = (short)Mathf.Clamp(Mathf.RoundToInt(look.y * LookQuantScale), short.MinValue, short.MaxValue);
-                Held    = held;
-                EventFlags = 0;
 
-                if (heart)
-                    EventFlags |= HeartEventFlag;
-
-                if (jumpPressed)
-                    EventFlags |= JumpPressedEventFlag;
+                Held = held;
             }
 
-            /* IReplicateData boiler-plate */
-            public uint  GetTick()            => _tick;
-            public void  SetTick(uint value)  => _tick = value;
-            public void  Dispose()            { }
+            public uint GetTick() => _tick;
+            public void SetTick(uint value) => _tick = value;
+            public void Dispose() { }
         }
         
         // Reconciliation
@@ -291,10 +294,11 @@ namespace _Scripts.Player
             public ushort   YawQ;
             public ushort    CurrentPitchQ;
             public byte JumpLockTicks;
+            public byte PoseResetSequence;
             
 
             public ReconciliationData(Vector3 pos, Vector3 vel, MovementState state, bool jetLockedOut,
-                byte jumpLockTicks, float yawDeg, float pitchDeg, byte energyQ)
+                byte jumpLockTicks, float yawDeg, float pitchDeg, byte energyQ, byte poseResetSequence)
             {
                 _tick = 0;
 
@@ -308,13 +312,10 @@ namespace _Scripts.Player
                     StateFlags |= JetLockedOutMask;
 
                 EnergyQ = energyQ;
+                
+                PoseResetSequence = poseResetSequence;
 
-                YawQ = (ushort)Mathf.Clamp(
-                    Mathf.RoundToInt(
-                        ((yawDeg % 360f + 360f) % 360f) *
-                        (65535f / 360f)),
-                    0,
-                    65535);
+                YawQ = (ushort)Mathf.Clamp(Mathf.RoundToInt(((yawDeg % 360f + 360f) % 360f) * (65535f / 360f)), 0, 65535);
 
                 CurrentPitchQ = QuantizePitch(pitchDeg);
             }
@@ -347,6 +348,14 @@ namespace _Scripts.Player
                 wallInteractionBlockedMask, wallCheckDistance, wallProbeRadius, minWallSurfaceAngle, maxWallSurfaceAngle, minJumpHeight);            
             _startYScale = transform.localScale.y;
             
+            _poseResetSequence = 0;
+            _lastAppliedPoseResetSequence = 0;
+            _poseResetSequenceInitialized = false;
+            _heartBeat = false;
+            _pendingKnockback = null;
+            _pendingTempDrag = null;
+            _jumpLockTicks = 0;
+            
             TimeManager.OnTick += OnTick;
             TimeManager.OnPostTick += OnPostTick;
         }
@@ -358,9 +367,8 @@ namespace _Scripts.Player
             
             if (IsOwner)
             {
-                LocalPlayerContext.Register(this);
                 _iH = GetComponent<InputHandler>();
-                _fpsCameraFollow = FindAnyObjectByType<FpsCameraFollow>();
+                LocalPlayerContext.Register(this);
 
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible   = false;
@@ -388,21 +396,21 @@ namespace _Scripts.Player
             if (IsOwner)
             {
                 var ih = _iH;
-                Vector2 lookDelta = ih.ConsumeLookDelta();
-                bool jumpPressed = ih.ConsumeJumpPressed();
                 
-                bool zoomAllowed = !IsFrozen;
-                bool zoomHeld = ih.ZoomHeld;
+                Vector2 lookDelta = ih.ConsumeLookDelta();
 
-                if (_fpsCameraFollow != null)
-                {
-                    _fpsCameraFollow.SetZoomInput(zoomHeld, zoomAllowed);
-                    lookDelta *= _fpsCameraFollow.CurrentLookSensitivityMultiplier;
-                }
+                bool jumpPressed = ih.ConsumeJumpPressed();
 
-                _md = new MovementData(TimeManager.Tick, ih.Move, lookDelta, ih.HeldButtons, _heartBeat, jumpPressed);
+                MovementData movementData =
+                    new MovementData(
+                        TimeManager.Tick,
+                        ih.Move,
+                        lookDelta,
+                        ih.HeldButtons,
+                        _heartBeat,
+                        jumpPressed);
 
-                Replicate(_md);
+                Replicate(movementData);
             }
             else
             {
@@ -428,7 +436,8 @@ namespace _Scripts.Player
                 _jumpLockTicks,
                 _lookModule.Yaw,
                 _lookModule.CurrentPitch,
-                _energyModule.QuantizeEnergy()
+                _energyModule.QuantizeEnergy(),
+                _poseResetSequence
             );
  
             Reconcile(recData);
@@ -444,14 +453,14 @@ namespace _Scripts.Player
             _rb.linearVelocity = DecodeVelocity(data.Speed, data.Heading, data.Vy);
 
             // Correct movement state
-            _state =
-                (MovementState)(data.StateFlags & MovementStateMask);
+            _state = (MovementState)(data.StateFlags & MovementStateMask);
 
             _jetLockedOut = (data.StateFlags & JetLockedOutMask) != 0;
             _jumpLockTicks = data.JumpLockTicks;
 
             _lookModule.ApplyLookState(yaw, pitch, _rb, aimAnchor);
             _energyModule.ApplyQuantizedEnergy(data.EnergyQ);
+            HandleAppliedPoseResetSequence(data.PoseResetSequence);
         }
         #endregion
 
@@ -559,13 +568,15 @@ namespace _Scripts.Player
         #endregion
         
         #region Quantization and Decompression
-        static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed)
+        private static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed)
         {
-            move = NetUtils.MoveCodec.Unpack(md.MoveXZ);
+            move = NetUtils.MoveCodec.Unpack((byte)(md.MoveAndEvents & MoveMask));
+
             look = new Vector2(md.LookX / LookQuantScale, md.LookY / LookQuantScale);
+
             held = md.Held;
-            jumpPressed =
-                (md.EventFlags & JumpPressedEventFlag) != 0;
+
+            jumpPressed = (md.MoveAndEvents & JumpPressedEventFlag) != 0;
         }
         
         // ─── Velocity polar helpers ───────────────────────────────
@@ -623,6 +634,16 @@ namespace _Scripts.Player
         private void ApplyRotation(float yawDeltaRaw, float pitchDeltaRaw)
         {
             _lookModule.ApplyRotation(yawDeltaRaw, pitchDeltaRaw, _rb, aimAnchor);
+        }
+        
+        public Quaternion GetRenderViewRotation(Vector2 pendingLookDelta)
+        {
+            if (_lookModule == null)
+            {
+                return Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+            }
+
+            return _lookModule.GetPreviewRotation(pendingLookDelta);
         }
 
         #endregion
@@ -1472,12 +1493,61 @@ namespace _Scripts.Player
 
             // Force transform alignment after all Rigidbody/reset operations.
             transform.SetPositionAndRotation(position, rotation);
+            
+            if (IsServerStarted)
+            {
+                unchecked
+                {
+                    _poseResetSequence++;
+                }
+
+                /*
+                 * Keep zero reserved for "no reset received."
+                 */
+                if (_poseResetSequence == 0)
+                    _poseResetSequence = 1;
+            }
+            
+            RpcNotifyObserverPoseReset(_poseResetSequence, position, rotation);
         }
         
         public void ResetEnergy()
         {
             _energyModule.ResetEnergy();
             _jetLockedOut = false;
+        }
+        
+        private void HandleAppliedPoseResetSequence(byte sequence)
+        {
+            if (!IsOwner)
+                return;
+
+            if (!_poseResetSequenceInitialized)
+            {
+                _poseResetSequenceInitialized = true;
+                _lastAppliedPoseResetSequence = sequence;
+
+                /*
+                 * Zero means no authoritative hard reset has been issued yet.
+                 */
+                if (sequence == 0)
+                    return;
+            }
+            else
+            {
+                if (sequence == _lastAppliedPoseResetSequence)
+                    return;
+
+                _lastAppliedPoseResetSequence = sequence;
+            }
+
+            /*
+             * Mouse input captured before the discontinuity must not be applied
+             * on top of the new spawn/teleport-facing orientation.
+             */
+            _iH?.ClearTransientBuffers();
+
+            OnLocalPoseResetApplied?.Invoke();
         }
         #endregion
         
@@ -1576,6 +1646,12 @@ namespace _Scripts.Player
             
             if (_col.sharedMaterial != pm)
                 _col.sharedMaterial = pm;
+        }
+        
+        [ObserversRpc(ExcludeOwner = true, BufferLast = false)]
+        private void RpcNotifyObserverPoseReset(byte sequence, Vector3 position, Quaternion rotation)
+        {
+            OnObserverPoseResetReceived?.Invoke(sequence, position, rotation);
         }
     }
 }

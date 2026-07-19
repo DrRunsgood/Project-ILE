@@ -37,7 +37,7 @@ namespace _Scripts.Weapons
         }
 
         /* ----------------- server-side consumption ----------- */
-        protected override bool ServerCanConsume()
+        protected override bool ServerTryConsumeResource()
         {
             if (_ctrl == null) return false;
 

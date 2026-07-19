@@ -200,12 +200,7 @@ public sealed class IFFManager : MonoBehaviour
         return created;
     }
 
-    private bool ShouldShow(
-        PlayerIFFTarget target,
-        out bool focused,
-        out float alpha,
-        out Color color,
-        out Vector3 screenPos)
+    private bool ShouldShow(PlayerIFFTarget target, out bool focused, out float alpha, out Color color, out Vector3 screenPos)
     {
         focused = false;
         alpha = 0f;
@@ -215,9 +210,9 @@ public sealed class IFFManager : MonoBehaviour
         if (target == null || target.Identity == null)
             return false;
 
-        if (target.Health != null && target.Health.IsDead)
+        if (!target.CanShowIFF)
             return false;
-
+        
         Transform anchor = target.Anchor;
         if (anchor == null)
             return false;

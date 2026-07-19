@@ -37,7 +37,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 3136
   castMode: 0
-  castRadius: 0.75
+  castRadius: 0.375
   castHalf: 0.4
   hitMask:
     serializedVersion: 2

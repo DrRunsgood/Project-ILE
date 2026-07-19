@@ -16,13 +16,8 @@ namespace _Scripts.Player
         public float Yaw => _yaw;
         public float CurrentPitch => _currentPitch;
 
-        public PlayerLookModule(
-            float yawSensitivity,
-            float pitchSensitivity,
-            float minPitch,
-            float maxPitch,
-            float startingYaw,
-            float startingPitch)
+        public PlayerLookModule(float yawSensitivity, float pitchSensitivity, float minPitch,
+            float maxPitch, float startingYaw, float startingPitch)
         {
             _yawSensitivity = yawSensitivity;
             _pitchSensitivity = pitchSensitivity;
@@ -64,6 +59,16 @@ namespace _Scripts.Player
         public void ResetLook(Rigidbody rb, Transform headAnchor, float yaw = 0f, float pitch = 0f)
         {
             ApplyLookState(yaw, pitch, rb, headAnchor);
+        }
+        
+        public Quaternion GetPreviewRotation(Vector2 pendingLookDelta)
+        {
+            float previewYaw = _yaw + pendingLookDelta.x * _yawSensitivity;
+
+            float previewPitch = Mathf.Clamp(_currentPitch - pendingLookDelta.y * _pitchSensitivity,
+                    _minPitch, _maxPitch);
+
+            return Quaternion.Euler(previewPitch, previewYaw, 0f);
         }
     }
 }

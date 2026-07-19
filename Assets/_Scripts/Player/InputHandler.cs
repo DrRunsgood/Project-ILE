@@ -11,10 +11,19 @@ namespace _Scripts.Player
     {
         /* ---------------- public read-only ---------------- */
         public Vector2       Move        { get; private set; }   // –1…+1 per axis
-        public Vector2       Look        { get; private set; }   // raw mouse delta
         public InputButtons  HeldButtons { get; private set; }   // held this frame
         
         public bool ZoomHeld { get; private set; }
+        
+        public Vector2 PendingLookDelta => _lookAccum;
+        
+        [Header("Look Scaling")]
+        [SerializeField]
+        [Range(0.01f, 1f)]
+        private float zoomLookSensitivityMultiplier = 0.45f;
+
+        private AdvancedPredictedController _controller;
+        private bool _thirdPersonView;
         
         Vector2 _lookAccum;
 
@@ -35,55 +44,44 @@ namespace _Scripts.Player
         bool _suicideRequested;
         private bool _jumpPressedBuffered;
         
+        private void Awake()
+        {
+            _controller = GetComponent<AdvancedPredictedController>();
+        }
+        
         void Update()
         {
             if (!IsOwner)
                 return;             // ignore spectators / remote avatars
 
-            /* 1) movement axes (WASD) */
-            float mx = Input.GetAxisRaw("Horizontal");           // -1 / 0 / +1
-            float mz = Input.GetAxisRaw("Vertical");
-            Move = new Vector2(mx, mz).normalized;
+            CaptureMovement();
+            CaptureLook();
+            CaptureHeldGameplayButtons();
+            CaptureHotkeys();
+        }
+        
+        private void CaptureMovement()
+        {
+            float horizontal = Input.GetAxisRaw("Horizontal");
 
-            /* 2) raw mouse delta */
-            float lx = Input.GetAxisRaw("Mouse X");
-            float ly = Input.GetAxisRaw("Mouse Y");
+            float vertical = Input.GetAxisRaw("Vertical");
 
-            Vector2 frameLook = new Vector2(lx, ly);
+            Vector2 move = new Vector2(horizontal, vertical);
 
-            Look = frameLook;          // optional: useful for debug/UI
-            _lookAccum += frameLook;   // authoritative tick-consumed look
+            Move = move.sqrMagnitude > 1f ? move.normalized : move;
+        }
+        
+        private void CaptureLook()
+        {
+            Vector2 rawFrameLook = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
 
-            /* 3) buttons ----------------------------------- */
-            InputButtons held  = InputButtons.None;
-            InputButtons down  = InputButtons.None;
-            
-            
-
-            // helper local function
-            static void CaptureKey(ref InputButtons h, ref InputButtons d,
-                KeyCode k, InputButtons flag)
-            {
-                if (Input.GetKey(k))     h |= flag;   // currently held
-                if (Input.GetKeyDown(k)) d |= flag;   // went down this frame
-            }
-
-            CaptureKey(ref held, ref down, KeyCode.LeftAlt,   InputButtons.Jump);
-            CaptureKey(ref held, ref down, KeyCode.LeftShift, InputButtons.Sprint);
-            CaptureKey(ref held, ref down, KeyCode.X,         InputButtons.Crouch);
-            CaptureKey(ref held, ref down, KeyCode.Mouse1,    InputButtons.Jetpack); // RMB
-            CaptureKey(ref held, ref down, KeyCode.Space,     InputButtons.Ski);
-            CaptureKey(ref held, ref down, KeyCode.E,         InputButtons.WallRun);
-            CaptureKey(ref held, ref down, KeyCode.Mouse0,    InputButtons.Fire);    // LMB
-            
             ZoomHeld = Input.GetKey(KeyCode.Z);
 
-            HeldButtons = held;
-            
-            if ((down & InputButtons.Jump) != 0)
-                _jumpPressedBuffered = true;
+            bool zoomLookActive = ZoomHeld && !_thirdPersonView && (_controller == null || !_controller.IsFrozen);
 
-            CaptureHotkeys();
+            float lookScale = zoomLookActive ? zoomLookSensitivityMultiplier : 1f;
+
+            _lookAccum += rawFrameLook * lookScale;
         }
         
         public Vector2 ConsumeLookDelta()
@@ -91,6 +89,58 @@ namespace _Scripts.Player
             Vector2 value = _lookAccum;
             _lookAccum = Vector2.zero;
             return value;
+        }
+        
+        public void SetThirdPersonView(bool thirdPerson)
+        {
+            _thirdPersonView = thirdPerson;
+        }
+
+        public void ClearTransientBuffers()
+        {
+            _lookAccum = Vector2.zero;
+
+            _jumpPressedBuffered = false;
+
+            _weaponDropRequested = false;
+            _togglePackPressed = false;
+            _packDropRequested = false;
+            _viewToggleRequested = false;
+
+            _grenadeUseRequested = false;
+            _medkitUseRequested = false;
+            _beaconUseRequested = false;
+            _flagThrowRequested = false;
+            _suicideRequested = false;
+
+            WeaponSlotInput = -1;
+            MouseWheelDelta = 0;
+        }
+        
+        private void CaptureHeldGameplayButtons()
+        {
+            InputButtons held =
+                InputButtons.None;
+
+            if (Input.GetKey(KeyCode.X))
+                held |= InputButtons.Crouch;
+
+            if (Input.GetKey(KeyCode.Mouse1))
+                held |= InputButtons.Jetpack;
+
+            if (Input.GetKey(KeyCode.Space))
+                held |= InputButtons.Ski;
+
+            if (Input.GetKey(KeyCode.E))
+                held |= InputButtons.WallRun;
+
+            if (Input.GetKey(KeyCode.Mouse0))
+                held |= InputButtons.Fire;
+
+            HeldButtons = held;
+
+            if (Input.GetKeyDown(KeyCode.LeftAlt))
+                _jumpPressedBuffered = true;
         }
     
         void CaptureHotkeys()

@@ -61,6 +61,7 @@ namespace _Scripts.Weapons
         private bool _missingFirePointReported;
         
         static readonly RaycastHit[] AimHits = new RaycastHit[16];
+        static readonly RaycastHit[] SpawnHits = new RaycastHit[16];
 
         #endregion
 
@@ -193,7 +194,7 @@ namespace _Scripts.Weapons
 
             Vector3 shooterVelocity = pose.Velocity;
 
-            return Server_TrySpawnProjectile(muzzleOrigin, fireDir, shooterVelocity, viewOrigin, viewDir, true);
+            return Server_TrySpawnProjectile(muzzleOrigin, fireDir, shooterVelocity, viewOrigin, true);
         }
 
         #endregion
@@ -267,23 +268,11 @@ namespace _Scripts.Weapons
         [Server]
         bool Server_TrySpawnProjectile(Vector3 shotOrigin, Vector3 fireDir, Vector3 shooterVelocity)
         {
-            return Server_TrySpawnProjectile(
-                shotOrigin,
-                fireDir,
-                shooterVelocity,
-                shotOrigin,
-                fireDir,
-                false);
+            return Server_TrySpawnProjectile(shotOrigin, fireDir, shooterVelocity, shotOrigin, false);
         }
 
         [Server]
-        bool Server_TrySpawnProjectile(
-            Vector3 shotOrigin,
-            Vector3 fireDir,
-            Vector3 shooterVelocity,
-            Vector3 viewOrigin,
-            Vector3 viewDir,
-            bool useViewMuzzleProbe)
+        bool Server_TrySpawnProjectile(Vector3 shotOrigin, Vector3 fireDir, Vector3 shooterVelocity, Vector3 viewOrigin, bool useViewMuzzleProbe)
         {
             uint serverNow = TimeManager.Tick;
 
@@ -310,7 +299,7 @@ namespace _Scripts.Weapons
              * Keep this BEFORE taking a pooled projectile so failed energy checks
              * do not create/despawn pooled objects.
              */
-            if (!ServerCanConsume())
+            if (!ServerTryConsumeResource())
                 return false;
 
             if (_wm != null && !_wm.Server_TryConsumeAmmo(def, def.ammoPerShot))
@@ -318,23 +307,24 @@ namespace _Scripts.Weapons
 
             fireDir = GetSafeDirection(fireDir, transform.forward);
 
-            Vector3 spawnDir = fireDir;
             Vector3 velocityDir = GetSafeDirection(AdjustProjectileVelocityDirection(fireDir), fireDir);
 
-            if (Vector3.Dot(velocityDir.normalized, fireDir.normalized) <= 0.25f)
+            if (Vector3.Dot(velocityDir, fireDir) <= 0.25f)
+            {
                 velocityDir = fireDir;
+            }
             
             Vector3 impactPoint = shotOrigin;
-            Vector3 impactNormal = -spawnDir;
+            Vector3 impactNormal = -fireDir;
             Collider impactCollider = null;
 
-            bool hasMuzzleContact = TryGetImmediateMuzzleImpact(shotOrigin, spawnDir, viewOrigin, viewDir, useViewMuzzleProbe,
-                out impactPoint, out impactNormal, out impactCollider);
+            bool hasMuzzleContact = TryGetImmediateMuzzleImpact(shotOrigin, fireDir, viewOrigin, useViewMuzzleProbe,
+                    out impactPoint, out impactNormal, out impactCollider);
 
             bool immediateImpact = hasMuzzleContact && def.resolveImmediateMuzzleImpact;
 
             Vector3 spawnPos = immediateImpact? impactPoint : 
-                ResolveSpawnPosition(shotOrigin, spawnDir, hasMuzzleContact, impactPoint, impactNormal);
+                ResolveSpawnPosition(shotOrigin, fireDir, hasMuzzleContact, impactPoint, impactNormal);
 
             Vector3 finalVel = velocityDir * def.projectileSpeed + shooterVelocity * def.velocityInheritance;
 
@@ -352,7 +342,7 @@ namespace _Scripts.Weapons
                 return false;
             }
 
-            Quaternion rot = GetProjectileRotation(finalVel.sqrMagnitude > 0.0001f ? finalVel.normalized : velocityDir, finalVel);
+            Quaternion rot = GetProjectileRotation(velocityDir, finalVel);
 
             nob.transform.SetPositionAndRotation(spawnPos, rot);
 
@@ -367,7 +357,7 @@ namespace _Scripts.Weapons
             return true;
         }
 
-        protected virtual bool ServerCanConsume() => true;
+        protected virtual bool ServerTryConsumeResource() => true;
 
         #endregion
 
@@ -386,7 +376,7 @@ namespace _Scripts.Weapons
                 ? (float)TimeManager.TickDelta
                 : Time.fixedDeltaTime;
 
-            _fireIntervalTicks = (uint)Mathf.Max(1, Mathf.RoundToInt(fireIntervalSeconds / tickDelta));
+            _fireIntervalTicks = (uint)Mathf.Max(1, Mathf.CeilToInt(fireIntervalSeconds / tickDelta));
             _nextFireTick = 0;
             _nextServerFireTick = 0;
             _fireTimingInitialized = true;
@@ -397,6 +387,8 @@ namespace _Scripts.Weapons
             _nextFireTick = 0;
             _nextServerFireTick = 0;
             _nextLocalFireAudioTick = 0;
+            
+            _missingFirePointReported = false;
         }
 
         #endregion
@@ -414,53 +406,39 @@ namespace _Scripts.Weapons
             return 0.25f;
         }
 
-        protected virtual Vector3 ResolveSpawnPosition(Vector3 shotOrigin, Vector3 fireDir, bool hasMuzzleContact, Vector3 impactPoint,
-            Vector3 impactNormal)
+        protected virtual Vector3 ResolveSpawnPosition(Vector3 shotOrigin, Vector3 fireDir, bool hasMuzzleContact,
+            Vector3 impactPoint, Vector3 impactNormal)
         {
             fireDir = GetSafeDirection(fireDir, transform.forward);
 
             float radius = GetSpawnSafetyRadius();
+
             float clearance = Mathf.Max(radius + spawnBackoff, 0.03f);
 
             /*
-             * Known contact path:
-             * We already know the muzzle/fire path contacted world geometry.
-             * For non-immediate-impact projectiles, such as grenades, spawn the live
-             * projectile just outside the contacted surface and let its own simulation
-             * handle the bounce.
+             * A contact was already found either:
+             * - between the view origin and authoritative muzzle, or
+             * - immediately in front of the muzzle.
+             *
+             * Non-immediate-impact projectiles are placed outside the contacted
+             * surface so their own simulation may continue from a valid position.
              */
             if (hasMuzzleContact)
             {
-                Vector3 normal = impactNormal.sqrMagnitude > 0.0001f
-                    ? impactNormal.normalized
-                    : -fireDir;
+                Vector3 normal = impactNormal.sqrMagnitude > 0.0001f ? impactNormal.normalized : -fireDir;
 
                 return impactPoint + normal * clearance;
             }
 
-            /*
-             * Clear path:
-             * Spawn normally in front of the fire origin. If the short spawn corridor
-             * is obstructed, back off from the hit point.
-             */
-            Vector3 desiredSpawn = shotOrigin + fireDir * spawnOffset;
-
-            if (Physics.SphereCast(shotOrigin, radius, fireDir, out RaycastHit hit, spawnOffset, spawnBlockMask,
-                    QueryTriggerInteraction.Ignore))
-            {
-                if (!IsShooterCollider(hit.collider))
-                    return hit.point - fireDir * spawnBackoff;
-            }
-
-            return desiredSpawn;
+            // The muzzle-forward corridor has already been checked.
+            return shotOrigin + fireDir * spawnOffset;
         }
         
         [Server]
-        bool TryGetImmediateMuzzleImpact(Vector3 shotOrigin, Vector3 fireDir, Vector3 viewOrigin, Vector3 viewDir, bool useViewMuzzleProbe,
+        bool TryGetImmediateMuzzleImpact(Vector3 shotOrigin, Vector3 fireDir, Vector3 viewOrigin, bool useViewMuzzleProbe,
             out Vector3 impactPoint, out Vector3 impactNormal, out Collider impactCollider)
         {
             fireDir = GetSafeDirection(fireDir, transform.forward);
-            viewDir = GetSafeDirection(viewDir, fireDir);
 
             impactPoint = shotOrigin;
             impactNormal = -fireDir;
@@ -469,49 +447,53 @@ namespace _Scripts.Weapons
             float radius = GetSpawnSafetyRadius();
 
             /*
-             * 1. View -> muzzle probe.
+             * 1. View -> authoritative muzzle segment.
              *
-             * Catches the common FPS case where the visual/gameplay muzzle is pushed
-             * into or through a wall. We use hit.point/hit.normal from the cast, not
-             * Collider.ClosestPoint, so this works with normal static mesh colliders.
+             * This checks the real path between the gameplay aim origin and
+             * the authoritative muzzle, including lateral and vertical offsets.
              */
             if (useViewMuzzleProbe)
             {
-                float viewToMuzzleDistance = Vector3.Distance(viewOrigin, shotOrigin);
+                Vector3 viewToMuzzle = shotOrigin - viewOrigin;
+
+                float viewToMuzzleDistance = viewToMuzzle.magnitude;
 
                 if (viewToMuzzleDistance > 0.01f)
                 {
-                    float probeDistance = viewToMuzzleDistance + Mathf.Max(spawnOffset, 0.05f);
+                    Vector3 viewToMuzzleDirection = viewToMuzzle / viewToMuzzleDistance;
 
-                    if (Physics.SphereCast(viewOrigin, radius, viewDir, out RaycastHit viewHit, probeDistance,
-                            spawnBlockMask, QueryTriggerInteraction.Ignore))
+                    if (TrySphereCastIgnoringShooter(viewOrigin, radius, viewToMuzzleDirection, viewToMuzzleDistance,
+                            spawnBlockMask, out RaycastHit viewHit))
                     {
-                        if (!IsShooterCollider(viewHit.collider))
-                        {
-                            impactPoint = viewHit.point;
-                            impactNormal = viewHit.normal.sqrMagnitude > 0.0001f ? viewHit.normal : -fireDir;
-                            impactCollider = viewHit.collider;
-                            return true;
-                        }
+                        impactPoint = viewHit.point;
+
+                        impactNormal = viewHit.normal.sqrMagnitude > 0.0001f ? viewHit.normal : -viewToMuzzleDirection;
+
+                        impactCollider = viewHit.collider;
+
+                        return true;
                     }
                 }
             }
 
             /*
-             * 2. Muzzle forward probe.
+             * 2. Muzzle-forward corridor.
              *
-             * Catches normal point-blank obstruction in front of the muzzle.
+             * Checks the short distance where the projectile will initially
+             * be positioned in front of the authoritative muzzle.
              */
-            if (Physics.SphereCast(shotOrigin, radius, fireDir, out RaycastHit muzzleHit, spawnOffset,
-                    spawnBlockMask, QueryTriggerInteraction.Ignore))
+            float forwardProbeDistance = Mathf.Max(spawnOffset, 0.05f);
+
+            if (TrySphereCastIgnoringShooter(shotOrigin, radius, fireDir, forwardProbeDistance,
+                    spawnBlockMask, out RaycastHit muzzleHit))
             {
-                if (!IsShooterCollider(muzzleHit.collider))
-                {
-                    impactPoint = muzzleHit.point;
-                    impactNormal = muzzleHit.normal.sqrMagnitude > 0.0001f ? muzzleHit.normal : -fireDir;
-                    impactCollider = muzzleHit.collider;
-                    return true;
-                }
+                impactPoint = muzzleHit.point;
+
+                impactNormal = muzzleHit.normal.sqrMagnitude > 0.0001f ? muzzleHit.normal : -fireDir;
+
+                impactCollider = muzzleHit.collider;
+
+                return true;
             }
 
             return false;
@@ -568,10 +550,7 @@ namespace _Scripts.Weapons
         }
 
         [Server]
-        protected virtual Vector3 ResolveSimpleRaycastAimPoint(
-            Vector3 viewOrigin,
-            Vector3 viewDir,
-            float maxDistance)
+        protected virtual Vector3 ResolveSimpleRaycastAimPoint(Vector3 viewOrigin, Vector3 viewDir, float maxDistance)
         {
             if (TryGetAimHit(viewOrigin, viewDir, maxDistance, out RaycastHit hit))
                 return hit.point;
@@ -580,24 +559,15 @@ namespace _Scripts.Weapons
         }
 
         [Server]
-        protected virtual bool TryGetAimHit(
-            Vector3 viewOrigin,
-            Vector3 viewDir,
-            float maxDistance,
-            out RaycastHit bestHit)
+        protected virtual bool TryGetAimHit(Vector3 viewOrigin, Vector3 viewDir, float maxDistance, out RaycastHit bestHit)
         {
             bestHit = default;
 
             if (def == null)
                 return false;
 
-            int hitCount = Physics.RaycastNonAlloc(
-                viewOrigin,
-                viewDir,
-                AimHits,
-                maxDistance,
-                def.aimMask,
-                QueryTriggerInteraction.Ignore);
+            int hitCount = Physics.RaycastNonAlloc(viewOrigin, viewDir, AimHits, maxDistance,
+                def.aimMask, QueryTriggerInteraction.Ignore);
 
             if (hitCount <= 0)
                 return false;
@@ -658,6 +628,43 @@ namespace _Scripts.Weapons
                 return viewDir;
 
             return dir;
+        }
+        
+        private bool TrySphereCastIgnoringShooter(Vector3 origin, float radius, Vector3 direction, float distance,
+            LayerMask mask, out RaycastHit bestHit)
+        {
+            bestHit = default;
+
+            if (distance <= 0f || direction.sqrMagnitude <= 0.0001f)
+                return false;
+
+            direction.Normalize();
+
+            int hitCount = Physics.SphereCastNonAlloc(origin, radius, direction, SpawnHits, distance,
+                mask, QueryTriggerInteraction.Ignore);
+
+            bool found = false;
+            float closestDistance = float.MaxValue;
+
+            for (int i = 0; i < hitCount; i++)
+            {
+                RaycastHit hit = SpawnHits[i];
+
+                if (hit.collider == null)
+                    continue;
+
+                if (IsShooterCollider(hit.collider))
+                    continue;
+
+                if (hit.distance >= closestDistance)
+                    continue;
+
+                closestDistance = hit.distance;
+                bestHit = hit;
+                found = true;
+            }
+
+            return found;
         }
 
         #endregion

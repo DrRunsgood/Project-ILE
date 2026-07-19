@@ -5,12 +5,13 @@ using _Scripts.Game;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
-using _Scripts.Player;    // AdvancedPredictedController
-using _Scripts.Weapons;   // WeaponManager
+using _Scripts.Player;
+using _Scripts.Weapons;
 using _Scripts.Packs;
 using _Scripts.Game.CTF;
 using _Scripts.Combat;
 using _Scripts.Player.Sessions;
+using _Scripts.Game.Teams;
 
 [DisallowMultipleComponent]
 public sealed class PlayerHealth : NetworkBehaviour
@@ -31,17 +32,22 @@ public sealed class PlayerHealth : NetworkBehaviour
     public event Action<int,int> OnHealthChanged;
     public event Action           OnDied;
     public event Action           OnRespawned;
+    
+    public event Action<bool> OnClientAliveStateApplied;
 
     /* ───── authoritative HP ─── */
     readonly SyncVar<int> _hp = new();
 
     /* ───── cached refs ──────── */
-    AdvancedPredictedController ctrl;
-    WeaponManager               wm;
-    PackManager                 pm;
-    Rigidbody                   rb;
-    Collider[]                  cols;
-    Renderer[]                  rends;
+    private AdvancedPredictedController ctrl;
+    private WeaponManager wm;
+    private PackManager pm;
+    private Rigidbody rb;
+    private FlagCarrier flagCarrier;
+    private PlayerIdentity identity;
+
+    private Collider[] cols;
+    private Renderer[] rends;
 
     /* ───── Co-routines ──────── */
     Coroutine _healRoutine;
@@ -52,11 +58,13 @@ public sealed class PlayerHealth : NetworkBehaviour
     {
         _hp.OnChange += HpChanged;
 
-        ctrl  = GetComponent<AdvancedPredictedController>();
-        pm    = GetComponent<PackManager>();
-        wm    = GetComponent<WeaponManager>();
-        rb    = GetComponent<Rigidbody>();
-        cols  = GetComponentsInChildren<Collider>(true);
+        ctrl = GetComponent<AdvancedPredictedController>();
+        pm = GetComponent<PackManager>();
+        wm = GetComponent<WeaponManager>();
+        rb = GetComponent<Rigidbody>();
+        flagCarrier = GetComponent<FlagCarrier>();
+        identity = GetComponent<PlayerIdentity>();
+        cols = GetComponentsInChildren<Collider>(true);
         rends = GetComponentsInChildren<Renderer>(true);
     }
     void OnDestroy() => _hp.OnChange -= HpChanged;
@@ -101,8 +109,8 @@ public sealed class PlayerHealth : NetworkBehaviour
             NetworkObject != null &&
             info.Attacker == NetworkObject;
 
-        if (!isSelfDamage && GameModeManager.Instance != null && !GameModeManager.Instance.AllowTeamDamage
-            && IsSameTeam(info.Attacker, NetworkObject))
+        if (!isSelfDamage && GameModeManager.Instance != null && !GameModeManager.Instance.AllowTeamDamage &&
+            IsSameTeam(info.Attacker))
         {
             return DamageResult.Rejected(info, NetworkObject, before, DamageRejectReason.BlockedByGameRules);
         }
@@ -189,13 +197,6 @@ public sealed class PlayerHealth : NetworkBehaviour
             ctrl?.ResetEnergy();  
     }
 
-    /* ─── death ───────────────── */
-    [Server]
-    void HandleDeath(NetworkObject killer)
-    {
-        HandleDeath(killer, default);
-    }
-
     [Server]
     void HandleDeath(NetworkObject killer, DamageResult result)
     {
@@ -203,7 +204,7 @@ public sealed class PlayerHealth : NetworkBehaviour
 
         Debug.Log($"[PlayerHealth] {name} died. Checking for carried flag.");
 
-        GetComponent<FlagCarrier>()?.Server_DropCarriedFlagOnDeath();
+        flagCarrier?.Server_DropCarriedFlagOnDeath();
 
         wm?.DropAll();
         pm?.Server_Drop();
@@ -222,10 +223,10 @@ public sealed class PlayerHealth : NetworkBehaviour
 
         // Mark session dead after game mode has recorded the death.
         // This may trigger Arena elimination and move the round to PostRound.
-        PlayerIdentity identity = GetComponent<PlayerIdentity>();
-
         if (PlayerSessionManager.Instance != null)
+        {
             PlayerSessionManager.Instance.ServerMarkDead(identity);
+        }
 
         float delay = GameModeManager.Instance != null
             ? GameModeManager.Instance.GetRespawnDelay(this)
@@ -254,7 +255,11 @@ public sealed class PlayerHealth : NetworkBehaviour
     [Server]
     public void RespawnNow()
     {
-        SpawnManager.Instance?.TryMovePlayerToSpawn(NetworkObject);
+        if (SpawnManager.Instance == null || !SpawnManager.Instance.TryMovePlayerToSpawn(NetworkObject))
+        {
+            Debug.LogError($"[PlayerHealth] Failed to respawn '{name}': no valid spawn was available.", this);
+            return;
+        }
 
         rb.isKinematic = false;
 
@@ -263,13 +268,14 @@ public sealed class PlayerHealth : NetworkBehaviour
         _hp.Value = maxHp;
 
         SetPlayable(true);
-        ApplyAliveState(true); // server-side physics/hitboxes
-        RpcSetAlive(true);     // clients/observers
+        ApplyAliveState(true);
+        RpcSetAlive(true);
 
         if (PlayerSessionManager.Instance != null && Owner != null)
             PlayerSessionManager.Instance.ServerMarkSpawnedAlive(Owner);
-
+        
         GameModeManager.Instance?.NotifyPlayerRespawned(this);
+
         OnRespawned?.Invoke();
     }
     
@@ -397,37 +403,36 @@ public sealed class PlayerHealth : NetworkBehaviour
         }
     }
     
-    bool IsSameTeam(NetworkObject attacker, NetworkObject victim)
+    private bool IsSameTeam(NetworkObject attacker)
     {
-        if (attacker == null || victim == null)
-            return false;
-
-        if (!attacker.TryGetComponent(out PlayerIdentity attackerIdentity))
-            return false;
-
-        if (!victim.TryGetComponent(out PlayerIdentity victimIdentity))
-            return false;
-
-        if (attackerIdentity.Team == _Scripts.Game.Teams.TeamId.None ||
-            victimIdentity.Team == _Scripts.Game.Teams.TeamId.None)
+        if (attacker == null || identity == null)
         {
             return false;
         }
 
-        return attackerIdentity.Team == victimIdentity.Team;
+        if (!attacker.TryGetComponent(out PlayerIdentity attackerIdentity))
+        {
+            return false;
+        }
+
+        TeamId attackerTeam = attackerIdentity.Team;
+
+        TeamId victimTeam = identity.Team;
+
+        if (attackerTeam == TeamId.None || victimTeam == TeamId.None)
+        {
+            return false;
+        }
+
+        return attackerTeam == victimTeam;
     }
 
     /* ---------- one tiny RPC toggles visuals & hitboxes everywhere ---------- */
     [ObserversRpc(BufferLast = false, ExcludeOwner = false)]
-    void RpcSetAlive(bool alive)
+    private void RpcSetAlive(bool alive)
     {
         ApplyAliveState(alive);
 
-        if (IsOwner)
-        {
-            FpsCameraFollow cam = FindAnyObjectByType<FpsCameraFollow>();
-            if (cam != null)
-                cam.SetTargetAlive(alive);
-        }
+        OnClientAliveStateApplied?.Invoke(alive);
     }
 }

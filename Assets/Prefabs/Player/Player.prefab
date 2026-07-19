@@ -131,6 +131,7 @@ MonoBehaviour:
   <PredictedSpawn>k__BackingField: {fileID: 0}
   <PredictedOwner>k__BackingField: {fileID: 0}
   NetworkBehaviours:
+  - {fileID: 7368350976347599779}
   - {fileID: 2929346116547752253}
   - {fileID: -3159674986349750010}
   - {fileID: 8501514172621720761}
@@ -158,7 +159,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584177060554111797
+  _initializedTimestamp: -8584171370943553293
 --- !u!54 &7001912800235990901
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -221,11 +222,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8e85646f45b79374e893db82c02e29cd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerPresentation
-  _componentIndexCache: 255
+  _componentIndexCache: 0
   _addedNetworkObject: {fileID: 6832439599154668905}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 6832439599154668905}
   worldModelRoot: {fileID: 3259041478802062051}
   thirdPersonPresentationRoot: {fileID: 7459789638015051322}
+  cameraFollowSmoother: {fileID: 3289860153973179968}
+  graphicsRootSmoother: {fileID: 759703639484445222}
   worldPlayerLayerName: Player
   ownerThirdPersonLayerName: TP_Only
 --- !u!114 &2929346116547752253
@@ -240,9 +243,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 90606f2b5258ae0438400ce5fba6a2fd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 0
+  _componentIndexCache: 1
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
+  zoomLookSensitivityMultiplier: 0.45
 --- !u!114 &-3159674986349750010
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -255,7 +259,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9aaa7f99bf513c5438155d713a12d393, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 1
+  _componentIndexCache: 2
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   maxHp: 100
@@ -272,7 +276,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ec967c5d64ad51a4d83d1fa1e57d4bb4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 2
+  _componentIndexCache: 3
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   orientation: {fileID: 9128714729413085702}
@@ -363,7 +367,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 97294ba1e2d1c964f939265702e2730a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 3
+  _componentIndexCache: 4
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   firstPersonAnchor: {fileID: 0}
@@ -391,7 +395,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f3ef7529f2bc8e245ac51ce1d76eb5d7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 4
+  _componentIndexCache: 5
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   packAnchor: {fileID: 2388324582239347131}
@@ -415,7 +419,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8ba9a6fc05ee3a04aa8fe890761f9e4b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 5
+  _componentIndexCache: 6
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
 --- !u!114 &-2565893807731604051
@@ -430,7 +434,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5383e2bffb21e7d4d8ad255f3b8bafe3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerIdentity
-  _componentIndexCache: 6
+  _componentIndexCache: 7
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
 --- !u!114 &8685019151037142777
@@ -445,7 +449,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 79c2a4af0f7799f479baf87083cd3212, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerIdentityNameSubmitter
-  _componentIndexCache: 7
+  _componentIndexCache: 8
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
 --- !u!114 &-5001881930451287172
@@ -460,7 +464,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fdde88d33acc10418bacdff07ddc757, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerStats
-  _componentIndexCache: 8
+  _componentIndexCache: 9
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
 --- !u!114 &4467132549693816983
@@ -488,7 +492,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0fd1774f37bcd044588155f60f6db247, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FlagCarrier
-  _componentIndexCache: 9
+  _componentIndexCache: 10
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   carryAnchor: {fileID: 7098417995176220013}
@@ -504,7 +508,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3e90b483a2a6bfd4f9ca4091839677f2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerCombatFeedback
-  _componentIndexCache: 10
+  _componentIndexCache: 11
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   minHitMarkerIntervalSeconds: 0.06
@@ -520,7 +524,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 76e4ed71ea5f7e146a37f2fe0461b3ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerImpactDamage
-  _componentIndexCache: 11
+  _componentIndexCache: 12
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   enableImpactDamage: 1
@@ -549,7 +553,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a9be93b7b79931e429f9f633bbd4e123, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerDisconnectCleanup
-  _componentIndexCache: 12
+  _componentIndexCache: 13
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   fallbackDisconnectDelay: 0.35
@@ -566,7 +570,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 674ab5ffb5311cb40be67d997bfae0a1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerSuicideController
-  _componentIndexCache: 13
+  _componentIndexCache: 14
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   allowSuicide: 1
@@ -582,7 +586,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b41afc3e145b411408f0b14985dd85c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerOutOfBoundsController
-  _componentIndexCache: 14
+  _componentIndexCache: 15
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   enableOutOfBounds: 1
@@ -633,13 +637,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Transforming.Beta.NetworkTickSmoother
-  _componentIndexCache: 15
+  _componentIndexCache: 16
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:
     TargetTransform: {fileID: 5541322204877821614}
     DetachOnStart: 1
-    AttachOnStop: 0
+    AttachOnStop: 1
   _controllerMovementSettings:
     EnableTeleport: 0
     TeleportThreshold: 0
@@ -653,7 +657,7 @@ MonoBehaviour:
     TeleportThreshold: 0
     AdaptiveInterpolationValue: 0
     InterpolationValue: 1
-    SmoothedProperties: 4294967295
+    SmoothedProperties: 1
     SnapNonSmoothedProperties: 0
 --- !u!1 &2646340587292378190
 GameObject:
@@ -1104,7 +1108,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 16
+  _componentIndexCache: 17
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:
@@ -1122,7 +1126,7 @@ MonoBehaviour:
   _spectatorMovementSettings:
     EnableTeleport: 0
     TeleportThreshold: 1
-    AdaptiveInterpolationValue: 3
-    InterpolationValue: 2
+    AdaptiveInterpolationValue: 0
+    InterpolationValue: 1
     SmoothedProperties: 3
     SnapNonSmoothedProperties: 0

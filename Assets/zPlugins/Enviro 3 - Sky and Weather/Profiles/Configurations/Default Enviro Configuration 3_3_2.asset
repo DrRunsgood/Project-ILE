@@ -394,6 +394,13 @@ MonoBehaviour:
   - {fileID: 0}
   - {fileID: 0}
   - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
   customFogDensityModifer: 1
   fogMat: {fileID: 0}
   volumetricsMat: {fileID: 0}
@@ -2063,7 +2070,7 @@ MonoBehaviour:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    temperature: 21.073233
+    temperature: 21.073093
     temperatureWeatherMod: 0
     temperatureCustomMod: 0
     temperatureChangingSpeed: 0.1
@@ -4479,9 +4486,9 @@ MonoBehaviour:
   preset: {fileID: 11400000, guid: 0fcdd472bd6a8ec429fc1e9bc978c4fa, type: 2}
   showCirrusCloudsControls: 0
   show2DCloudsControls: 0
-  cloudFlatBaseAnim: {x: -0.58030725, y: 0.27510148}
-  cloudFlatDetailAnim: {x: -0.9060235, y: -0.62441343}
-  cirrusAnim: {x: 0.7098352, y: -0.8624871}
+  cloudFlatBaseAnim: {x: 0.69498205, y: 0.27510148}
+  cloudFlatDetailAnim: {x: -0.5298777, y: -0.62441343}
+  cirrusAnim: {x: -0.6525371, y: -0.8624871}
 --- !u!114 &6137975383063632260
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5374,8 +5381,8 @@ MonoBehaviour:
   showDensityControls: 0
   showTextureControls: 0
   showWindControls: 0
-  cloudAnimLayer1: {x: 0.18524773, y: 0.27967656, z: -0.89150566}
+  cloudAnimLayer1: {x: 0.5613393, y: 0.27967656, z: 0.35739353}
   cloudAnimLayer2: {x: 0, y: 0, z: 0}
-  cloudAnimNonScaledLayer1: {x: 0.8495452, y: -0.06176722, z: -5.9306936}
+  cloudAnimNonScaledLayer1: {x: 0.9005551, y: -0.06176722, z: -6.185672}
   cloudAnimNonScaledLayer2: {x: 0, y: 0, z: 0}
   weatherMap: {fileID: 0}

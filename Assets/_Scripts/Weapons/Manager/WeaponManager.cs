@@ -115,6 +115,25 @@ namespace _Scripts.Weapons
             GiveDefaultQuickItems();
         }
         
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+
+            if (IsOwner && _controller != null)
+                _controller.OnLocalPoseResetApplied += HandleLocalPoseResetApplied;
+            
+        }
+        
+        public override void OnStopClient()
+        {
+            if (_controller != null)
+                _controller.OnLocalPoseResetApplied -= HandleLocalPoseResetApplied;
+            
+            ClearPresentationViews();
+
+            base.OnStopClient();
+        }
+        
         public override void OnSpawnServer(NetworkConnection conn)
         {
             base.OnSpawnServer(conn);
@@ -125,33 +144,6 @@ namespace _Scripts.Weapons
 
             RpcClient_SyncFullInventory(conn, list);
         }
-
-        void ValidateWeaponAnchors()
-        {
-            if (gameplayWeaponAnchor == null)
-            {
-                Debug.LogError($"{name}: GameplayWeaponAnchor is not assigned.", this);
-            }
-
-            if (thirdPersonAimPivot == null)
-            {
-                Debug.LogError($"{name}: ThirdPersonAimPivot is not assigned.", this);
-            }
-
-            if (thirdPersonWeaponAnchor == null)
-            {
-                Debug.LogError($"{name}: ThirdPersonWeaponAnchor is not assigned.", this);
-            }
-        }
-
-        void OnActiveWeaponChanged(NetworkObject prev, NetworkObject next, bool asServer)
-        {
-            RefreshActive();
-            
-            if (IsOwner)
-                _localActiveWeaponReadyTick = CalculateWeaponReadyTick(next);
-        }
-
         #endregion
         
         private void LateUpdate()
@@ -328,7 +320,7 @@ namespace _Scripts.Weapons
             {
                 bool active = weapon.NetworkObj == wanted;
 
-                weapon.SetActive(active);
+                weapon.SetSelected(active);
 
                 if (IsOwner && _fpViews.TryGetValue(weapon.NetworkObj, out GameObject fpView))
                 {
@@ -356,6 +348,8 @@ namespace _Scripts.Weapons
         [TargetRpc]
         void RpcClient_SyncFullInventory(NetworkConnection _, NetworkObject[] list)
         {
+            ClearPresentationViews();
+            
             _weapons.Clear();
 
             foreach (NetworkObject nob in list)
@@ -876,7 +870,34 @@ namespace _Scripts.Weapons
 
             GiveDefaultQuickItems();
         }
+        
+        private void ClearPresentationViews()
+        {
+            foreach (GameObject view in _fpViews.Values)
+            {
+                if (view != null)
+                    Destroy(view);
+            }
 
+            _fpViews.Clear();
+
+            foreach (GameObject view in _tpViews.Values)
+            {
+                if (view != null)
+                    Destroy(view);
+            }
+
+            _tpViews.Clear();
+
+            _renderPitchInitialized = false;
+        }
+        
+        private void HandleLocalPoseResetApplied()
+        {
+            _renderPitch = 0f;
+            _renderPitchVelocity = 0f;
+            _renderPitchInitialized = false;
+        }
         #endregion
 
         #region Helper Class
@@ -899,18 +920,10 @@ namespace _Scripts.Weapons
                 _pw = nob.GetComponent<ProjectileWeapon>();
             }
 
-            public void SetActive(bool active)
+            public void SetSelected(bool selected)
             {
-                if (_pw && _pw.isHiddenQuickItem)
-                {
-                    _pw.IsActive = active;
-                    return;
-                }
-
-                NetworkObj.gameObject.SetActive(active);
-
-                if (_pw)
-                    _pw.IsActive = active;
+                if (_pw != null)
+                    _pw.IsActive = selected;
             }
         }
         
@@ -950,6 +963,32 @@ namespace _Scripts.Weapons
         }
 
         #endregion
+        
+        void ValidateWeaponAnchors()
+        {
+            if (gameplayWeaponAnchor == null)
+            {
+                Debug.LogError($"{name}: GameplayWeaponAnchor is not assigned.", this);
+            }
+
+            if (thirdPersonAimPivot == null)
+            {
+                Debug.LogError($"{name}: ThirdPersonAimPivot is not assigned.", this);
+            }
+
+            if (thirdPersonWeaponAnchor == null)
+            {
+                Debug.LogError($"{name}: ThirdPersonWeaponAnchor is not assigned.", this);
+            }
+        }
+
+        void OnActiveWeaponChanged(NetworkObject prev, NetworkObject next, bool asServer)
+        {
+            RefreshActive();
+            
+            if (IsOwner)
+                _localActiveWeaponReadyTick = CalculateWeaponReadyTick(next);
+        }
         
         static void SetRenderersEnabled(GameObject root, bool enabled)
         {

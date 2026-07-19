@@ -83,6 +83,6 @@ namespace _Scripts.Weapons
             return Vector3.RotateTowards(aimDir,Vector3.up, arcRadians, 0f).normalized;
         }
 
-        protected override bool ServerCanConsume() => true;
+        protected override bool ServerTryConsumeResource() => true;
     }
 }

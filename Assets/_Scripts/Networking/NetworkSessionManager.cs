@@ -10,6 +10,9 @@ using FishNet.Transporting;
 using _Scripts.Game;
 using _Scripts.Player.Sessions;
 using _Scripts.Server;
+using UnityScene = UnityEngine.SceneManagement.Scene;
+using UnitySceneManager = UnityEngine.SceneManagement.SceneManager;
+using UnityLoadSceneMode = UnityEngine.SceneManagement.LoadSceneMode;
 
 namespace _Scripts.Networking
 {
@@ -70,6 +73,9 @@ namespace _Scripts.Networking
             {
                 Debug.LogWarning("[NetworkSessionManager] NetworkManager missing during event subscription.");
             }
+            
+            UnitySceneManager.sceneLoaded += HandleUnitySceneLoaded;
+            UnitySceneManager.sceneUnloaded += HandleUnitySceneUnloaded;
 
             LocalPlayerContext.OnLocalPlayerReady += HandleLocalPlayerReady;
             LocalPlayerContext.OnLocalPlayerCleared += HandleLocalPlayerCleared;
@@ -88,6 +94,9 @@ namespace _Scripts.Networking
                 networkManager.ServerManager.OnServerConnectionState -= HandleServerConnectionState;
             }
 
+            UnitySceneManager.sceneLoaded -= HandleUnitySceneLoaded;
+            UnitySceneManager.sceneUnloaded -= HandleUnitySceneUnloaded;
+            
             LocalPlayerContext.OnLocalPlayerReady -= HandleLocalPlayerReady;
             LocalPlayerContext.OnLocalPlayerCleared -= HandleLocalPlayerCleared;
 
@@ -463,6 +472,13 @@ namespace _Scripts.Networking
             
         private void UnloadGameplayScenesLocal()
         {
+            UnityScene bootScene = UnitySceneManager.GetSceneByName(bootSceneName);
+
+            if (bootScene.IsValid() && bootScene.isLoaded)
+            {
+                UnitySceneManager.SetActiveScene(
+                    bootScene);
+            }
             // For now, unload every loaded scene except BootScene.
             // This is simple and correct for the current architecture:
             // BootScene persists; gameplay scenes are additive.
@@ -573,6 +589,70 @@ namespace _Scripts.Networking
 
             if (graphicsStripper == null)
                 graphicsStripper = FindAnyObjectByType<DedicatedServerGraphicsStripper>();
+        }
+        
+        private void HandleUnitySceneLoaded(UnityScene scene, UnityLoadSceneMode mode)
+        {
+            if (!scene.IsValid() || !scene.isLoaded)
+                return;
+
+            if (scene.name == bootSceneName)
+                return;
+
+            /*
+             * Gameplay maps are loaded additively, so Unity otherwise keeps
+             * BootScene active. The active scene supplies the environment and
+             * lighting settings.
+             */
+            if (!UnitySceneManager.SetActiveScene(scene))
+            {
+                Debug.LogWarning($"[NetworkSessionManager] Could not make gameplay scene " + $"'{scene.name}' active.");
+                return;
+            }
+
+            Debug.Log(
+                $"[NetworkSessionManager] Active gameplay scene set: " + $"{scene.name}");
+        }
+
+        private void HandleUnitySceneUnloaded(UnityScene unloadedScene)
+        {
+            if (unloadedScene.name == bootSceneName)
+                return;
+
+            /*
+             * During disconnect or the gap between map unload/load,
+             * restore BootScene as active when no gameplay scene remains.
+             */
+            for (int i = 0; i < UnitySceneManager.sceneCount; i++)
+            {
+                UnityScene loadedScene = UnitySceneManager.GetSceneAt(i);
+
+                if (!loadedScene.IsValid() || !loadedScene.isLoaded)
+                {
+                    continue;
+                }
+
+                if (loadedScene.name != bootSceneName)
+                {
+                    /*
+                     * Another gameplay scene is still loaded. Its sceneLoaded
+                     * callback will make, or already made, it active.
+                     */
+                    return;
+                }
+            }
+
+            UnityScene bootScene = UnitySceneManager.GetSceneByName(bootSceneName);
+
+            if (!bootScene.IsValid() || !bootScene.isLoaded)
+            {
+                return;
+            }
+
+            if (UnitySceneManager.SetActiveScene(bootScene))
+            {
+                Debug.Log("[NetworkSessionManager] BootScene restored as active.");
+            }
         }
     }
 }
