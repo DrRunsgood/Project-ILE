@@ -1,9 +1,22 @@
+using System.Collections.Generic;
 using UnityEngine;
 using _Scripts.Player;
 
 [DisallowMultipleComponent]
 public sealed class PlayerIFFTarget : MonoBehaviour
 {
+    private static readonly List<PlayerIFFTarget> _activeTargets = new();
+
+    public static IReadOnlyList<PlayerIFFTarget> ActiveTargets =>
+        _activeTargets;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics()
+    {
+        _activeTargets.Clear();
+    }
+    
+    
     [SerializeField]
     private Transform iffAnchor;
 
@@ -35,9 +48,10 @@ public sealed class PlayerIFFTarget : MonoBehaviour
 
     private void OnEnable()
     {
-        _clientAliveApplied = Health == null || Health.IsAlive;
+        if (!_activeTargets.Contains(this)) _activeTargets.Add(this);
 
-        _presentationPoseReady = _clientAliveApplied;
+        _clientAliveApplied = true;
+        _presentationPoseReady = true;
 
         if (Health != null)
             Health.OnClientAliveStateApplied += HandleClientAliveStateApplied;
@@ -46,19 +60,24 @@ public sealed class PlayerIFFTarget : MonoBehaviour
         if (Presentation != null)
         {
             Presentation.OnPresentationPoseResetStarted += HandlePresentationPoseResetStarted;
+
             Presentation.OnPresentationPoseResetApplied += HandlePresentationPoseResetApplied;
         }
     }
 
     private void OnDisable()
     {
+        _activeTargets.Remove(this);
+
         if (Health != null)
             Health.OnClientAliveStateApplied -= HandleClientAliveStateApplied;
+        
 
         if (Presentation != null)
         {
-            Presentation.OnPresentationPoseResetApplied -= HandlePresentationPoseResetApplied;
             Presentation.OnPresentationPoseResetStarted -= HandlePresentationPoseResetStarted;
+
+            Presentation.OnPresentationPoseResetApplied -= HandlePresentationPoseResetApplied;
         }
     }
 

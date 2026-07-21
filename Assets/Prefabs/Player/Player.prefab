@@ -231,6 +231,7 @@ MonoBehaviour:
   graphicsRootSmoother: {fileID: 759703639484445222}
   worldPlayerLayerName: Player
   ownerThirdPersonLayerName: TP_Only
+  observerResetArrivalTolerance: 2
 --- !u!114 &2929346116547752253
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -282,8 +283,8 @@ MonoBehaviour:
   orientation: {fileID: 9128714729413085702}
   aimAnchor: {fileID: 448569795313915978}
   cameraFollowTarget: {fileID: 5977801183613013475}
-  yawSensitivity: 2
-  pitchSensitivity: 2
+  yawSensitivity: 1
+  pitchSensitivity: 1
   minPitch: -90
   maxPitch: 90
   groundMoveSpeed: 10
@@ -656,8 +657,8 @@ MonoBehaviour:
     EnableTeleport: 0
     TeleportThreshold: 0
     AdaptiveInterpolationValue: 0
-    InterpolationValue: 1
-    SmoothedProperties: 1
+    InterpolationValue: 0
+    SmoothedProperties: 0
     SnapNonSmoothedProperties: 0
 --- !u!1 &2646340587292378190
 GameObject:

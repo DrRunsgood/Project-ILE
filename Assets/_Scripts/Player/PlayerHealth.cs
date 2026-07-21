@@ -192,9 +192,6 @@ public sealed class PlayerHealth : NetworkBehaviour
     void HpChanged(int prev, int next, bool asServer)
     {
         OnHealthChanged?.Invoke(next, maxHp);
-        
-        if (prev == 0 && next > 0)
-            ctrl?.ResetEnergy();  
     }
 
     [Server]

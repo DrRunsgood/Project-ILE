@@ -237,14 +237,14 @@ namespace _Scripts.Player
         // Knockback
         private Vector3? _pendingKnockback;
         private float? _pendingTempDrag;
-        private bool _heartBeat;  // Used to mark replicate packet dirty when receiving knockback to keep kb responsive but keep network efficienies
+        private bool _knockbackDirtyToggle;  // Used to mark replicate packet dirty when receiving knockback to keep kb responsive but keep network efficienies
         
         const float LookQuantScale = 512f;
         private const byte MovementStateMask = 0b0000_0111;
         private const byte JetLockedOutMask = 0b0000_1000;
         
         private const byte MoveMask = 0b0000_1111;
-        private const byte HeartEventFlag = 0b0001_0000;
+        private const byte KnockbackDirtyToggleFlag = 0b0001_0000;
         private const byte JumpPressedEventFlag = 0b0010_0000;
         
         #endregion
@@ -266,7 +266,7 @@ namespace _Scripts.Player
 
                 MoveAndEvents = (byte)(NetUtils.MoveCodec.Pack(move.x, move.y) & MoveMask);
 
-                if (heart) MoveAndEvents |= HeartEventFlag;
+                if (heart) MoveAndEvents |= KnockbackDirtyToggleFlag;
 
                 if (jumpPressed) MoveAndEvents |= JumpPressedEventFlag;
 
@@ -351,7 +351,7 @@ namespace _Scripts.Player
             _poseResetSequence = 0;
             _lastAppliedPoseResetSequence = 0;
             _poseResetSequenceInitialized = false;
-            _heartBeat = false;
+            _knockbackDirtyToggle = false;
             _pendingKnockback = null;
             _pendingTempDrag = null;
             _jumpLockTicks = 0;
@@ -407,7 +407,7 @@ namespace _Scripts.Player
                         ih.Move,
                         lookDelta,
                         ih.HeldButtons,
-                        _heartBeat,
+                        _knockbackDirtyToggle,
                         jumpPressed);
 
                 Replicate(movementData);
@@ -1430,7 +1430,7 @@ namespace _Scripts.Player
                 if (tempDrag >= 0f) _rb.linearDamping = tempDrag;
                 _predictionRb.AddForce(impulse, ForceMode.Impulse);
             }
-            _heartBeat = !_heartBeat;
+            _knockbackDirtyToggle = !_knockbackDirtyToggle;
         }
         
         private void ApplyKnockback()
@@ -1448,6 +1448,7 @@ namespace _Scripts.Player
         #endregion
         
         #region respawn
+        [Server]
         public void HardResetMovement(Vector3 position, Quaternion rotation)
         {
             // Reset Rigidbody state.
@@ -1469,10 +1470,10 @@ namespace _Scripts.Player
             _pendingKnockback = null;
             _pendingTempDrag = null;
 
-            // Reset player scale in case respawn occurs while crouched.
+            // Restore normal scale.
             transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z);
 
-            // Reset wall-related transient state.
+            // Reset wall state.
             _surfaceProbe?.ClearWallProbe();
 
             _canWallRun = false;
@@ -1486,28 +1487,21 @@ namespace _Scripts.Player
             _wallRunDirection = Vector3.zero;
             _targetWallRunSpeed = 0f;
 
-            // Apply spawn-facing yaw and reset pitch.
+            // Reset look.
             float yaw = rotation.eulerAngles.y;
 
             _lookModule.ResetLook(_rb, aimAnchor, yaw, 0f);
 
-            // Force transform alignment after all Rigidbody/reset operations.
             transform.SetPositionAndRotation(position, rotation);
-            
-            if (IsServerStarted)
-            {
-                unchecked
-                {
-                    _poseResetSequence++;
-                }
 
-                /*
-                 * Keep zero reserved for "no reset received."
-                 */
-                if (_poseResetSequence == 0)
-                    _poseResetSequence = 1;
+            unchecked
+            {
+                _poseResetSequence++;
             }
-            
+
+            if (_poseResetSequence == 0)
+                _poseResetSequence = 1;
+
             RpcNotifyObserverPoseReset(_poseResetSequence, position, rotation);
         }
         

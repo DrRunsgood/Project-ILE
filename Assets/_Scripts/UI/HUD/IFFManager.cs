@@ -22,13 +22,14 @@ public sealed class IFFManager : MonoBehaviour
 
     [Header("LOS")]
     [SerializeField] private LayerMask losMask = ~0;
-    [SerializeField] private float losCheckInterval = 0.1f;
+    [SerializeField] [Min(0.01f)] private float losCheckInterval = 0.1f;
+    [SerializeField] [Min(4)] private int losHitBufferSize = 32;
+
+    private RaycastHit[] _losHitBuffer;
 
     [Header("Colors")]
     [SerializeField] private Color teammateColor = Color.cyan;
     [SerializeField] private Color enemyColor = Color.red;
-
-    private float _nextFocusedHealthDebugTime;
 
     private readonly Dictionary<PlayerIFFTarget, IFFWidget> _widgets = new();
     private readonly Dictionary<PlayerIFFTarget, float> _nextLosCheck = new();
@@ -42,6 +43,8 @@ public sealed class IFFManager : MonoBehaviour
     {
         if (!root)
             root = (RectTransform)transform;
+        
+        _losHitBuffer = new RaycastHit[Mathf.Max(4, losHitBufferSize)];
 
         LocalPlayerContext.OnLocalPlayerReady += HandleLocalPlayerReady;
         LocalPlayerContext.OnLocalPlayerCleared += HandleLocalPlayerCleared;
@@ -79,8 +82,35 @@ public sealed class IFFManager : MonoBehaviour
         if (!_localIdentity || !_localTransform)
             TryBindExistingLocalPlayer();
 
-        if (!targetCamera || !targetCamera.gameObject.activeInHierarchy)
+        if (!_localIdentity || !_localTransform || !widgetPrefab || !root)
+        {
+            HideFocusedPanel();
+            return;
+        }
+
+        if (!targetCamera || !targetCamera.isActiveAndEnabled)
+        {
             targetCamera = Camera.main;
+        }
+
+        /*
+         * Camera.main is expected to be null on a dedicated server
+         * and may briefly be null during client presentation binding.
+         */
+        if (!targetCamera || !targetCamera.isActiveAndEnabled)
+        {
+            HideFocusedPanel();
+            return;
+        }
+
+        Transform cameraTransform = targetCamera.transform;
+
+        Vector3 cameraPosition = cameraTransform.position;
+
+        Vector2 screenCenter =
+            new Vector2(
+                Screen.width * 0.5f,
+                Screen.height * 0.5f);
 
         if (!_localIdentity || !_localTransform || !targetCamera || !widgetPrefab || !root)
         {
@@ -95,24 +125,17 @@ public sealed class IFFManager : MonoBehaviour
         Color focusedTargetColor = Color.white;
         float focusedTargetHealth01 = 1f;
         string focusedTargetName = string.Empty;
+        
+        IReadOnlyList<PlayerIFFTarget> targets = PlayerIFFTarget.ActiveTargets;
 
-        Vector2 screenCenter = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-
-        PlayerIFFTarget[] targets = FindObjectsByType<PlayerIFFTarget>(FindObjectsInactive.Exclude);
-
-        for (int i = 0; i < targets.Length; i++)
+        for (int i = 0; i < targets.Count; i++)
         {
             PlayerIFFTarget target = targets[i];
 
             if (!target || !target.Identity || target.Identity == _localIdentity)
                 continue;
 
-            bool visible = ShouldShow(
-                target,
-                out bool focused,
-                out float alpha,
-                out Color color,
-                out Vector3 screenPos);
+            bool visible = ShouldShow(target, cameraPosition, screenCenter, out bool focused, out float alpha, out Color color, out Vector3 screenPos);
 
             if (!visible)
             {
@@ -148,6 +171,12 @@ public sealed class IFFManager : MonoBehaviour
         if (focusedTarget != null)
             focusedPanel.SetData(focusedTargetName, focusedTargetHealth01, focusedTargetColor);
         else
+            focusedPanel.SetVisible(false);
+    }
+    
+    private void HideFocusedPanel()
+    {
+        if (focusedPanel != null)
             focusedPanel.SetVisible(false);
     }
 
@@ -200,7 +229,8 @@ public sealed class IFFManager : MonoBehaviour
         return created;
     }
 
-    private bool ShouldShow(PlayerIFFTarget target, out bool focused, out float alpha, out Color color, out Vector3 screenPos)
+    private bool ShouldShow(PlayerIFFTarget target, Vector3 cameraPosition, Vector2 screenCenter, out bool focused, out float alpha,
+        out Color color, out Vector3 screenPos)    
     {
         focused = false;
         alpha = 0f;
@@ -211,7 +241,12 @@ public sealed class IFFManager : MonoBehaviour
             return false;
 
         if (!target.CanShowIFF)
+        {
+            _nextLosCheck.Remove(target);
+            _losVisible.Remove(target);
+
             return false;
+        }
         
         Transform anchor = target.Anchor;
         if (anchor == null)
@@ -219,28 +254,30 @@ public sealed class IFFManager : MonoBehaviour
 
         Vector3 worldPos = anchor.position;
 
-        Vector3 toTarget = worldPos - targetCamera.transform.position;
-        float distance = toTarget.magnitude;
-
-        bool teammate =
-            _localIdentity.Team != TeamId.None &&
-            target.Identity.Team != TeamId.None &&
-            target.Identity.Team == _localIdentity.Team;
+        bool teammate = _localIdentity.Team != TeamId.None && target.Identity.Team != TeamId.None &&
+                        target.Identity.Team == _localIdentity.Team;
 
         float maxDistance = teammate ? teammateMaxDistance : enemyMaxDistance;
+        
+        Vector3 toTarget = worldPos - cameraPosition;
 
-        if (distance > maxDistance)
+        float distanceSqr = toTarget.sqrMagnitude;
+
+        float maxDistanceSqr = maxDistance * maxDistance;
+
+        if (distanceSqr > maxDistanceSqr)
             return false;
-
+        
+        float distance = Mathf.Sqrt(distanceSqr);
+        
         screenPos = targetCamera.WorldToScreenPoint(worldPos);
 
         if (screenPos.z <= 0f)
             return false;
 
-        if (!HasLineOfSight(target, worldPos, distance))
+        if (!HasLineOfSight(target, cameraPosition, worldPos, distance))
             return false;
-
-        Vector2 screenCenter = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        
         Vector2 screenPoint = new Vector2(screenPos.x, screenPos.y);
         float screenDist = Vector2.Distance(screenPoint, screenCenter);
 
@@ -254,48 +291,97 @@ public sealed class IFFManager : MonoBehaviour
         return true;
     }
 
-    private bool HasLineOfSight(PlayerIFFTarget target, Vector3 worldPos, float distance)
+    private bool HasLineOfSight(PlayerIFFTarget target, Vector3 origin, Vector3 worldPosition, float distance)
     {
-        if (!_nextLosCheck.TryGetValue(target, out float next) || Time.time >= next)
+        if (_nextLosCheck.TryGetValue(target, out float nextCheck) && Time.time < nextCheck)
         {
-            _nextLosCheck[target] = Time.time + losCheckInterval;
-
-            Vector3 origin = targetCamera.transform.position;
-            Vector3 dir = (worldPos - origin).normalized;
-
-            bool visible = true;
-
-            RaycastHit[] hits = Physics.RaycastAll(
-                origin,
-                dir,
-                distance,
-                losMask,
-                QueryTriggerInteraction.Ignore);
-
-            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
-            for (int i = 0; i < hits.Length; i++)
-            {
-                RaycastHit hit = hits[i];
-                Transform hitRoot = hit.collider.transform.root;
-
-                if (_localTransform != null && hitRoot == _localTransform.root)
-                    continue;
-
-                if (hitRoot == target.transform.root)
-                {
-                    visible = true;
-                    break;
-                }
-
-                visible = false;
-                break;
-            }
-
-            _losVisible[target] = visible;
+            return _losVisible.TryGetValue(target, out bool cachedVisible) && cachedVisible;
         }
 
-        return _losVisible.TryGetValue(target, out bool result) && result;
+        /*
+         * A small deterministic offset prevents every target from
+         * settling onto exactly the same recurring check frame.
+         */
+        float stagger = Mathf.Abs(target.GetInstanceID() % 5) * 0.01f;
+
+        _nextLosCheck[target] = Time.time + losCheckInterval + stagger;
+
+        Vector3 offset = worldPosition - origin;
+
+        if (offset.sqrMagnitude <= 0.000001f)
+        {
+            _losVisible[target] = true;
+            return true;
+        }
+
+        Vector3 direction = offset / distance;
+
+        int hitCount = Physics.RaycastNonAlloc(origin, direction, _losHitBuffer, distance, losMask, QueryTriggerInteraction.Ignore);
+
+        bool visible;
+
+        if (hitCount < _losHitBuffer.Length)
+        {
+            visible = EvaluateNearestRelevantHit(target, _losHitBuffer, hitCount);
+        }
+        else
+        {
+            /*
+             * Rare correctness fallback. The common path remains
+             * allocation-free, but an unusually crowded ray cannot
+             * silently truncate a nearer blocker.
+             */
+            RaycastHit[] overflowHits = Physics.RaycastAll(origin, direction, distance, losMask, QueryTriggerInteraction.Ignore);
+
+            visible = EvaluateNearestRelevantHit(target, overflowHits, overflowHits.Length);
+        }
+
+        _losVisible[target] = visible;
+
+        return visible;
+    }
+    
+    private bool EvaluateNearestRelevantHit(PlayerIFFTarget target, RaycastHit[] hits, int hitCount)
+    {
+        float nearestDistance = float.PositiveInfinity;
+
+        Transform nearestRoot = null;
+
+        Transform localRoot = _localTransform != null ? _localTransform.root : null;
+
+        Transform targetRoot = target.transform.root;
+        
+        for (int i = 0; i < hitCount; i++)
+        {
+            Collider hitCollider = hits[i].collider;
+
+            if (hitCollider == null)
+                continue;
+
+            Transform hitRoot = hitCollider.transform.root;
+
+            /*
+             * Ignore the observing player's own colliders.
+             */
+            if (localRoot != null && hitRoot == localRoot)
+                continue;
+            
+
+            float hitDistance = hits[i].distance;
+
+            if (hitDistance >= nearestDistance)
+                continue;
+
+            nearestDistance = hitDistance;
+
+            nearestRoot = hitRoot;
+        }
+
+        /*
+         * No relevant collision means unobstructed.
+         * Otherwise the nearest object must be the target player.
+         */
+        return nearestRoot == null || nearestRoot == targetRoot;
     }
 
     private float GetHealth01(PlayerIFFTarget target)

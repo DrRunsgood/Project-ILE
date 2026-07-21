@@ -10,7 +10,9 @@ public class GameplayCameraController : MonoBehaviour
     Camera cam;
     AudioListener audioListener;
     InputHandler ih;
-    
+
+
+    [SerializeField] private float normalFov = 60f;
     [Header("Zoom")]
     [SerializeField] bool enableZoom = true;
     [SerializeField] float zoomFov = 30f;
@@ -30,7 +32,6 @@ public class GameplayCameraController : MonoBehaviour
 
     private bool _poseSnapRequested;
     private PlayerHealth targetHealth;
-    private float _normalFov;
     
     [Header("Third-Person Offset")]
     [SerializeField] float back = 10f;
@@ -59,7 +60,7 @@ public class GameplayCameraController : MonoBehaviour
 
         audioListener = cam.GetComponent<AudioListener>();
         
-        _normalFov = cam.fieldOfView;
+        cam.fieldOfView = normalFov;
 
         int fpIdx = LayerMask.NameToLayer(FP_LAYER);
         int tpIdx = LayerMask.NameToLayer(TP_LAYER);
@@ -138,7 +139,7 @@ public class GameplayCameraController : MonoBehaviour
         if (target == null)
         {
             if (cam != null)
-                cam.fieldOfView = _normalFov;
+                cam.fieldOfView = normalFov;
 
             SetGameplayCameraActive(false);
             return;
@@ -167,7 +168,7 @@ public class GameplayCameraController : MonoBehaviour
         SetGameplayCameraActive(true);
 
         if (cam != null)
-            cam.fieldOfView = _normalFov;
+            cam.fieldOfView = normalFov;
 
         SnapToTarget();
         SetupFirstPersonWeaponAnchor();
@@ -331,7 +332,7 @@ public class GameplayCameraController : MonoBehaviour
         if (!cam)
             return;
 
-        float targetFov = IsZoomed ? zoomFov : _normalFov;
+        float targetFov = IsZoomed ? zoomFov : normalFov;
         float smoothTime = IsZoomed ? zoomInTime : zoomOutTime;
 
         if (!enableZoom || smoothTime <= 0f)
