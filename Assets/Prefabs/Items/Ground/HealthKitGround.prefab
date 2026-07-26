@@ -17,6 +17,8 @@ GameObject:
   - component: {fileID: 706111638045419821}
   - component: {fileID: 1383557607727513754}
   - component: {fileID: 4297740580761148433}
+  - component: {fileID: 8758852624238218151}
+  - component: {fileID: 9183299171758365491}
   m_Layer: 0
   m_Name: HealthKitGround
   m_TagString: Untagged
@@ -2458,6 +2460,7 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 1383557607727513754}
   _networkObjectCache: {fileID: 1383557607727513754}
   definition: {fileID: 11400000, guid: 9f518a162d90a9844a41da9006093282, type: 2}
+  defaultArmDelay: 0.15
 --- !u!114 &1383557607727513754
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2487,7 +2490,7 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 22
+  <PrefabId>k__BackingField: 36
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 17457220481120275216
   SceneId: 0
@@ -2515,7 +2518,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584268083753593102
+  _initializedTimestamp: -8584165266187410728
 --- !u!114 &4297740580761148433
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2531,3 +2534,45 @@ MonoBehaviour:
   _componentIndexCache: 1
   _addedNetworkObject: {fileID: 1383557607727513754}
   _networkObjectCache: {fileID: 1383557607727513754}
+--- !u!114 &8758852624238218151
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3221351368261185010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d4ef8c7f880c3941a58c7442d1ed1b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.GamePhysics.KinematicMover
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 1383557607727513754}
+  _networkObjectCache: {fileID: 0}
+  gravityScale: 1
+  bounciness: 0.35
+  slideFriction: 6
+  stopSpeed: 0.05
+  sphereRadius: 0.27
+  worldMask:
+    serializedVersion: 2
+    m_Bits: 3665
+  reaction: 0
+  lifeTime: -1
+--- !u!114 &9183299171758365491
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3221351368261185010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9962c30f71b5d4141b2c3e4f057648f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TimedDespawn
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 1383557607727513754}
+  _networkObjectCache: {fileID: 0}
+  defaultLifetime: 15
+  startOnServerSpawn: 0

@@ -51,6 +51,21 @@ public class SpawnManager : NetworkBehaviour
         if (args.ConnectionState != RemoteConnectionState.Stopped)
             return;
 
+        /*
+         * A hard client exit never sends the graceful-cleanup RPC.
+         * Run the same authoritative terminal cleanup while the player
+         * object and its carried state still exist.
+         */
+        if (_spawnedPlayers.TryGetValue(conn, out NetworkObject player) && player != null)
+        {
+            if (player.TryGetComponent(out PlayerDisconnectCleanup cleanup))
+                cleanup.ServerPrepareForDisconnect();
+            else
+                Debug.LogWarning($"[SpawnManager] Player '{player.name}' stopped without PlayerDisconnectCleanup. Carried state " +
+                                 $"could not be dropped before despawn.", player);
+            
+        }
+
         DespawnPlayer(conn);
     }
     

@@ -133,6 +133,9 @@ namespace _Scripts.Pickups.Spawning
 
             if (nob.TryGetComponent(out Packs.PackPickup packPickup))
                 packPickup.Arm(pickupArmDelay);
+            
+            if (nob.TryGetComponent(out ItemPickup itemPickup))
+                itemPickup.Arm(pickupArmDelay);
         }
 
         [Server]

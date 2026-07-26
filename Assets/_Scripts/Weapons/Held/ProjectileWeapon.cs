@@ -15,15 +15,11 @@ namespace _Scripts.Weapons
         [Header("Definition")]
         [SerializeField] protected WeaponDefinition def;
 
-        [Header("Fire Routing")]
-        [Tooltip("Regular weapons fire through AdvancedPredictedController.MovementData.Held. Hidden quick-items still use the legacy armed path.")]
-        [SerializeField] bool usePredictedInputFire = true;
-
         [Header("Spawn Settings")]
         [Tooltip("How far in front of the fire origin the projectile should appear.")]
         [SerializeField] float spawnOffset = 0.25f;
-        [Tooltip("Required authoritative muzzle transform for regular projectile weapons. " +
-                 "Assign the FirePoint on the networked held/gameplay prefab.")]
+        [Tooltip("Required authoritative projectile spawn transform. " +
+                 "Assign the FirePoint on the networked gameplay prefab.")]
         [SerializeField] private Transform firePoint;
 
         [Header("Spawn Safety")]
@@ -54,7 +50,6 @@ namespace _Scripts.Weapons
         #region Runtime
 
         bool _fireTimingInitialized;
-        uint _nextFireTick;        // client-side legacy quick-item/fallback timing
         uint _fireIntervalTicks;
         uint _nextServerFireTick;  // authoritative server cooldown
         uint _nextLocalFireAudioTick;
@@ -99,9 +94,7 @@ namespace _Scripts.Weapons
 #if UNITY_EDITOR
         private void OnValidate()
         {
-            bool requiresFirePoint =
-                def != null &&
-                !def.hiddenQuickItem;
+            bool requiresFirePoint = def != null;
 
             if (requiresFirePoint && firePoint == null)
             {
@@ -117,63 +110,28 @@ namespace _Scripts.Weapons
 
         #endregion
 
-        #region Client Legacy Update Path
-
-        void Update()
-        {
-            if (!IsOwner || _wm == null || _ih == null)
-                return;
-
-            /*
-             * Regular weapons now fire through:
-             * AdvancedPredictedController.MovementData.Held
-             * -> WeaponManager.Server_ProcessFireInput(...)
-             * -> Server_TryFireFromPose(...)
-             *
-             * Hidden quick-items keep the old armed Update -> Server_RequestFire path for now.
-             */
-            if (usePredictedInputFire && !isHiddenQuickItem)
-                return;
-
-            if (!isHiddenQuickItem && !IsActive)
-                return;
-
-            EnsureFireTimingInitialized();
-
-            if (!CanFire())
-                return;
-
-            uint nowTick = TimeManager.Tick;
-            _nextFireTick = nowTick + _fireIntervalTicks;
-
-            Server_RequestFire(nowTick);
-        }
-
-        protected virtual bool CanFire()
-        {
-            // Hidden quick-items never use normal LMB held-fire.
-            // Subclasses such as GrenadeThrower decide when they are armed.
-            if (isHiddenQuickItem)
-                return false;
-
-            bool triggerHeld = (_ih.HeldButtons & InputButtons.Fire) != 0;
-            return triggerHeld && TimeManager.Tick >= _nextFireTick;
-        }
-
-        #endregion
-
         #region CSP Fire Path
 
         [Server]
         public bool Server_TryFireFromPose(FirePose pose)
         {
-            if (!CanServerAttemptFire())
-                return false;
-
+            /*
+             * Selected weapons enter through WeaponManager.
+             * Hidden quick items use their own explicit server methods.
+             */
             if (isHiddenQuickItem)
                 return false;
 
-            if (!IsActive)
+            return Server_TryFireFromPoseCore(pose, requireActive: true);
+        }
+
+        [Server]
+        protected bool Server_TryFireFromPoseCore(FirePose pose, bool requireActive)
+        {
+            if (!CanServerAttemptFire())
+                return false;
+
+            if (requireActive && !IsActive)
                 return false;
 
             if (!TryGetAuthoritativeFirePoint(out Transform muzzle))
@@ -184,74 +142,15 @@ namespace _Scripts.Weapons
 
             Vector3 viewOrigin = pose.Position;
 
-            Vector3 viewDir = GetSafeDirection(pose.Direction, transform.forward);
+            Vector3 viewDirection = GetSafeDirection(pose.Direction, transform.forward);
 
             Vector3 muzzleOrigin = muzzle.position;
 
-            Vector3 aimPoint = ResolveAimPoint(viewOrigin, viewDir);
+            Vector3 aimPoint = ResolveAimPoint(viewOrigin, viewDirection);
 
-            Vector3 fireDir = ResolveMuzzleFireDirection(muzzleOrigin, aimPoint, viewDir);
+            Vector3 fireDirection = ResolveMuzzleFireDirection(muzzleOrigin, aimPoint, viewDirection);
 
-            Vector3 shooterVelocity = pose.Velocity;
-
-            return Server_TrySpawnProjectile(muzzleOrigin, fireDir, shooterVelocity, viewOrigin, true);
-        }
-
-        #endregion
-
-        #region Legacy Server RPC Path
-
-        // Legacy path for hidden quick items and temporary fallback only.
-        // Regular weapons should use CSP MovementData.Held.
-        [ServerRpc(RequireOwnership = true)]
-        void Server_RequestFire(uint clientFireTick, NetworkConnection sender = null)
-        {
-            if (sender == null || !sender.IsValid)
-                return;
-
-            if (!CanServerAttemptFire())
-                return;
-
-            EnsureFireTimingInitialized();
-
-            uint serverNow = TimeManager.Tick;
-            uint target = clientFireTick;
-
-            if (target >= serverNow)
-                target = serverNow > 0 ? serverNow - 1 : 0;
-
-            if (!TryGetFireSnapshot(target, serverNow, out LagCompensationManager.FireSnapshot snap))
-                return;
-
-            Vector3 fireDir = GetSafeDirection(snap.Direction, transform.forward);
-            Vector3 shotOrigin = snap.Position;
-            Vector3 shooterVelocity = snap.Velocity;
-
-            Server_TrySpawnProjectile(shotOrigin, fireDir, shooterVelocity);
-        }
-
-        bool TryGetFireSnapshot(uint targetTick, uint serverNow, out LagCompensationManager.FireSnapshot snap)
-        {
-            snap = default;
-
-            if (LagCompensationManager.Instance == null || _shooterNO == null)
-                return false;
-
-            // Exact -> -1 -> +1 -> tolerance -> recent fallback.
-            if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, targetTick, out snap, 0))
-                return true;
-
-            if (targetTick > 0 && LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, targetTick - 1, out snap, 0))
-                return true;
-
-            if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, targetTick + 1, out snap, 0))
-                return true;
-
-            if (LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, targetTick, out snap, 2))
-                return true;
-
-            uint last = serverNow > 0 ? serverNow - 1 : 0;
-            return LagCompensationManager.Instance.TryGetSnapshot(_shooterNO, last, out snap, 2);
+            return Server_TrySpawnProjectile(muzzleOrigin, fireDirection, pose.Velocity, viewOrigin, true);
         }
 
         #endregion
@@ -377,20 +276,22 @@ namespace _Scripts.Weapons
                 : Time.fixedDeltaTime;
 
             _fireIntervalTicks = (uint)Mathf.Max(1, Mathf.CeilToInt(fireIntervalSeconds / tickDelta));
-            _nextFireTick = 0;
             _nextServerFireTick = 0;
             _fireTimingInitialized = true;
         }
 
         public virtual void ResetRuntime()
         {
-            _nextFireTick = 0;
+            _fireTimingInitialized = false;
+            _fireIntervalTicks = 0;
+            
             _nextServerFireTick = 0;
             _nextLocalFireAudioTick = 0;
-            
-            _missingFirePointReported = false;
-        }
 
+            _missingFirePointReported = false;
+
+            IsActive = false;
+        }
         #endregion
 
         #region Spawn Position / Rotation

@@ -109,8 +109,8 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 639587363853817222}
   _networkObjectCache: {fileID: 639587363853817222}
   def: {fileID: 11400000, guid: 44aceb61cf6796b498d775bc98420803, type: 2}
-  usePredictedInputFire: 1
   spawnOffset: 1.75
+  firePoint: {fileID: 4222929465687939375}
   spawnSafetyRadiusOverride: -1
   spawnBackoff: 0.02
   spawnBlockMask:

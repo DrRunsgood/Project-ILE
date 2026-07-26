@@ -1,21 +1,37 @@
 // _Scripts/Items/ItemManager.cs
 using System;
-using System.Runtime.CompilerServices;
 using _Scripts.FNPool;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Player;
 using _Scripts.Weapons;
+using _Scripts.Game;
+using _Scripts.GamePhysics;
 
 namespace _Scripts.Items
 {
     [DisallowMultipleComponent]
     public sealed class ItemManager : NetworkBehaviour
     {
+        [Header("Terminal Item Drops")]
+        [SerializeField] private float itemDropOffset = 0.65f;
+        [SerializeField] private float itemDropSafetyRadius = 0.15f;
+        [SerializeField] private float itemDropBackoff = 0.02f;
+        [SerializeField] private LayerMask itemDropBlockMask = ~0;
+
+        [SerializeField]
+        [Range(0f, 1f)]
+        private float itemDropVelocityInheritance = 0.5f;
+
+        [SerializeField] private float itemTerminalTossSpeed = 5f;
+        [SerializeField] private float itemTerminalUpwardSpeed = 2.5f;
+        [SerializeField] private float itemDropPickupArmDelay = 0.5f;
+        
         /* ───────── constants ───────── */
         const int MaxSlots = 4;     // two quick-bar entries
         const int BitsPer  = 6;     // 3-bit id + 3-bit count
+        const int MaxPackedCountPerSlot = 7;
 
         /* ───────── network state ───── */
         readonly SyncVar<uint> _bits = new();
@@ -45,124 +61,327 @@ namespace _Scripts.Items
     /* ═══════════════════════════════════════════════════════════════ */
 
     #region Owner-side hot-keys
-        void Update()
-        {
-            if (!IsOwner || _ih == null) return;
+    void Update()
+    {
+        if (!IsOwner || _ih == null) return;
+        
+        if (_ih.ConsumeMedkitUse ()) Cmd_RequestMedkit ();
+        if (_ih.ConsumeBeaconUse ()) Cmd_RequestBeacon ();
+    }
 
-            if (_ih.ConsumeGrenadeUse()) Cmd_RequestGrenade();
-            if (_ih.ConsumeMedkitUse ()) Cmd_RequestMedkit ();
-            if (_ih.ConsumeBeaconUse ()) Cmd_RequestBeacon ();
-        }
-
-        /* one RPC per item keeps server logic clean */
-        [ServerRpc(RequireOwnership = true)] void Cmd_RequestGrenade() => Server_DoGrenade();
-        [ServerRpc(RequireOwnership = true)] void Cmd_RequestMedkit () => Server_DoMedkit ();
-        [ServerRpc(RequireOwnership = true)] void Cmd_RequestBeacon () => Server_DoBeacon ();
+    /* one RPC per item keeps server logic clean */
+    [ServerRpc(RequireOwnership = true)] void Cmd_RequestMedkit () => Server_DoMedkit ();
+    [ServerRpc(RequireOwnership = true)] void Cmd_RequestBeacon () => Server_DoBeacon ();
     #endregion
     /* ═══════════════════════════════════════════════════════════════ */
 
     #region Item actions  (server only)
-        /* ---- grenade ---- */
-        [Server] void Server_DoGrenade()
-        {
-            if (!Server_Consume(ItemId.Frag)) return;      // deduct here
+    [Server]
+    public void Server_ProcessGrenadeInput(bool grenadePressed, FirePose pose)
+    {
+        if (!grenadePressed)
+            return;
 
-            if (GetComponentInChildren<GrenadeThrower>(true) is { } gt)
-                gt.ArmQuickThrow();                        // spawns next tick
+        /*
+         * Validate inventory without deducting it.
+         */
+        if (FindSlotById(ItemId.Frag) < 0)
+            return;
+
+        GrenadeThrower grenadeThrower = GetComponentInChildren<GrenadeThrower>(true);
+
+        if (grenadeThrower == null)
+        {
+            Debug.LogError("[ItemManager] Grenade input received, but no " + "GrenadeThrower exists beneath the player.",
+                this);
+
+            return;
         }
 
-        /* ---- med-kit ---- */
-        [Server] void Server_DoMedkit()
+        /*
+         * Cooldown, FirePoint, projectile prefab, pool acquisition,
+         * spawn safety, and authoritative projectile creation are all
+         * validated before inventory is consumed.
+         */
+        if (!grenadeThrower.Server_TryThrowFromPose(pose))
+            return;
+
+        /*
+         * The server executes this method synchronously. Inventory was
+         * verified immediately above and no other code executes between
+         * the successful spawn and this deduction.
+         */
+        if (!Server_Consume(ItemId.Frag))
         {
-            if (!TryGetComponent(out PlayerHealth hp))
-                return;
-            
-            if (hp.Current == hp.Max) // Don't use health kit if at max health
-                return;
-            
-            if (!Server_Consume(ItemId.HealthKit))
-                return;                      // inventory empty (shouldn’t happen)
-
-            /* 4) apply the heal */
-            hp.ApplyHealOverTime(30, 2f);
+            Debug.LogError("[ItemManager] Grenade spawned successfully, but its " + "inventory item could not be consumed.", this);
         }
+    }
+    
+    
+    /* ---- med-kit ---- */
+    [Server] void Server_DoMedkit()
+    {
+        if (!TryGetComponent(out PlayerHealth hp))
+            return;
+        
+        if (hp.Current == hp.Max) // Don't use health kit if at max health
+            return;
+        
+        if (!Server_Consume(ItemId.HealthKit))
+            return;                      // inventory empty (shouldn’t happen)
 
-        /* ---- beacon ---- */
-        [Server] void Server_DoBeacon()
-        {
-            ItemDefinition def = ItemDatabase.Get(ItemId.Beacon);
+        /* 4) apply the heal */
+        hp.ApplyHealOverTime(30, 2f);
+    }
 
-            if (def == null || def.useSpawnPrefab == null || _aimAnchor == null)
-                return;
+    /* ---- beacon ---- */
+    [Server] void Server_DoBeacon()
+    {
+        ItemDefinition def = ItemDatabase.Get(ItemId.Beacon);
 
-            Vector3 start = _aimAnchor.position;
+        if (def == null || def.useSpawnPrefab == null || _aimAnchor == null)
+            return;
 
-            Vector3 dir = _aimAnchor.forward;
-            
-            const float maxRange = 10f;
+        Vector3 start = _aimAnchor.position;
 
-            if (!Physics.Raycast(start, dir, out var hit, maxRange, Physics.AllLayers, QueryTriggerInteraction.Ignore))
-                return; 
+        Vector3 dir = _aimAnchor.forward;
+        
+        const float maxRange = 10f;
 
-            if (!Server_Consume(ItemId.Beacon)) return;  // deduct after fail check
-            
+        if (!Physics.Raycast(start, dir, out var hit, maxRange, Physics.AllLayers, QueryTriggerInteraction.Ignore))
+            return; 
 
-            NetworkObject nob = PoolUtil.TakeFromPool(def.useSpawnPrefab);
-            if (nob == null) return;
+        if (!Server_Consume(ItemId.Beacon)) return;  // deduct after fail check
+        
 
-            Vector3 pos = hit.point + hit.normal * 0.01f;            // lift 1cm
-            Quaternion rot = Quaternion.FromToRotation(Vector3.up, hit.normal);
-            
-            nob.transform.SetPositionAndRotation(hit.point, rot);
-            ServerManager.Spawn(nob, Owner);
+        NetworkObject nob = PoolUtil.TakeFromPool(def.useSpawnPrefab);
+        if (nob == null) return;
 
-            /* 3) auto‑despawn after 60 s (adjust as needed) */
-            //StartCoroutine(DespawnLater(nob, 60f));
-        }
+        Vector3 pos = hit.point + hit.normal * 0.01f;            // lift 1cm
+        Quaternion rot = Quaternion.FromToRotation(Vector3.up, hit.normal);
+        
+        nob.transform.SetPositionAndRotation(hit.point, rot);
+        ServerManager.Spawn(nob, Owner);
 
-        /* ---- generic consume helper ---- */
-        [Server] bool Server_Consume(ItemId id)
-        {
-            int slot = FindSlotById(id);
-            if (slot < 0) return false;
+        /* 3) auto‑despawn after 60 s (adjust as needed) */
+        //StartCoroutine(DespawnLater(nob, 60f));
+    }
 
-            ref ItemSlot s = ref _slots[slot];
-            if (s.Count == 0) return false;
+    /* ---- generic consume helper ---- */
+    [Server] bool Server_Consume(ItemId id)
+    {
+        int slot = FindSlotById(id);
+        if (slot < 0) return false;
 
-            if (--s.Count == 0) s.Def = null;
-            PackBits();
-            return true;
-        }
+        ref ItemSlot s = ref _slots[slot];
+        if (s.Count == 0) return false;
 
-        /* wrappers for other classes (GrenadeThrower) */
-        [Server] public bool Server_ConsumeGrenade()  => Server_Consume(ItemId.Frag);
-        [Server] public bool Server_ConsumeMedkit ()  => Server_Consume(ItemId.HealthKit);
-        [Server] public bool Server_ConsumeBeacon ()  => Server_Consume(ItemId.Beacon);
+        if (--s.Count == 0) s.Def = null;
+        PackBits();
+        return true;
+    }
+
+    /* wrappers for other classes (GrenadeThrower) */
+    [Server] public bool Server_ConsumeGrenade()  => Server_Consume(ItemId.Frag);
+    [Server] public bool Server_ConsumeMedkit ()  => Server_Consume(ItemId.HealthKit);
+    [Server] public bool Server_ConsumeBeacon ()  => Server_Consume(ItemId.Beacon);
     #endregion
     /* ═══════════════════════════════════════════════════════════════ */
 
-    #region Pick-up entry point
+    #region Pickup entry point
+
+    [Server]
+    public bool Server_GiveItem(ItemDefinition def)
+    {
+        return Server_AddItems(def, 1) == 1;
+    }
+
+    [Server]
+    public int Server_AddItems(ItemDefinition def, int requestedCount)
+    {
+        if (def == null || def.id == ItemId.None || requestedCount <= 0)
+            return 0;
+        
+
+        int maximumInventoryCount = Mathf.Clamp(def.maxStack, 1, MaxSlots * MaxPackedCountPerSlot);
+
+        int currentCount = GetTotalCount(def.id);
+        int availableCapacity = maximumInventoryCount - currentCount;
+
+        if (availableCapacity <= 0)
+            return 0;
+
+        int remaining = Mathf.Min(requestedCount, availableCapacity);
+
+        int acceptedTarget = remaining;
+
+        /*
+         * Fill existing stacks first.
+         */
+        for (int i = 0; i < MaxSlots && remaining > 0; i++)
+        {
+            ref ItemSlot slot = ref _slots[i];
+
+            if (slot.Def == null || slot.Def.id != def.id || slot.Count >= MaxPackedCountPerSlot)
+                continue;
+            
+
+            int room = MaxPackedCountPerSlot - slot.Count;
+
+            int add = Mathf.Min(remaining, room);
+
+            slot.Count += (byte)add;
+            remaining -= add;
+        }
+
+        /*
+         * Then create new stacks in empty slots.
+         */
+        for (int i = 0; i < MaxSlots && remaining > 0; i++)
+        {
+            ref ItemSlot slot = ref _slots[i];
+
+            if (slot.Def != null)
+                continue;
+
+            int add = Mathf.Min(remaining, MaxPackedCountPerSlot);
+
+            slot.Def = def;
+            slot.Count = (byte)add;
+            remaining -= add;
+        }
+
+        int accepted = acceptedTarget - remaining;
+
+        if (accepted > 0) PackBits();
+
+        return accepted;
+    }
+    
+    
+
+    #endregion
+    /* ═══════════════════════════════════════════════════════════════ */
+    
+    #region Terminal Item Drops
+
         [Server]
-        public bool Server_GiveItem(ItemDefinition def)
+        public int Server_GetTerminalDropCount()
         {
-            /* global cap across all stacks */
-            int current = 0;
-            foreach (var s in _slots)
-                if (s.Def && s.Def.id == def.id) current += s.Count;
-            if (current >= def.maxStack) return false;
+            int count = 0;
 
-            int slot = FindStackOrEmpty(def.id);
-            if (slot < 0) return false;
+            for (int i = 0; i < MaxSlots; i++)
+            {
+                ItemSlot slot = _slots[i];
 
-            ref ItemSlot p = ref _slots[slot];
-            if (p.Def == null) p.Def = def;
-            p.Count++;
+                if (slot.Def != null && slot.Count > 0)
+                    count++;
+            }
 
-            PackBits();
+            return count;
+        }
+
+        [Server]
+        public bool Server_DropNextTerminalItemStack(WorldDropContext context)
+        {
+            for (int i = 0; i < MaxSlots; i++)
+            {
+                ItemSlot slot = _slots[i];
+
+                if (slot.Def == null || slot.Count <= 0)
+                    continue;
+
+                bool spawned = Server_TrySpawnItemStack(slot.Def, slot.Count, context);
+
+                if (!spawned)
+                {
+                    Debug.LogWarning($"[ItemManager] Terminal drop failed for '{slot.Def.displayName}' x{slot.Count}. " +
+                                     $"Clearing the terminal inventory stack.", this);
+                }
+
+                /*
+                 * Terminal semantics:
+                 * the dead or exiting player cannot retain the stack.
+                 */
+                _slots[i] = default;
+                PackBits();
+
+                return spawned;
+            }
+
+            return false;
+        }
+
+        [Server]
+        bool Server_TrySpawnItemStack(ItemDefinition definition, int count, WorldDropContext context)
+        {
+            if (definition == null || count <= 0 || definition.worldPickupPrefab == null)
+                return false;
+
+            NetworkObject prefab = definition.worldPickupPrefab;
+
+            if (!prefab.TryGetComponent(out ItemPickup _))
+            {
+                Debug.LogError($"[ItemManager] World pickup prefab '{prefab.name}' has no ItemPickup component.", prefab);
+
+                return false;
+            }
+
+            NetworkObject ground = PoolUtil.TakeFromPool(prefab);
+
+            if (ground == null)
+                return false;
+
+            if (!ground.TryGetComponent(out ItemPickup itemPickup))
+            {
+                Debug.LogError($"[ItemManager] Pooled pickup '{ground.name}' has no ItemPickup component.", ground);
+
+                Destroy(ground.gameObject);
+                return false;
+            }
+
+            if (ground.TryGetComponent(out _Scripts.Pickups.Spawning.SpawnedPickupLink link))
+                link.Clear();
+            
+            Vector3 direction = WorldDropUtil.GetSafeDirection(context.Direction, transform.forward);
+
+            Vector3 position = WorldDropUtil.ResolveSafePosition(transform, context.Origin, direction, itemDropOffset,
+                    itemDropSafetyRadius, itemDropBackoff, itemDropBlockMask);
+
+            Quaternion rotation = Quaternion.AngleAxis(UnityEngine.Random.Range(0f, 360f), Vector3.up);
+
+            ground.transform.SetPositionAndRotation(position, rotation);
+
+            ServerManager.Spawn(ground);
+
+            /*
+             * OnStartServer resets pooled count to one.
+             * Apply the exact stored count after spawning.
+             */
+            itemPickup.ServerSetRuntimeCount(count);
+
+            RoundScopedUtil.MarkRoundScoped(ground);
+
+            if (ground.TryGetComponent(out KinematicMover mover))
+            {
+                Vector3 tossVelocity = context.PlayerVelocity * itemDropVelocityInheritance;
+
+                tossVelocity += direction * itemTerminalTossSpeed;
+
+                tossVelocity += Vector3.up * itemTerminalUpwardSpeed;
+
+                mover.InitVelocity(tossVelocity);
+            }
+
+            itemPickup.Arm(itemDropPickupArmDelay);
+
+            if (ground.TryGetComponent(out TimedDespawn timedDespawn))
+                timedDespawn.ArmDefault();
+
             return true;
         }
-    #endregion
-    /* ═══════════════════════════════════════════════════════════════ */
+
+#endregion
 
     #region SyncVar packing
         void PackBits()
@@ -173,7 +392,7 @@ namespace _Scripts.Items
                 var s = _slots[i];
                 int sh = i * BitsPer;
                 byte id = s.Def ? (byte)s.Def.id : (byte)0;
-                byte ct = (byte)Mathf.Clamp(s.Count, 0, 7);
+                byte ct = (byte)Mathf.Clamp(s.Count, 0, MaxPackedCountPerSlot);
 
                 b |= (uint)((id & 0b111) << sh);
                 b |= (uint)((ct & 0b111) << (sh + 3));
@@ -219,42 +438,32 @@ namespace _Scripts.Items
                     return i;
             return -1;
         }
-
-        /* existing stack w/ room OR first empty slot */
-        int FindStackOrEmpty(ItemId id)
+        
+        int GetTotalCount(ItemId id)
         {
-            int empty = -1;
+            int total = 0;
 
-            for (int i = 0; i < MaxSlots; ++i)
+            for (int i = 0; i < MaxSlots; i++)
             {
-                ref ItemSlot s = ref _slots[i];
+                ItemSlot slot = _slots[i];
 
-                if (empty < 0 && s.Def == null)
-                    empty = i;                         // remember first empty
-
-                if (s.Def && s.Def.id == id &&
-                    s.Count < s.Def.maxStack)
-                    return i;                          // existing w/ space
+                if (slot.Def != null && slot.Def.id == id)
+                    total += slot.Count;
+            
             }
-            return empty;                              // may be -1 if full
+
+            return total;
         }
 
-        int TotalGrenades()
-        {
-            int sum = 0;
-            for (int i = 0; i < MaxSlots; ++i)
-                if (_slots[i].Def && _slots[i].Def.id == ItemId.Frag)
-                    sum += _slots[i].Count;
-            return sum;
-        }
     #endregion
     /* ═══════════════════════════════════════════════════════════════ */
-
-        public struct ItemSlot
-        {
-            public ItemDefinition Def;
-            public byte           Count;
-        }
+    
+    public struct ItemSlot
+    {
+        public ItemDefinition Def;
+        public byte           Count;
+    }
+        
     /* ═══════════════════════════════════════════════════════════════ */        
     #region Clear/Reset
         

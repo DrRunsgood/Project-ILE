@@ -3,24 +3,39 @@ using System.Collections;
 using FishNet.Connection;
 using FishNet.Object;
 using UnityEngine;
-using _Scripts.Weapons;
+using _Scripts.Game.CTF;
 using _Scripts.Player.Sessions;
 
 namespace _Scripts.Player
 {
-    [RequireComponent(typeof(WeaponManager))]
+    [RequireComponent(typeof(PlayerCarriedDropCoordinator))]
     public sealed class PlayerDisconnectCleanup : NetworkBehaviour
     {
-        [SerializeField] private float fallbackDisconnectDelay = 0.35f;
-        [SerializeField] private float disconnectAfterCleanupDelay = 0.15f;
+        [SerializeField]
+        private float fallbackDisconnectDelay = 0.35f;
 
-        private WeaponManager _weaponManager;
+        [SerializeField]
+        private float disconnectAfterCleanupDelay = 0.15f;
+
+        private PlayerCarriedDropCoordinator _dropCoordinator;
+        private FlagCarrier _flagCarrier;
+
         private Action _pendingClientCallback;
         private bool _cleanupRequested;
+        private bool _serverCleanupProcessed;
 
         private void Awake()
         {
-            _weaponManager = GetComponent<WeaponManager>();
+            _dropCoordinator = GetComponent<PlayerCarriedDropCoordinator>();
+
+            _flagCarrier = GetComponent<FlagCarrier>();
+        }
+        
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+
+            _serverCleanupProcessed = false;
         }
 
         public bool TryBeginGracefulDisconnect(Action onCleanupComplete)
@@ -50,6 +65,7 @@ namespace _Scripts.Player
                 yield break;
 
             Debug.LogWarning("[PlayerDisconnectCleanup] Cleanup ack fallback elapsed. Continuing disconnect.");
+
             CompleteClientCleanup();
         }
 
@@ -60,33 +76,39 @@ namespace _Scripts.Player
 
             if (conn != null)
                 Target_DisconnectCleanupComplete(conn);
+            
         }
 
         [Server]
         public void ServerPrepareForDisconnect()
         {
+            if (_serverCleanupProcessed)
+                return;
+
+            _serverCleanupProcessed = true;
+
             Debug.Log($"[PlayerDisconnectCleanup] Server cleanup for {name}.");
 
-            if (_weaponManager == null)
-                _weaponManager = GetComponent<WeaponManager>();
-
-            if (_weaponManager != null)
-                _weaponManager.DropAll();
+            if (_dropCoordinator == null)
+                _dropCoordinator = GetComponent<PlayerCarriedDropCoordinator>();
             
+            if (_flagCarrier == null)
+                _flagCarrier = GetComponent<FlagCarrier>();
+            
+            _flagCarrier?.Server_DropCarriedFlagOnDeath();
+
+            _dropCoordinator?.Server_DropForTerminalExit();
+
             if (PlayerSessionManager.Instance != null && Owner != null)
                 PlayerSessionManager.Instance.ServerMarkDead(Owner);
-
-            // TODO later:
-            // - Drop carried flag.
-            // - Clear active pack/shield state.
-            // - Drop/destroy carried deployables or inventory items as design dictates.
-            // - Route forced disconnect/death through a unified server player-exit cleanup path.
+            
         }
 
         [TargetRpc]
         private void Target_DisconnectCleanupComplete(NetworkConnection conn)
         {
             Debug.Log("[PlayerDisconnectCleanup] Server cleanup ack received.");
+
             CompleteClientCleanup();
         }
 

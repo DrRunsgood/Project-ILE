@@ -43,6 +43,14 @@ namespace _Scripts.Weapons
         [SerializeField] float dropSafetyRadius = 0.2f;
         [SerializeField] float dropBackoff = 0.02f;
         [SerializeField] LayerMask dropBlockMask = ~0;
+        
+        [Header("Drop Motion")]
+        [SerializeField] private float dropVelocityInheritance = 0.5f;
+        [SerializeField] private float manualDropTossSpeed = 15f;
+        [SerializeField] private float terminalDropTossSpeed = 8f;
+        [SerializeField] private float terminalDropUpwardSpeed = 2f;
+        [SerializeField] private float dropPickupArmDelay = 0.5f;
+        
         #endregion
         
         private AdvancedPredictedController _controller;
@@ -213,7 +221,7 @@ namespace _Scripts.Weapons
 
         void HandleAttachLogic(NetworkObject nob)
         {
-            if (nob == null)
+            if (nob == null || gameplayWeaponAnchor == null)
                 return;
 
             nob.transform.SetParent(gameplayWeaponAnchor, false);
@@ -231,7 +239,7 @@ namespace _Scripts.Weapons
             if (!nob.TryGetComponent(out ProjectileWeapon projectileWeapon))
                 return;
             
-
+            projectileWeapon.ResetRuntime();
             projectileWeapon.CachePlayerRefs(this, _ih);
 
             if (projectileWeapon.isHiddenQuickItem)
@@ -463,9 +471,9 @@ namespace _Scripts.Weapons
         {
             int regular = 0;
 
-            foreach (WeaponInstance w in _weapons)
+            foreach (WeaponInstance weapon in _weapons)
             {
-                if (!w.IsQuickItem)
+                if (weapon != null && !weapon.IsQuickItem)
                     regular++;
             }
 
@@ -651,30 +659,36 @@ namespace _Scripts.Weapons
 
         void Update()
         {
-            if (!IsOwner)
+            if (!IsOwner || _ih == null)
                 return;
 
+            bool dropRequested = _ih.ConsumeWeaponDrop();
+
             int selectableCount = CountSelectableWeapons();
+
             if (selectableCount == 0)
                 return;
 
-            int cur = FindSelectableIndex(_activeNob.Value);
-            if (cur < 0)
-                cur = 0;
+            int currentIndex = FindSelectableIndex(_activeNob.Value);
 
-            int want = cur;
+            if (currentIndex < 0)
+                currentIndex = 0;
+
+            int wantedIndex = currentIndex;
 
             if (_ih.WeaponSlotInput >= 0)
-                want = Mathf.Clamp(_ih.WeaponSlotInput, 0, selectableCount - 1);
-            else if (_ih.MouseWheelDelta != 0)
-                want = (cur + _ih.MouseWheelDelta + selectableCount) % selectableCount;
-
-            if (want != cur)
-                Server_SetActiveByIndex(want);
-
-            if (_ih.ConsumeWeaponDrop())
-                Server_RequestDropActive();
+                wantedIndex = Mathf.Clamp(_ih.WeaponSlotInput, 0, selectableCount - 1);
             
+            else if (_ih.MouseWheelDelta != 0)
+                wantedIndex = (currentIndex + _ih.MouseWheelDelta + selectableCount) % selectableCount;
+            
+
+            if (wantedIndex != currentIndex)
+                Server_SetActiveByIndex(wantedIndex);
+
+            if (dropRequested)
+                Server_RequestDropActive();
+
             ProcessLocalPredictedFireAudio();
         }
 
@@ -690,158 +704,238 @@ namespace _Scripts.Weapons
         #endregion
 
         #region Drop
-
         [ServerRpc(RequireOwnership = true)]
         void Server_RequestDropActive()
         {
-            int idx = _weapons.FindIndex(w => w.NetworkObj == _activeNob.Value);
-            Server_DropWeapon(idx);
+            int index = _weapons.FindIndex(weapon => weapon != null && weapon.NetworkObj == _activeNob.Value);
+
+            if (index < 0)
+                return;
+
+            WorldDropContext context = BuildManualDropContext();
+
+            Server_DropWeapon(index, terminalDrop: false, context);
+        }
+        
+        [Server]
+        WorldDropContext BuildManualDropContext()
+        {
+            if (_controller != null && _controller.Server_TryGetLatestAuthoritativeFirePose(out FirePose pose))
+                return new WorldDropContext(pose.Position, pose.Direction, pose.Velocity);
+
+            Rigidbody playerBody = GetComponent<Rigidbody>();
+
+            Vector3 fallbackOrigin = gameplayWeaponAnchor != null ? gameplayWeaponAnchor.position : transform.position + Vector3.up;
+
+            Vector3 fallbackDirection = gameplayWeaponAnchor != null ? gameplayWeaponAnchor.forward : transform.forward;
+
+            Vector3 fallbackVelocity = playerBody != null ? playerBody.linearVelocity : Vector3.zero;
+
+            return new WorldDropContext(fallbackOrigin, fallbackDirection, fallbackVelocity);
         }
 
         [Server]
-        void Server_DropWeapon(int idx, bool allowTransformFallback = false)
+        void Server_DropWeapon(int index, bool terminalDrop, WorldDropContext context)
         {
-            if (idx < 0 || idx >= _weapons.Count)
+            if (index < 0 || index >= _weapons.Count)
                 return;
 
-            WeaponInstance inst = _weapons[idx];
+            WeaponInstance instance = _weapons[index];
 
-            if (inst.Def == null)
+            /*
+             * A corrupt held entry cannot be retained or dropped safely.
+             * Remove the complete held state instead of only deleting the
+             * inventory-list entry.
+             */
+            if (instance == null || instance.NetworkObj == null || instance.Def == null)
             {
-                _weapons.RemoveAt(idx);
-                return;
-            }
+                Debug.LogError("[WeaponManager] Invalid held weapon entry. Removing held state.", this);
 
-            uint serverNow = TimeManager.Tick;
-            int remainingAmmo = inst.CurrentAmmo;
-
-            Vector3 dropOrigin;
-            Vector3 dropDirection;
-
-            if (TryGetFireSnapshot(serverNow, out LagCompensationManager.FireSnapshot snap))
-            {
-                dropOrigin = snap.Position;
-                dropDirection = snap.Direction;
-            }
-            else if (allowTransformFallback)
-            {
-                dropOrigin = transform.position + Vector3.up;
-                dropDirection = transform.forward;
-
-                if (dropDirection.sqrMagnitude < 0.001f)
-                    dropDirection = Vector3.forward;
-
-                Debug.LogWarning("[WeaponManager] No fire snapshot available during drop. Using transform fallback.");
-            }
-            else
-            {
+                Server_RemoveHeldWeaponAt(index);
                 return;
             }
 
-            Vector3 pos = ResolveSafeDropPosition(dropOrigin, dropDirection);
+            WeaponDefinition definition = instance.Def;
 
-            NetworkObject ground = PoolUtil.TakeFromPool(inst.Def.groundPrefab);
+            if (definition.groundPrefab == null)
+            {
+                Server_HandleDropFailure(index, instance, terminalDrop, "Ground prefab is not assigned.");
+
+                return;
+            }
+
+            if (!definition.groundPrefab.TryGetComponent(out WeaponPickup _))
+            {
+                Server_HandleDropFailure(index, instance, terminalDrop, "Ground prefab is not assigned.");
+
+                return;
+            }
+
+            Vector3 dropDirection = WorldDropUtil.GetSafeDirection(context.Direction, transform.forward);
+
+            Vector3 dropPosition = WorldDropUtil.ResolveSafePosition(transform, context.Origin, dropDirection, 
+                dropOffset, dropSafetyRadius, dropBackoff, dropBlockMask);
+
+            NetworkObject ground = PoolUtil.TakeFromPool(definition.groundPrefab);
+
             if (ground == null)
             {
-                _weapons.RemoveAt(idx);
+                Server_HandleDropFailure(index, instance, terminalDrop, "No pooled ground object was available.");
+
                 return;
             }
-            
+
+            WeaponPickup weaponPickup = ground.GetComponent<WeaponPickup>();
+
+            /*
+             * The prefab was validated above, so this should never occur.
+             * Destroy the malformed pooled instance rather than spawning it.
+             */
+            if (weaponPickup == null)
+            {
+                Debug.LogError($"[WeaponManager] Pooled instance for '{definition.displayName}' " +
+                               "does not contain WeaponPickup.", ground);
+
+                Destroy(ground.gameObject);
+
+                Server_HandleDropFailure(index, instance, terminalDrop, "Pooled ground instance was malformed.");
+
+                return;
+            }
+
             if (ground.TryGetComponent(out _Scripts.Pickups.Spawning.SpawnedPickupLink link))
                 link.Clear();
+            
 
-            ground.transform.SetPositionAndRotation(pos, Quaternion.identity);
+            ground.transform.SetPositionAndRotation(dropPosition, Quaternion.identity);
+
             ServerManager.Spawn(ground);
+
+            /*
+             * WeaponPickup.OnStartServer may initialize runtime ammo from
+             * WeaponDefinition. Apply the dropped weapon's remaining ammo
+             * after spawning so that remaining ammo is preserved.
+             */
+            weaponPickup.ServerSetRuntimeAmmo(instance.CurrentAmmo);
+
             RoundScopedUtil.MarkRoundScoped(ground);
 
-            if (ground.TryGetComponent(out KinematicMover km))
+            if (ground.TryGetComponent(out KinematicMover mover))
             {
-                Vector3 playerVel = GetComponent<Rigidbody>()?.linearVelocity ?? Vector3.zero;
-                Vector3 tossForward = dropDirection.normalized * 15f;
-                km.InitVelocity(playerVel * 0.5f + tossForward);
+                float tossSpeed = terminalDrop ? terminalDropTossSpeed : manualDropTossSpeed;
+
+                Vector3 tossVelocity = context.PlayerVelocity * dropVelocityInheritance;
+
+                tossVelocity += dropDirection * tossSpeed;
+
+                if (terminalDrop)
+                    tossVelocity += Vector3.up * terminalDropUpwardSpeed;
+                
+                mover.InitVelocity(tossVelocity);
             }
 
-            if (ground.TryGetComponent(out WeaponPickup wp))
-            {
-                wp.ServerSetRuntimeAmmo(remainingAmmo);
-                wp.Arm(0.5f);
-            }
+            weaponPickup.Arm(dropPickupArmDelay);
 
-            if (ground.TryGetComponent(out TimedDespawn td))
-                td.ArmDefault();
+            if (ground.TryGetComponent(out TimedDespawn timedDespawn))
+                timedDespawn.ArmDefault();
 
-            _weapons.RemoveAt(idx);
-
-            NetworkObject newActive = null;
-            foreach (WeaponInstance w in _weapons)
-            {
-                if (!w.IsQuickItem)
-                {
-                    newActive = w.NetworkObj;
-                    break;
-                }
-            }
-
-            if (inst.NetworkObj == _activeNob.Value)
-                SetActiveWeapon(newActive);
-
-            RpcRemoveHeld(inst.NetworkObj);
-            ServerManager.Despawn(inst.NetworkObj, DespawnType.Pool);
+            Server_RemoveHeldWeaponAt(index);
         }
 
         [Server]
-        bool TryGetFireSnapshot(uint serverNow, out LagCompensationManager.FireSnapshot snap)
+        void Server_HandleDropFailure(int index, WeaponInstance instance, bool terminalDrop, string reason)
         {
-            if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow, out snap, 0))
-                return true;
+            string weaponName = instance?.Def != null && !string.IsNullOrWhiteSpace(instance.Def.displayName)
+                    ? instance.Def.displayName : "Unknown weapon";
 
-            if (serverNow > 0 && LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow - 1, out snap, 0))
-                return true;
-
-            if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow + 1, out snap, 0))
-                return true;
-
-            if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow, out snap, 2))
-                return true;
-
-            uint last = serverNow > 0 ? serverNow - 1 : 0;
-            return LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, last, out snap, 2);
-        }
-
-        Vector3 ResolveSafeDropPosition(Vector3 origin, Vector3 forward)
-        {
-            forward.Normalize();
-
-            Vector3 desiredPos = origin + forward * dropOffset;
-
-            if (Physics.CheckSphere(origin, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
-                return origin;
-
-            Vector3 finalPos = desiredPos;
-
-            if (Physics.SphereCast(origin, dropSafetyRadius, forward, out RaycastHit hit, dropOffset, dropBlockMask, QueryTriggerInteraction.Ignore))
-                finalPos = hit.point - forward * dropBackoff;
-
-            if (Physics.CheckSphere(finalPos, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
+            if (!terminalDrop)
             {
-                Vector3 nearOrigin = origin + forward * Mathf.Min(dropBackoff, dropOffset * 0.25f);
+                /*
+                 * Manual drops are transactional. Failure leaves the weapon,
+                 * ammo, active selection, and presentation untouched.
+                 */
+                Debug.LogWarning($"[WeaponManager] Manual drop cancelled for " + $"'{weaponName}'. {reason}", this);
 
-                if (!Physics.CheckSphere(nearOrigin, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
-                    return nearOrigin;
-
-                return origin;
+                return;
             }
 
-            return finalPos;
+            /*
+             * Death or disconnect cannot leave a held NetworkObject attached
+             * to a player that is exiting. Remove the held state even when a
+             * world pickup cannot be created.
+             */
+            Debug.LogWarning($"[WeaponManager] Terminal drop failed for " + $"'{weaponName}'. {reason} Removing held state.", this);
+            
+            Server_RemoveHeldWeaponAt(index);
+        }
+
+        [Server]
+        void Server_RemoveHeldWeaponAt(int index)
+        {
+            if (index < 0 || index >= _weapons.Count)
+                return;
+
+            WeaponInstance instance = _weapons[index];
+
+            NetworkObject held = instance != null ? instance.NetworkObj : null;
+
+            bool wasActive = held != null && held == _activeNob.Value;
+
+            _weapons.RemoveAt(index);
+
+            if (wasActive)
+                SetActiveWeapon(GetFirstRegularHeldWeapon());
+
+            if (held == null)
+                return;
+
+            RpcRemoveHeld(held);
+
+            /*
+             * This occurs before network despawn, not from an OnDestroy
+             * callback, so detaching the pooled object here is safe.
+             */
+            held.transform.SetParent(null, false);
+
+            if (held.IsSpawned)
+                ServerManager.Despawn(held, DespawnType.Pool);
+            
+        }
+
+        NetworkObject GetFirstRegularHeldWeapon()
+        {
+            foreach (WeaponInstance weapon in _weapons)
+            {
+                if (weapon == null || weapon.IsQuickItem || weapon.NetworkObj == null)
+                    continue;
+                
+                return weapon.NetworkObj;
+            }
+
+            return null;
         }
 
         [Server]
         public void DropAll()
         {
-            for (int i = _weapons.Count - 1; i >= 0; i--)
+            int count = Server_GetTerminalDropCount();
+
+            if (count <= 0)
+                return;
+
+            Rigidbody playerBody = GetComponent<Rigidbody>();
+
+            Vector3 playerVelocity = playerBody != null ? playerBody.linearVelocity : Vector3.zero;
+
+            Vector3 origin = transform.position + Vector3.up;
+
+            for (int i = 0; i < count; i++)
             {
-                if (_weapons[i].Def != null && !_weapons[i].IsQuickItem)
-                    Server_DropWeapon(i, true);
+                float angle = count > 1 ? 360f * i / count : 0f;
+
+                Vector3 direction = Quaternion.AngleAxis(angle, Vector3.up) * transform.forward;
+
+                Server_DropNextTerminalWeapon(new WorldDropContext(origin, direction, playerVelocity));
             }
         }
 
@@ -1056,5 +1150,38 @@ namespace _Scripts.Weapons
             Vector3 pos = active.transform.position;
             weapon.Client_TryPlayPredictedFireSfx(pos);
         }
+        
+        #region Coordinator Facing API
+        [Server]
+        public int Server_GetTerminalDropCount()
+        {
+            return CountRegularWeapons();
+        }
+
+        [Server]
+        public bool Server_DropNextTerminalWeapon(WorldDropContext context)
+        {
+            for (int i = _weapons.Count - 1; i >= 0; i--)
+            {
+                WeaponInstance weapon = _weapons[i];
+
+                if (weapon == null)
+                {
+                    Server_DropWeapon(i, terminalDrop: true, context);
+
+                    return true;
+                }
+
+                if (weapon.IsQuickItem)
+                    continue;
+
+                Server_DropWeapon(i, terminalDrop: true, context);
+
+                return true;
+            }
+
+            return false;
+        }
+        #endregion
     }
 }

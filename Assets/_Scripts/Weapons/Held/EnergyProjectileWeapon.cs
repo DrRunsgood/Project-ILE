@@ -1,70 +1,67 @@
 // EnergyProjectileWeapon.cs
-using _Scripts.Player;
+
 using _Scripts.Packs;
+using _Scripts.Player;
 
 namespace _Scripts.Weapons
 {
     public class EnergyProjectileWeapon : ProjectileWeapon
     {
-        private AdvancedPredictedController _ctrl;
-        PackManager                 _pm;
-        
-        float  EnergyPerShot       => def.energyPerShot;    // e.g. 4f
-        bool   NeedsEnergyPack     => def.requiresEnergyPack;
+        private AdvancedPredictedController _controller;
+        private PackManager _packManager;
 
-        #region wiring from WeaponManager
-        public override void CachePlayerRefs(WeaponManager wm, InputHandler ih)
+        private float EnergyPerShot => def.energyPerShot;
+        private bool NeedsEnergyPack => def.requiresEnergyPack;
+
+        #region Wiring
+
+        public override void CachePlayerRefs(WeaponManager weaponManager, InputHandler inputHandler)
         {
-            base.CachePlayerRefs(wm, ih);
-            _ctrl = wm.GetComponent<AdvancedPredictedController>(); // never null on player
-            _pm   = wm.GetComponent<PackManager>();
+            base.CachePlayerRefs(weaponManager, inputHandler);
+
+            _controller = weaponManager.GetComponent<AdvancedPredictedController>();
+
+            _packManager = weaponManager.GetComponent<PackManager>();
         }
+
         #endregion
 
-        /* ----------------- client-side gate ----------------- */
-        protected override bool CanFire()
-        {
-            if (!base.CanFire())
-                return false;
-            
-            if (_ctrl == null) return false;
+        #region Server Resource Validation
 
-            // Optional local feedback (cross-hair click, SFX, etc.)
-            if (NeedsEnergyPack && _pm?.CurrentId != PackId.Energy)
-                return false;
-
-            return _ctrl.Energy >= EnergyPerShot;
-        }
-
-        /* ----------------- server-side consumption ----------- */
         protected override bool ServerTryConsumeResource()
         {
-            if (_ctrl == null) return false;
-
-            if (NeedsEnergyPack && _pm?.CurrentId != PackId.Energy)
+            if (_controller == null)
                 return false;
 
-            // Enough juice?
-            if (_ctrl.Energy < EnergyPerShot)
+            if (NeedsEnergyPack && (_packManager == null || _packManager.CurrentId != PackId.Energy))
                 return false;
 
-            // Burn it (authoritative)
-            _ctrl.ServerSpendEnergy(EnergyPerShot);
+            if (_controller.Energy < EnergyPerShot)
+                return false;
+
+            _controller.ServerSpendEnergy(EnergyPerShot);
+
             return true;
         }
-        
+
+        #endregion
+
+        #region Local Predicted Audio Validation
+
         protected override bool ClientCanPlayPredictedFireSfx()
         {
             if (!base.ClientCanPlayPredictedFireSfx())
                 return false;
 
-            if (_ctrl == null)
+            if (_controller == null)
                 return false;
 
-            if (NeedsEnergyPack && _pm?.CurrentId != PackId.Energy)
+            if (NeedsEnergyPack && (_packManager == null || _packManager.CurrentId != PackId.Energy))
                 return false;
 
-            return _ctrl.Energy >= EnergyPerShot;
+            return _controller.Energy >= EnergyPerShot;
         }
+
+        #endregion
     }
 }

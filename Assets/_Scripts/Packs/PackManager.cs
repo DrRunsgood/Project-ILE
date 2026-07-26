@@ -6,6 +6,7 @@ using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Player;
 using _Scripts.Game;
+using _Scripts.Weapons;
 
 namespace _Scripts.Packs
 {
@@ -32,10 +33,15 @@ namespace _Scripts.Packs
         [SerializeField] LayerMask dropBlockMask = ~0;
         [SerializeField] float dropTossForward = 15f;
         [SerializeField] float pickupArmDelay = 0.5f;
+        [SerializeField] [Range(0f, 1f)] private float dropVelocityInheritance = 0.5f;
+        [SerializeField] private float terminalDropTossForward = 7f;
+        [SerializeField] private float terminalDropTossUpward = 2f;
 
         /* ───────── input & HUD ───────── */
         InputHandler _ih;
         public event Action<PackId, bool> OnPackChanged;
+        
+        AdvancedPredictedController _controller;
 
         /* ================================================================== */
 
@@ -44,6 +50,8 @@ namespace _Scripts.Packs
         void Awake()
         {
             _ih = GetComponent<InputHandler>();
+            
+            _controller = GetComponent<AdvancedPredictedController>();
 
             // Cache the correct ScriptableObject every time the sync-byte changes
             _packByte.OnChange += OnPackByteChanged;
@@ -79,129 +87,187 @@ namespace _Scripts.Packs
         [Server]
         public bool Server_GivePack(PackDefinition def)
         {
-            if (HasPack) return false;
+            if (def == null || def.heldPrefab == null)
+                return false;
 
-            CurrentDef = def;
+            if (HasPack)
+                return false;
 
-            if (heldNob)
+            if (packAnchor == null)
             {
-                heldNob.transform.SetParent(null, false);
-                ServerManager.Despawn(heldNob, DespawnType.Pool);
+                Debug.LogError("[PackManager] PackAnchor is not assigned.", this);
+
+                return false;
             }
 
+            /*
+             * Clean any stale held object left behind by an earlier malformed
+             * state before assigning a new pack.
+             */
+            if (heldNob != null)
+                Server_ClearHeldPackState();
+
             NetworkObject nob = PoolUtil.TakeFromPool(def.heldPrefab);
-            if (nob == null) return false;
 
-            nob.transform.SetParent(packAnchor, false);   // zeroed local TRS
+            if (nob == null)
+                return false;
+
+            nob.transform.SetParent(packAnchor, false);
+            nob.transform.localPosition = Vector3.zero;
+            nob.transform.localRotation = Quaternion.identity;
+            nob.transform.localScale = Vector3.one;
+
+            ServerManager.Spawn(nob, Owner);
+
             heldNob = nob;
-            
-
-            ServerManager.Spawn(nob, Owner);              // replicate
+            CurrentDef = def;
             _packByte.Value = Compose(def.id, false);
-            RpcAttachHeld(nob);
+
+            RpcSetHeld(nob);
+
             return true;
         }
 
         [ServerRpc(RequireOwnership = true)]
-        void Server_RequestDrop() => Server_Drop();
+        void Server_RequestDrop()
+        {
+            WorldDropContext context = BuildManualDropContext();
+
+            Server_TryDropPack(terminalDrop: false, context);
+        }
+        
+        [Server]
+        WorldDropContext BuildManualDropContext()
+        {
+            if (_controller != null && _controller.Server_TryGetLatestAuthoritativeFirePose(out FirePose pose))
+                return new WorldDropContext(pose.Position, pose.Direction, pose.Velocity);
+            
+
+            Rigidbody playerBody = GetComponent<Rigidbody>();
+
+            return new WorldDropContext(packAnchor != null ? packAnchor.position : transform.position + Vector3.up,
+                transform.forward, playerBody != null ? playerBody.linearVelocity : Vector3.zero);
+        }
 
         [Server]
         public void Server_Drop()
         {
-            if (!HasPack || CurrentDef == null)
-                return;
+            Rigidbody playerBody = GetComponent<Rigidbody>();
 
-            uint serverNow = TimeManager.Tick;
+            WorldDropContext context = new WorldDropContext(transform.position + Vector3.up,
+                    transform.forward, playerBody != null ? playerBody.linearVelocity : Vector3.zero);
 
-            LagCompensationManager.FireSnapshot snap;
-
-            if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow, out snap, 0))
-            {
-            }
-            else if (serverNow > 0 && LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow - 1, out snap, 0))
-            {
-            }
-            else if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow + 1, out snap, 0))
-            {
-            }
-            else if (LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, serverNow, out snap, 2))
-            {
-            }
-            else
-            {
-                uint last = serverNow > 0 ? serverNow - 1 : 0;
-                if (!LagCompensationManager.Instance.TryGetSnapshot(NetworkObject, last, out snap, 2))
-                    return;
-            }
-
-            Vector3 camPos = snap.Position;
-            Vector3 fwd = snap.Direction.normalized;
-
-            Vector3 pos = ResolveSafeDropPosition(camPos, fwd);
-            Quaternion rot = Quaternion.identity;
-
-            NetworkObject ground = PoolUtil.TakeFromPool(CurrentDef.groundPrefab);
-            if (ground != null)
-            {
-                if (ground.TryGetComponent(out _Scripts.Pickups.Spawning.SpawnedPickupLink link))
-                    link.Clear();
-                
-                ground.transform.SetPositionAndRotation(pos, rot);
-                ServerManager.Spawn(ground);
-                RoundScopedUtil.MarkRoundScoped(ground);
-
-                if (ground.TryGetComponent(out _Scripts.GamePhysics.KinematicMover km))
-                {
-                    Vector3 playerVel = GetComponent<Rigidbody>()?.linearVelocity ?? Vector3.zero;
-                    Vector3 tossForward = fwd * dropTossForward;
-                    km.InitVelocity(playerVel * 0.5f + tossForward);
-                }
-                
-                if (ground.TryGetComponent(out PackPickup pp))
-                    pp.Arm(pickupArmDelay);
-                
-                if (ground.TryGetComponent(out TimedDespawn td))
-                    td.ArmDefault();
-            }
-
-            if (heldNob)
-            {
-                heldNob.transform.SetParent(null, false);
-                ServerManager.Despawn(heldNob, DespawnType.Pool);
-            }
-
-            heldNob = null;
-            CurrentDef = null;
-            _packByte.Value = 0; // None / inactive
+            Server_TryDropPack(terminalDrop: true, context);
         }
         
-        Vector3 ResolveSafeDropPosition(Vector3 origin, Vector3 forward)
+        [Server]
+        bool Server_TryDropPack(bool terminalDrop, WorldDropContext context)
         {
-            forward.Normalize();
+            if (!HasPack)
+                return false;
 
-            Vector3 desiredPos = origin + forward * dropOffset;
-
-            if (Physics.CheckSphere(origin, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
-                return origin;
-
-            Vector3 finalPos = desiredPos;
-
-            if (Physics.SphereCast(origin, dropSafetyRadius, forward, out RaycastHit hit, dropOffset, dropBlockMask, QueryTriggerInteraction.Ignore))
+            if (CurrentDef == null)
             {
-                finalPos = hit.point - forward * dropBackoff;
+                Debug.LogError("[PackManager] Pack SyncVar indicates a held pack, but CurrentDef is null.",
+                    this);
+
+                if (terminalDrop)
+                    Server_ClearHeldPackState();
+
+                return false;
             }
 
-            if (Physics.CheckSphere(finalPos, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
+            PackDefinition definition = CurrentDef;
+
+            if (definition.groundPrefab == null)
             {
-                Vector3 nearOrigin = origin + forward * Mathf.Min(dropBackoff, dropOffset * 0.25f);
+                Server_HandlePackDropFailure(terminalDrop, definition, "Ground prefab is not assigned.");
 
-                if (!Physics.CheckSphere(nearOrigin, dropSafetyRadius, dropBlockMask, QueryTriggerInteraction.Ignore))
-                    return nearOrigin;
-
-                return origin;
+                return false;
             }
 
-            return finalPos;
+            if (!definition.groundPrefab.TryGetComponent(out PackPickup _))
+            {
+                Server_HandlePackDropFailure(terminalDrop, definition, "Ground prefab has no PackPickup component.");
+
+                return false;
+            }
+
+            Vector3 dropDirection = WorldDropUtil.GetSafeDirection(context.Direction, transform.forward);
+
+            Vector3 dropPosition = WorldDropUtil.ResolveSafePosition(transform, context.Origin, dropDirection,
+                    dropOffset, dropSafetyRadius, dropBackoff, dropBlockMask);
+
+            NetworkObject ground = PoolUtil.TakeFromPool(definition.groundPrefab);
+
+            if (ground == null)
+            {
+                Server_HandlePackDropFailure(terminalDrop, definition, "No pooled ground object was available.");
+
+                return false;
+            }
+
+            if (!ground.TryGetComponent(out PackPickup packPickup))
+            {
+                Debug.LogError($"[PackManager] Pooled ground object for " + $"'{definition.name}' has no PackPickup component.", ground);
+
+                Destroy(ground.gameObject);
+
+                Server_HandlePackDropFailure(terminalDrop, definition, "Pooled ground object was malformed.");
+
+                return false;
+            }
+
+            if (ground.TryGetComponent(out _Scripts.Pickups.Spawning.SpawnedPickupLink link))
+                link.Clear();
+            
+            ground.transform.SetPositionAndRotation(dropPosition, Quaternion.identity);
+
+            ServerManager.Spawn(ground);
+
+            RoundScopedUtil.MarkRoundScoped(ground);
+
+            if (ground.TryGetComponent(out _Scripts.GamePhysics.KinematicMover mover))
+            {
+                float tossSpeed = terminalDrop ? terminalDropTossForward : dropTossForward;
+
+                Vector3 tossVelocity = context.PlayerVelocity * dropVelocityInheritance;
+
+                tossVelocity += dropDirection * tossSpeed;
+
+                if (terminalDrop)
+                    tossVelocity += Vector3.up * terminalDropTossUpward;
+                
+                mover.InitVelocity(tossVelocity);
+            }
+
+            packPickup.Arm(pickupArmDelay);
+
+            if (ground.TryGetComponent(out TimedDespawn timedDespawn))
+                timedDespawn.ArmDefault();
+
+            Server_ClearHeldPackState();
+
+            return true;
+        }
+
+        [Server]
+        private void Server_HandlePackDropFailure(bool terminalDrop, PackDefinition definition, string reason)
+        {
+            string packName = definition != null ? definition.name : "Unknown pack";
+
+            if (!terminalDrop)
+            {
+                Debug.LogWarning($"[PackManager] Manual drop cancelled for " + $"'{packName}'. {reason}", this);
+
+                // Manual drop failed: retain the pack and all current state.
+                return;
+            }
+
+            Debug.LogWarning($"[PackManager] Terminal drop failed for " + $"'{packName}'. {reason} Removing held pack state.", this);
+
+            // Death/disconnect cannot leave an attached held-pack object behind.
+            Server_ClearHeldPackState();
         }
 
         #endregion
@@ -231,15 +297,15 @@ namespace _Scripts.Packs
         #region Visuals
 
         [ObserversRpc(BufferLast = true, RunLocally = true)]
-        void RpcAttachHeld(NetworkObject nob)
+        void RpcSetHeld(NetworkObject nob)
         {
-            if (packAnchor)
-            {
-                nob.transform.SetParent(packAnchor, false);
-                nob.transform.localPosition = Vector3.zero;
-                nob.transform.localRotation = Quaternion.identity;
-                nob.transform.localScale    = Vector3.one;
-            }
+            if (nob == null || packAnchor == null)
+                return;
+
+            nob.transform.SetParent(packAnchor, false);
+            nob.transform.localPosition = Vector3.zero;
+            nob.transform.localRotation = Quaternion.identity;
+            nob.transform.localScale = Vector3.one;
         }
 
         #endregion
@@ -248,15 +314,48 @@ namespace _Scripts.Packs
         [Server]
         public void Server_ClearPackForRoundReset()
         {
-            if (heldNob)
-            {
-                heldNob.transform.SetParent(null, false);
-                ServerManager.Despawn(heldNob, DespawnType.Pool);
-            }
+            Server_ClearHeldPackState();
+        }
+
+        [Server]
+        public void Server_ClearPackForTeardown()
+        {
+            Server_ClearHeldPackState();
+        }
         
+        [Server]
+        void Server_ClearHeldPackState()
+        {
+            NetworkObject held = heldNob;
+
+            RpcSetHeld(null);
+
             heldNob = null;
             CurrentDef = null;
             _packByte.Value = 0;
+
+            if (held == null)
+                return;
+
+            held.transform.SetParent(null, false);
+
+            if (held.IsSpawned)
+                ServerManager.Despawn(held, DespawnType.Pool);
+            
+        }
+        #endregion
+        
+        #region Coordinator facing API
+        [Server]
+        public int Server_GetTerminalDropCount()
+        {
+            return HasPack ? 1 : 0;
+        }
+
+        [Server]
+        public bool Server_DropTerminal(WorldDropContext context)
+        {
+            return Server_TryDropPack(terminalDrop: true, context);
         }
         #endregion
     }

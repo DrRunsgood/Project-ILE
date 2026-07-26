@@ -1,4 +1,3 @@
-using FishNet.Connection;
 using FishNet.Object;
 using UnityEngine;
 
@@ -10,79 +9,59 @@ namespace _Scripts.Weapons
 
         [Header("Throw Arc")]
         [Tooltip("Extra upward throw angle when aiming horizontally.")]
-        [SerializeField, Range(0f, 45f)] float throwArcDegrees = 15f;
+        [SerializeField] [Range(0f, 45f)] private float throwArcDegrees = 15f;
 
-        [Tooltip("Higher = arc disappears faster as you aim straight up/down. 1 = linear.")]
-        [SerializeField, Range(0.25f, 4f)] float verticalArcDampingPower = 1f;
-
-        volatile bool _armed;
+        [Tooltip("Higher values make the added arc disappear faster " +
+                 "while aiming vertically. A value of 1 is linear.")]
+        [SerializeField] [Range(0.25f, 4f)] private float verticalArcDampingPower = 1f;
 
         [Server]
-        internal void ArmQuickThrow()
+        public bool Server_TryThrowFromPose(FirePose pose)
         {
-            _armed = true;
-            IsActive = true;
-            gameObject.SetActive(true);
-
-            Target_Arm(base.Owner);
+            /*
+             * Grenades are hidden inventory actions, not selected weapons.
+             * They still use the authoritative FirePoint and the common
+             * projectile spawn/cooldown/safety pipeline.
+             */
+            return Server_TryFireFromPoseCore(pose, requireActive: false);
         }
 
-        [TargetRpc]
-        void Target_Arm(NetworkConnection _)
+        protected override Vector3 AdjustProjectileVelocityDirection(Vector3 fireDirection)
         {
-            _armed = true;
-            IsActive = true;
-            gameObject.SetActive(true);
+            return ApplyThrowArc(fireDirection, throwArcDegrees, verticalArcDampingPower);
         }
 
-        protected override bool CanFire()
+        private static Vector3 ApplyThrowArc(Vector3 aimDirection, float arcDegrees, float dampingPower)
         {
-            if (!_armed)
-                return false;
-
-            _armed = false;
-            IsActive = false;
-            return true;
-        }
-
-        protected override Vector3 AdjustProjectileVelocityDirection(Vector3 fireDir)
-        {
-            return ApplyThrowArc(fireDir, throwArcDegrees, verticalArcDampingPower);
-        }
-
-        static Vector3 ApplyThrowArc(Vector3 aimDir, float arcDegrees, float dampingPower)
-        {
-            if (aimDir.sqrMagnitude <= 0.0001f)
+            if (aimDirection.sqrMagnitude <= 0.0001f)
                 return Vector3.forward;
 
-            aimDir.Normalize();
+            aimDirection.Normalize();
 
             if (arcDegrees <= 0.001f)
-                return aimDir;
+                return aimDirection;
 
             /*
-             * verticality:
-             * 0 = looking horizontally
-             * 1 = looking straight up/down
+             * 0 verticality means horizontal aim and receives the
+             * complete configured throw arc.
              *
-             * arcBlend:
-             * 1 = full throw arc
-             * 0 = no added arc
+             * 1 verticality means straight up/down and receives no
+             * additional arc.
              */
-            float verticality = Mathf.Clamp01(Mathf.Abs(aimDir.y));
+            float verticality = Mathf.Clamp01(Mathf.Abs(aimDirection.y));
+
             float arcBlend = 1f - verticality;
 
             dampingPower = Mathf.Max(0.01f, dampingPower);
+
             arcBlend = Mathf.Pow(arcBlend, dampingPower);
 
             float arcRadians = arcDegrees * arcBlend * Mathf.Deg2Rad;
 
             if (arcRadians <= 0.0001f)
-                return aimDir;
+                return aimDirection;
 
-            return Vector3.RotateTowards(aimDir,Vector3.up, arcRadians, 0f).normalized;
+            return Vector3.RotateTowards(aimDirection, Vector3.up, arcRadians, 0f).normalized;
         }
-
-        protected override bool ServerTryConsumeResource() => true;
     }
 }

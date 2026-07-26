@@ -6,6 +6,7 @@ using FishNet.Transporting;
 using FishNet.Object.Synchronizing;
 using _Scripts.Packs;
 using _Scripts.Weapons;
+using _Scripts.Items;
 using System;
 
 namespace _Scripts.Player
@@ -200,6 +201,9 @@ namespace _Scripts.Player
         // Pack Manager
         private PackManager _packMgr;
         
+        // Item Manager
+        private ItemManager _itemManager;
+        
         // For camera orientation
         private PlayerLookModule _lookModule;
         
@@ -229,6 +233,8 @@ namespace _Scripts.Player
         private byte _poseResetSequence;
         private byte _lastAppliedPoseResetSequence;
         private bool _poseResetSequenceInitialized;
+        private FirePose _lastAuthoritativeFirePose;
+        private bool _hasAuthoritativeFirePose;
         
         // Public helpers
         public float Energy => _energyModule?.Energy ?? 0f;
@@ -246,6 +252,7 @@ namespace _Scripts.Player
         private const byte MoveMask = 0b0000_1111;
         private const byte KnockbackDirtyToggleFlag = 0b0001_0000;
         private const byte JumpPressedEventFlag = 0b0010_0000;
+        private const byte GrenadePressedEventFlag = 0b0100_0000;
         
         #endregion
 
@@ -260,7 +267,7 @@ namespace _Scripts.Player
             public short LookY;
             public InputButtons Held;
 
-            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart, bool jumpPressed)
+            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart, bool jumpPressed, bool grenadePressed)
             {
                 _tick = tick;
 
@@ -269,6 +276,8 @@ namespace _Scripts.Player
                 if (heart) MoveAndEvents |= KnockbackDirtyToggleFlag;
 
                 if (jumpPressed) MoveAndEvents |= JumpPressedEventFlag;
+
+                if (grenadePressed) MoveAndEvents |= GrenadePressedEventFlag;
 
                 LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * LookQuantScale), short.MinValue, short.MaxValue);
 
@@ -338,6 +347,7 @@ namespace _Scripts.Player
             _predictionRb.Initialize(_rb);
             _weaponManager = GetComponent<WeaponManager>();
             _packMgr = GetComponent<PackManager>();
+            _itemManager = GetComponent<ItemManager>();
             _col = GetComponent<Collider>();
             
             SetPhysicMaterial(playerPhysicsMaterial);
@@ -355,11 +365,12 @@ namespace _Scripts.Player
             _pendingKnockback = null;
             _pendingTempDrag = null;
             _jumpLockTicks = 0;
+            _hasAuthoritativeFirePose = false;
+            _lastAuthoritativeFirePose = default;
             
             TimeManager.OnTick += OnTick;
             TimeManager.OnPostTick += OnPostTick;
         }
-        
         
         public override void OnStartClient()
         {
@@ -400,6 +411,8 @@ namespace _Scripts.Player
                 Vector2 lookDelta = ih.ConsumeLookDelta();
 
                 bool jumpPressed = ih.ConsumeJumpPressed();
+                
+                bool grenadePressed = ih.ConsumeGrenadeUse();
 
                 MovementData movementData =
                     new MovementData(
@@ -408,7 +421,8 @@ namespace _Scripts.Player
                         lookDelta,
                         ih.HeldButtons,
                         _knockbackDirtyToggle,
-                        jumpPressed);
+                        jumpPressed,
+                        grenadePressed);
 
                 Replicate(movementData);
             }
@@ -475,7 +489,7 @@ namespace _Scripts.Player
             
             if (_jumpLockTicks > 0) _jumpLockTicks--;
 
-            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed);
+            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed, out bool grenadePressed);
             
             if (_pendingKnockback.HasValue) // Check incoming Knockback
             {
@@ -555,9 +569,15 @@ namespace _Scripts.Player
                 {
                     FirePose pose = new FirePose(fireAnchor.position, fireAnchor.forward,
                         _rb.linearVelocity, TimeManager.Tick);
+                    
+                    _lastAuthoritativeFirePose = pose;
+                    _hasAuthoritativeFirePose = true;
 
                     if (_weaponManager != null)
                         _weaponManager.Server_ProcessFireInput(held, pose);
+                    
+                    if (_itemManager != null)
+                        _itemManager.Server_ProcessGrenadeInput(grenadePressed, pose);
 
                     if (LagCompensationManager.Instance != null)
                         LagCompensationManager.Instance.RecordSnapshot(_netObj, pose.Position, pose.Direction,
@@ -568,7 +588,7 @@ namespace _Scripts.Player
         #endregion
         
         #region Quantization and Decompression
-        private static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed)
+        private static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed, out bool grenadePressed)
         {
             move = NetUtils.MoveCodec.Unpack((byte)(md.MoveAndEvents & MoveMask));
 
@@ -577,6 +597,7 @@ namespace _Scripts.Player
             held = md.Held;
 
             jumpPressed = (md.MoveAndEvents & JumpPressedEventFlag) != 0;
+            grenadePressed = (md.MoveAndEvents & GrenadePressedEventFlag) != 0;
         }
         
         // ─── Velocity polar helpers ───────────────────────────────
@@ -1465,6 +1486,10 @@ namespace _Scripts.Player
             _state = MovementState.Airborne;
             _jetLockedOut = false;
             _jumpLockTicks = 0;
+            
+            // Reset fire pose
+            _hasAuthoritativeFirePose = false;
+            _lastAuthoritativeFirePose = default;
 
             // Reset knockback state.
             _pendingKnockback = null;
@@ -1646,6 +1671,13 @@ namespace _Scripts.Player
         private void RpcNotifyObserverPoseReset(byte sequence, Vector3 position, Quaternion rotation)
         {
             OnObserverPoseResetReceived?.Invoke(sequence, position, rotation);
+        }
+        
+        [Server]
+        public bool Server_TryGetLatestAuthoritativeFirePose(out FirePose pose)
+        {
+            pose = _lastAuthoritativeFirePose;
+            return _hasAuthoritativeFirePose;
         }
     }
 }

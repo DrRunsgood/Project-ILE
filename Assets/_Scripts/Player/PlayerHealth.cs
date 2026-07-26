@@ -7,7 +7,6 @@ using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Player;
 using _Scripts.Weapons;
-using _Scripts.Packs;
 using _Scripts.Game.CTF;
 using _Scripts.Combat;
 using _Scripts.Player.Sessions;
@@ -41,16 +40,17 @@ public sealed class PlayerHealth : NetworkBehaviour
     /* ───── cached refs ──────── */
     private AdvancedPredictedController ctrl;
     private WeaponManager wm;
-    private PackManager pm;
     private Rigidbody rb;
     private FlagCarrier flagCarrier;
     private PlayerIdentity identity;
+    private PlayerCarriedDropCoordinator carriedDropCoordinator;
 
     private Collider[] cols;
     private Renderer[] rends;
 
     /* ───── Co-routines ──────── */
     Coroutine _healRoutine;
+    Coroutine _respawnRoutine;
     
     /* ═════════════════════════ */
     #region Init
@@ -59,7 +59,7 @@ public sealed class PlayerHealth : NetworkBehaviour
         _hp.OnChange += HpChanged;
 
         ctrl = GetComponent<AdvancedPredictedController>();
-        pm = GetComponent<PackManager>();
+        carriedDropCoordinator = GetComponent<PlayerCarriedDropCoordinator>();
         wm = GetComponent<WeaponManager>();
         rb = GetComponent<Rigidbody>();
         flagCarrier = GetComponent<FlagCarrier>();
@@ -73,6 +73,14 @@ public sealed class PlayerHealth : NetworkBehaviour
     {
         base.OnStartServer();
         _hp.Value = maxHp;                     // first spawn
+    }
+    
+    public override void OnStopServer()
+    {
+        CancelPendingRespawn();
+        CancelPendingHeal();
+
+        base.OnStopServer();
     }
     #endregion
     /* ═════════════════════════ */
@@ -203,8 +211,7 @@ public sealed class PlayerHealth : NetworkBehaviour
 
         flagCarrier?.Server_DropCarriedFlagOnDeath();
 
-        wm?.DropAll();
-        pm?.Server_Drop();
+        carriedDropCoordinator?.Server_DropForTerminalExit();
 
         ApplyAliveState(false);
         RpcSetAlive(false);
@@ -229,7 +236,10 @@ public sealed class PlayerHealth : NetworkBehaviour
             ? GameModeManager.Instance.GetRespawnDelay(this)
             : respawnDelay;
 
-        StartCoroutine(RespawnAfter(delay));
+        CancelPendingHeal();
+        CancelPendingRespawn();
+
+        _respawnRoutine = StartCoroutine(RespawnAfter(delay));
     }
     
 
@@ -239,12 +249,15 @@ public sealed class PlayerHealth : NetworkBehaviour
     {
         yield return new WaitForSeconds(delay);
 
-        // Game mode decides if this player is allowed to respawn now.
-        if (GameModeManager.Instance != null &&
-            !GameModeManager.Instance.CanPlayerRespawn(this))
-        {
+        /*
+         * The coroutine has reached its terminal point. Clear the handle
+         * before calling RespawnNow so RespawnNow does not try to stop the
+         * coroutine currently executing.
+         */
+        _respawnRoutine = null;
+
+        if (GameModeManager.Instance != null && !GameModeManager.Instance.CanPlayerRespawn(this))
             yield break;
-        }
 
         RespawnNow();
     }
@@ -258,11 +271,19 @@ public sealed class PlayerHealth : NetworkBehaviour
             return;
         }
 
+        /*
+         * A forced round/match respawn supersedes any previously scheduled
+         * death respawn. Cancel it only after a valid spawn was obtained.
+         */
+        CancelPendingRespawn();
+
         rb.isKinematic = false;
 
         ctrl?.ResetEnergy();
 
         _hp.Value = maxHp;
+        
+        carriedDropCoordinator?.Server_ResetForNewLife();
 
         SetPlayable(true);
         ApplyAliveState(true);
@@ -270,7 +291,7 @@ public sealed class PlayerHealth : NetworkBehaviour
 
         if (PlayerSessionManager.Instance != null && Owner != null)
             PlayerSessionManager.Instance.ServerMarkSpawnedAlive(Owner);
-        
+
         GameModeManager.Instance?.NotifyPlayerRespawned(this);
 
         OnRespawned?.Invoke();
@@ -403,25 +424,39 @@ public sealed class PlayerHealth : NetworkBehaviour
     private bool IsSameTeam(NetworkObject attacker)
     {
         if (attacker == null || identity == null)
-        {
             return false;
-        }
 
         if (!attacker.TryGetComponent(out PlayerIdentity attackerIdentity))
-        {
             return false;
-        }
 
         TeamId attackerTeam = attackerIdentity.Team;
 
         TeamId victimTeam = identity.Team;
 
         if (attackerTeam == TeamId.None || victimTeam == TeamId.None)
-        {
             return false;
-        }
 
         return attackerTeam == victimTeam;
+    }
+    
+    [Server]
+    private void CancelPendingRespawn()
+    {
+        if (_respawnRoutine == null)
+            return;
+
+        StopCoroutine(_respawnRoutine);
+        _respawnRoutine = null;
+    }
+
+    [Server]
+    private void CancelPendingHeal()
+    {
+        if (_healRoutine == null)
+            return;
+
+        StopCoroutine(_healRoutine);
+        _healRoutine = null;
     }
 
     /* ---------- one tiny RPC toggles visuals & hitboxes everywhere ---------- */
