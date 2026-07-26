@@ -32,6 +32,12 @@ namespace _Scripts.Game.CTF
         public Vector3 Velocity => _velocity;
         public bool IsMoving => _moving;
         
+        public LayerMask CollisionMask => collisionMask;
+
+        public float CollisionRadius => radius;
+
+        public float SkinWidth => skinWidth;
+        
         public override void OnStartNetwork()
         {
             base.OnStartNetwork();

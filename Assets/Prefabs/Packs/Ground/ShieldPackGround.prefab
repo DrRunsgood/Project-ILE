@@ -1132,6 +1132,8 @@ MonoBehaviour:
   NetworkBehaviours:
   - {fileID: 9066043960011125692}
   - {fileID: 5814633402721796301}
+  - {fileID: 105001435036842591}
+  - {fileID: -8730934243759642539}
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
   RuntimeParentNetworkBehaviour: {fileID: 0}
@@ -1142,7 +1144,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 1
-  _initializedTimestamp: -8584185874339405079
+  _initializedTimestamp: -8584165167343563711
 --- !u!114 &5814633402721796301
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1172,9 +1174,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8d4ef8c7f880c3941a58c7442d1ed1b6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_Scripts.GamePhysics.KinematicMover
-  _componentIndexCache: 255
+  _componentIndexCache: 2
   _addedNetworkObject: {fileID: 3334061059481593068}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 3334061059481593068}
   gravityScale: 1
   bounciness: 0.35
   slideFriction: 6
@@ -1182,7 +1184,7 @@ MonoBehaviour:
   sphereRadius: 0.05
   worldMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 3601
   reaction: 0
   lifeTime: -1
 --- !u!114 &-8730934243759642539
@@ -1197,8 +1199,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9962c30f71b5d4141b2c3e4f057648f0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TimedDespawn
-  _componentIndexCache: 255
+  _componentIndexCache: 3
   _addedNetworkObject: {fileID: 3334061059481593068}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 3334061059481593068}
   defaultLifetime: 15
   startOnServerSpawn: 0

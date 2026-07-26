@@ -193,10 +193,13 @@ namespace _Scripts.Packs
                 return false;
             }
 
-            Vector3 dropDirection = WorldDropUtil.GetSafeDirection(context.Direction, transform.forward);
+            if (!WorldDropUtil.TryResolveDrop(transform, context.Origin, context.Direction, dropOffset, dropSafetyRadius,
+                    dropBackoff, dropBlockMask, out Vector3 dropPosition, out Vector3 dropDirection))
+            {
+                Server_HandlePackDropFailure(terminalDrop, definition, "No collision-safe drop position was available.");
 
-            Vector3 dropPosition = WorldDropUtil.ResolveSafePosition(transform, context.Origin, dropDirection,
-                    dropOffset, dropSafetyRadius, dropBackoff, dropBlockMask);
+                return false;
+            }
 
             NetworkObject ground = PoolUtil.TakeFromPool(definition.groundPrefab);
 
@@ -238,7 +241,7 @@ namespace _Scripts.Packs
                 if (terminalDrop)
                     tossVelocity += Vector3.up * terminalDropTossUpward;
                 
-                mover.InitVelocity(tossVelocity);
+                mover.InitVelocity(tossVelocity, transform);
             }
 
             packPickup.Arm(pickupArmDelay);

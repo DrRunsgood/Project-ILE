@@ -343,10 +343,14 @@ namespace _Scripts.Items
             if (ground.TryGetComponent(out _Scripts.Pickups.Spawning.SpawnedPickupLink link))
                 link.Clear();
             
-            Vector3 direction = WorldDropUtil.GetSafeDirection(context.Direction, transform.forward);
+            if (!WorldDropUtil.TryResolveDrop(transform, context.Origin, context.Direction, itemDropOffset, itemDropSafetyRadius,
+                    itemDropBackoff, itemDropBlockMask, out Vector3 position, out Vector3 direction))
+            {
+                Debug.LogWarning($"[ItemManager] No collision-safe drop position was available for '{definition.displayName}'.",
+                    this);
 
-            Vector3 position = WorldDropUtil.ResolveSafePosition(transform, context.Origin, direction, itemDropOffset,
-                    itemDropSafetyRadius, itemDropBackoff, itemDropBlockMask);
+                return false;
+            }
 
             Quaternion rotation = Quaternion.AngleAxis(UnityEngine.Random.Range(0f, 360f), Vector3.up);
 
@@ -370,7 +374,7 @@ namespace _Scripts.Items
 
                 tossVelocity += Vector3.up * itemTerminalUpwardSpeed;
 
-                mover.InitVelocity(tossVelocity);
+                mover.InitVelocity(tossVelocity, transform);
             }
 
             itemPickup.Arm(itemDropPickupArmDelay);

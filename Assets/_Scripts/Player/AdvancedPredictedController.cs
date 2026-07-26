@@ -7,6 +7,7 @@ using FishNet.Object.Synchronizing;
 using _Scripts.Packs;
 using _Scripts.Weapons;
 using _Scripts.Items;
+using _Scripts.Game.CTF;
 using System;
 
 namespace _Scripts.Player
@@ -185,7 +186,6 @@ namespace _Scripts.Player
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool Btn(InputButtons mask, InputButtons flag) => (mask &  flag) != 0; // Bit-flag helper (keeps expressions readable).
         
-        private NetworkObject _netObj;
         private Rigidbody _rb;
         private PredictionRigidbody _predictionRb;
         Collider _col;
@@ -203,6 +203,9 @@ namespace _Scripts.Player
         
         // Item Manager
         private ItemManager _itemManager;
+        
+        // Flag
+        private FlagCarrier _flagCarrier;
         
         // For camera orientation
         private PlayerLookModule _lookModule;
@@ -253,6 +256,7 @@ namespace _Scripts.Player
         private const byte KnockbackDirtyToggleFlag = 0b0001_0000;
         private const byte JumpPressedEventFlag = 0b0010_0000;
         private const byte GrenadePressedEventFlag = 0b0100_0000;
+        private const byte FlagThrowPressedEventFlag = 0b1000_0000;
         
         #endregion
 
@@ -267,7 +271,8 @@ namespace _Scripts.Player
             public short LookY;
             public InputButtons Held;
 
-            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart, bool jumpPressed, bool grenadePressed)
+            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart, bool jumpPressed, bool grenadePressed,
+                bool flagThrowPressed)
             {
                 _tick = tick;
 
@@ -278,6 +283,8 @@ namespace _Scripts.Player
                 if (jumpPressed) MoveAndEvents |= JumpPressedEventFlag;
 
                 if (grenadePressed) MoveAndEvents |= GrenadePressedEventFlag;
+                
+                if (flagThrowPressed) MoveAndEvents |= FlagThrowPressedEventFlag;
 
                 LookX = (short)Mathf.Clamp(Mathf.RoundToInt(look.x * LookQuantScale), short.MinValue, short.MaxValue);
 
@@ -342,12 +349,12 @@ namespace _Scripts.Player
 
             _rb = GetComponent<Rigidbody>();
             _rb.useGravity = false;
-            _netObj = GetComponent<NetworkObject>();
             _predictionRb = new PredictionRigidbody();
             _predictionRb.Initialize(_rb);
             _weaponManager = GetComponent<WeaponManager>();
             _packMgr = GetComponent<PackManager>();
             _itemManager = GetComponent<ItemManager>();
+            _flagCarrier = GetComponent<FlagCarrier>();
             _col = GetComponent<Collider>();
             
             SetPhysicMaterial(playerPhysicsMaterial);
@@ -413,6 +420,8 @@ namespace _Scripts.Player
                 bool jumpPressed = ih.ConsumeJumpPressed();
                 
                 bool grenadePressed = ih.ConsumeGrenadeUse();
+                
+                bool flagThrowPressed = ih.ConsumeFlagThrow();
 
                 MovementData movementData =
                     new MovementData(
@@ -422,7 +431,8 @@ namespace _Scripts.Player
                         ih.HeldButtons,
                         _knockbackDirtyToggle,
                         jumpPressed,
-                        grenadePressed);
+                        grenadePressed,
+                        flagThrowPressed);
 
                 Replicate(movementData);
             }
@@ -489,7 +499,8 @@ namespace _Scripts.Player
             
             if (_jumpLockTicks > 0) _jumpLockTicks--;
 
-            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed, out bool grenadePressed);
+            Decompress(md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed, out bool grenadePressed,
+                out bool flagThrowPressed);
             
             if (_pendingKnockback.HasValue) // Check incoming Knockback
             {
@@ -578,17 +589,17 @@ namespace _Scripts.Player
                     
                     if (_itemManager != null)
                         _itemManager.Server_ProcessGrenadeInput(grenadePressed, pose);
-
-                    if (LagCompensationManager.Instance != null)
-                        LagCompensationManager.Instance.RecordSnapshot(_netObj, pose.Position, pose.Direction,
-                            pose.Velocity, pose.Tick);
+                    
+                    if (_flagCarrier != null)
+                        _flagCarrier.Server_ProcessThrowInput(flagThrowPressed, pose);
                 }
             }
         }
         #endregion
         
         #region Quantization and Decompression
-        private static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed, out bool grenadePressed)
+        private static void Decompress(in MovementData md, out Vector2 move, out Vector2 look, out InputButtons held, out bool jumpPressed, out bool grenadePressed,
+            out bool flagThrowPressed)
         {
             move = NetUtils.MoveCodec.Unpack((byte)(md.MoveAndEvents & MoveMask));
 
@@ -598,6 +609,7 @@ namespace _Scripts.Player
 
             jumpPressed = (md.MoveAndEvents & JumpPressedEventFlag) != 0;
             grenadePressed = (md.MoveAndEvents & GrenadePressedEventFlag) != 0;
+            flagThrowPressed = (md.MoveAndEvents & FlagThrowPressedEventFlag) != 0;
         }
         
         // ─── Velocity polar helpers ───────────────────────────────

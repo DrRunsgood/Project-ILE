@@ -13,7 +13,7 @@ namespace _Scripts.GamePhysics
     {
     /*──────────── CONFIG (per‑prefab) ────────────*/
         [Header("Motion")]
-        [SerializeField] float gravityScale   = 1f;      // 0 → no gravity
+        [SerializeField] float gravityScale   = 1f;
         [SerializeField] float bounciness     = 0.35f;   // for Bounce
         [SerializeField] float slideFriction  = 6f;      // m/s² when sliding
         [SerializeField] float stopSpeed      = 0.05f;   // below → sleep
@@ -26,7 +26,7 @@ namespace _Scripts.GamePhysics
         public enum Reaction { Bounce, Slide, Stop }
         [SerializeField] Reaction reaction    = Reaction.Bounce;
 
-        [Header("Lifetime  (‑1 = infinite)")]
+        [Header("Lifetime  (‑1 = infinite)")]
         [SerializeField] float lifeTime       = -1f;     // seconds
 
     /*──────────── RUNTIME ────────────*/
@@ -34,26 +34,43 @@ namespace _Scripts.GamePhysics
         uint      _spawnTick;
         bool      _simulating;
         RaycastHit _hit;
-
-    /*──────────── SPAWN PUSH‑OUT ──────*/
-        void Awake()
-        {
-            // If the prefab spawns clipping the ground, nudge it up once.
-            if (Physics.CheckSphere(transform.position, sphereRadius, worldMask))
-                if (Physics.Raycast(transform.position + Vector3.up * 0.5f,
-                                    Vector3.down, out var info, 2f, worldMask))
-                    transform.position =
-                        info.point + info.normal * (sphereRadius + 0.002f);
-        }
+        
+        private static readonly Collider[] InitialOverlapHits = new Collider[16];
 
     /*════════════ PUBLIC API ══════════*/
         /// Call **only on the server** immediately after spawning.
-        public void InitVelocity(Vector3 vel)
+        [Server]
+        public void InitVelocity(Vector3 vel, Transform ignoredRoot = null)
         {
-            _velocity   = vel;
-            _spawnTick  = TimeManager.Tick;
+            if (TimeManager == null)
+            {
+                Debug.LogError($"[KinematicMover] '{name}' cannot initialize without a TimeManager.", this);
+
+                _velocity = Vector3.zero;
+                _spawnTick = 0;
+                _simulating = false;
+
+                return;
+            }
+
+            _spawnTick = TimeManager.Tick;
+
+            if (HasBlockingInitialOverlap(ignoredRoot))
+            {
+                Debug.LogWarning($"[KinematicMover] '{name}' began inside blocking geometry. Initial motion was cancelled.", this);
+
+                _velocity = Vector3.zero;
+                _simulating = false;
+
+                RpcInit(Vector3.zero, _spawnTick, false);
+
+                return;
+            }
+
+            _velocity = vel;
             _simulating = true;
-            RpcInit(_velocity, _spawnTick);            // buffered for late joiners
+
+            RpcInit(_velocity, _spawnTick, true);
         }
 
     /*──────────── FishNet hooks ───────*/
@@ -111,12 +128,59 @@ namespace _Scripts.GamePhysics
 
     /*──────────── Buffered init RPC ───*/
         [ObserversRpc(BufferLast = true)]
-        void RpcInit(Vector3 vel, uint tick)
+        void RpcInit(Vector3 vel, uint tick, bool simulating)
         {
-            if (IsServer) return;      // host already has state
-            _velocity   = vel;
-            _spawnTick  = tick;
-            _simulating = true;
+            if (IsServer)
+                return;
+
+            _velocity = vel;
+            _spawnTick = tick;
+            _simulating = simulating;
+        }
+        
+        private bool HasBlockingInitialOverlap(Transform ignoredRoot)
+        {
+            int hitCount = Physics.OverlapSphereNonAlloc(transform.position, sphereRadius, InitialOverlapHits, worldMask,
+                    QueryTriggerInteraction.Ignore);
+
+            for (int i = 0; i < hitCount; i++)
+            {
+                Collider hit = InitialOverlapHits[i];
+
+                if (hit == null)
+                    continue;
+
+                Transform hitTransform = hit.transform;
+
+                /*
+                 * Ignore colliders belonging to this pickup itself.
+                 * This supports colliders placed on the mover object,
+                 * its children, or a shared prefab parent.
+                 */
+                if (IsSameHierarchy(hitTransform, transform))
+                    continue;
+                
+
+                /*
+                 * Player drops may intentionally begin close to the
+                 * dropping player's capsule. That player is not world
+                 * geometry and must not invalidate the drop.
+                 */
+                if (ignoredRoot != null && IsSameHierarchy(hitTransform, ignoredRoot))
+                    continue;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsSameHierarchy(Transform first, Transform second)
+        {
+            if (first == null || second == null)
+                return false;
+
+            return first == second || first.IsChildOf(second) || second.IsChildOf(first);
         }
 
     /*──────────── Tick plumbing ───────*/

@@ -444,7 +444,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 1
-  _initializedTimestamp: -8584185874339405079
+  _initializedTimestamp: -8584165167343563711
 --- !u!114 &9074821108863026973
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -467,7 +467,7 @@ MonoBehaviour:
   sphereRadius: 0.1
   worldMask:
     serializedVersion: 2
-    m_Bits: 3665
+    m_Bits: 3601
   reaction: 0
   lifeTime: -1
 --- !u!33 &3146740071011218296

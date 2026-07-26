@@ -24,6 +24,35 @@ namespace _Scripts.Game
 
         private static readonly Collider[] OverlapHits = new Collider[16];
 
+        private static readonly float[] DirectionOffsets =
+        {
+            0f,
+            45f,
+            -45f,
+            90f,
+            -90f,
+            135f,
+            -135f,
+            180f
+        };
+
+        private static readonly float[] DistanceScales =
+        {
+            1f,
+            0.75f,
+            0.5f,
+            0.25f,
+            0f
+        };
+
+        private static readonly float[] LiftMultipliers =
+        {
+            0f,
+            1f,
+            2f,
+            3f
+        };
+
         public static Vector3 GetSafeDirection(Vector3 direction, Vector3 fallback)
         {
             if (direction.sqrMagnitude > 0.0001f)
@@ -35,23 +64,65 @@ namespace _Scripts.Game
             return Vector3.forward;
         }
 
-        public static Vector3 ResolveSafePosition(Transform ownerRoot, Vector3 origin, Vector3 direction, float offset,
-            float radius, float backoff, LayerMask blockMask)
+        public static bool TryResolveDrop(Transform ownerRoot, Vector3 origin, Vector3 preferredDirection, float offset, float radius,
+            float backoff, LayerMask blockMask, out Vector3 resolvedPosition, out Vector3 resolvedDirection)
         {
-            direction = GetSafeDirection(direction, ownerRoot != null ? ownerRoot.forward : Vector3.forward);
+            Vector3 fallbackDirection = ownerRoot != null ? ownerRoot.forward : Vector3.forward;
+            
+            Vector3 baseDirection = GetSafeDirection(preferredDirection, fallbackDirection);
 
             float safeOffset = Mathf.Max(0f, offset);
+
             float safeRadius = Mathf.Max(0.01f, radius);
+
             float safeBackoff = Mathf.Max(0f, backoff);
 
-            float travelDistance = safeOffset;
+            resolvedPosition = origin;
+            resolvedDirection = baseDirection;
 
-            if (safeOffset > 0f)
+            for (int liftIndex = 0; liftIndex < LiftMultipliers.Length; liftIndex++)
             {
-                int hitCount = Physics.SphereCastNonAlloc(origin, safeRadius, direction, CastHits,
-                    safeOffset, blockMask, QueryTriggerInteraction.Ignore);
+                float liftDistance = LiftMultipliers[liftIndex] * (safeRadius + 0.05f);
 
-                float closestDistance = safeOffset;
+                Vector3 testOrigin = origin + Vector3.up * liftDistance;
+
+                for (int directionIndex = 0; directionIndex < DirectionOffsets.Length; directionIndex++)
+                {
+                    Vector3 candidateDirection = Quaternion.AngleAxis(DirectionOffsets[directionIndex], Vector3.up) * baseDirection;
+
+                    candidateDirection = GetSafeDirection(candidateDirection, baseDirection);
+
+                    if (!TryResolveAlongDirection(ownerRoot, testOrigin, candidateDirection, safeOffset, safeRadius,
+                            safeBackoff, blockMask, out Vector3 candidatePosition))
+                    {
+                        continue;
+                    }
+
+                    resolvedPosition = candidatePosition;
+                    resolvedDirection = candidateDirection;
+
+                    return true;
+                }
+            }
+
+            /*
+             * Do not return a known-blocked position. The caller can
+             * apply its existing manual/terminal failure semantics.
+             */
+            return false;
+        }
+
+        private static bool TryResolveAlongDirection(Transform ownerRoot, Vector3 origin, Vector3 direction, float offset,
+            float radius, float backoff, LayerMask blockMask, out Vector3 resolvedPosition)
+        {
+            float availableDistance = offset;
+
+            if (offset > 0f)
+            {
+                int hitCount = Physics.SphereCastNonAlloc(origin, radius, direction, CastHits, offset,
+                        blockMask, QueryTriggerInteraction.Ignore);
+
+                float closestDistance = offset;
                 bool foundBlockingHit = false;
 
                 for (int i = 0; i < hitCount; i++)
@@ -63,6 +134,7 @@ namespace _Scripts.Game
 
                     if (IsOwnedCollider(ownerRoot, hit.collider))
                         continue;
+                    
 
                     if (hit.distance >= closestDistance)
                         continue;
@@ -72,24 +144,26 @@ namespace _Scripts.Game
                 }
 
                 if (foundBlockingHit)
-                    travelDistance = Mathf.Max(0f, closestDistance - safeBackoff);
+                    availableDistance = Mathf.Max(0f, closestDistance - backoff);
                 
             }
 
-            Vector3 candidate = origin + direction * travelDistance;
+            for (int i = 0; i < DistanceScales.Length; i++)
+            {
+                float candidateDistance = availableDistance * DistanceScales[i];
 
-            if (!HasBlockingOverlap(ownerRoot, candidate, safeRadius, blockMask))
-                return candidate;
-            
+                Vector3 candidate = origin + direction * candidateDistance;
 
-            float nearDistance = Mathf.Min(Mathf.Max(safeBackoff, 0.02f), safeOffset * 0.25f);
+                if (HasBlockingOverlap(ownerRoot, candidate, radius, blockMask))
+                    continue;
+                
 
-            Vector3 nearOrigin = origin + direction * nearDistance;
+                resolvedPosition = candidate;
+                return true;
+            }
 
-            if (!HasBlockingOverlap(ownerRoot, nearOrigin, safeRadius, blockMask))
-                return nearOrigin;
-            
-            return origin;
+            resolvedPosition = origin;
+            return false;
         }
 
         private static bool HasBlockingOverlap(Transform ownerRoot, Vector3 position, float radius, LayerMask blockMask)

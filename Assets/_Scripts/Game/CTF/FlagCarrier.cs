@@ -1,7 +1,6 @@
 using FishNet.Object;
 using UnityEngine;
-using FishNet.Connection;
-using _Scripts.Player;
+using _Scripts.Weapons;
 
 namespace _Scripts.Game.CTF
 {
@@ -9,31 +8,13 @@ namespace _Scripts.Game.CTF
     public sealed class FlagCarrier : NetworkBehaviour
     {
         [Header("References")]
-        [SerializeField] Transform carryAnchor;
+        [SerializeField] private Transform carryAnchor;
 
-        FlagObject _carriedFlag;
-        
-        InputHandler _ih;
+        private FlagObject _carriedFlag;
 
         public bool HasFlag => _carriedFlag != null;
-
         public FlagObject CarriedFlag => _carriedFlag;
-
         public Transform CarryAnchor => carryAnchor;
-        
-        void Awake()
-        {
-            _ih = GetComponent<InputHandler>();
-        }
-        
-        void Update()
-        {
-            if (!IsOwner || _ih == null)
-                return;
-
-            if (_ih.ConsumeFlagThrow())
-                Server_RequestThrowFlag(TimeManager.Tick);
-        }
 
         [Server]
         public bool Server_CanCarryFlag()
@@ -62,14 +43,14 @@ namespace _Scripts.Game.CTF
 
             _carriedFlag.Server_DropFromCarrier();
         }
-        
-        [ServerRpc(RequireOwnership = true)]
-        void Server_RequestThrowFlag(uint clientTick, NetworkConnection sender = null)
+
+        [Server]
+        public void Server_ProcessThrowInput(bool throwPressed, FirePose pose)
         {
-            if (_carriedFlag == null)
+            if (!throwPressed || _carriedFlag == null)
                 return;
 
-            _carriedFlag.Server_ThrowFromCarrier(this, clientTick);
+            _carriedFlag.Server_ThrowFromCarrier(this, pose);
         }
     }
 }

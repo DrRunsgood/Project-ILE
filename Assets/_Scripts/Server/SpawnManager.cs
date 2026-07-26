@@ -91,10 +91,7 @@ public class SpawnManager : NetworkBehaviour
     {
         _spawnPoints.RemoveAll(sp => sp == null);
 
-        GameModeType currentMode =
-            GameModeManager.Instance != null
-                ? GameModeManager.Instance.Mode
-                : GameModeType.Deathmatch;
+        GameModeType currentMode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : GameModeType.Deathmatch;
 
         List<PlayerSpawnPoint> valid = new();
 
@@ -103,16 +100,12 @@ public class SpawnManager : NetworkBehaviour
             if (sp == null)
                 continue;
 
-            bool modeMatch =
-                sp.AllowAnyMode ||
-                sp.Mode == currentMode;
+            bool modeMatch = sp.AllowAnyMode || sp.Mode == currentMode;
 
             if (!modeMatch)
                 continue;
 
-            bool teamMatch =
-                sp.AllowAnyTeam ||
-                sp.Team == team;
+            bool teamMatch = sp.AllowAnyTeam || sp.Team == team;
 
             if (!teamMatch)
                 continue;
@@ -130,16 +123,12 @@ public class SpawnManager : NetworkBehaviour
                 if (sp == null)
                     continue;
 
-                bool modeMatch =
-                    sp.AllowAnyMode ||
-                    sp.Mode == currentMode;
+                bool modeMatch = sp.AllowAnyMode || sp.Mode == currentMode;
 
                 if (!modeMatch)
                     continue;
 
-                bool teamMatch =
-                    sp.AllowAnyTeam ||
-                    sp.Team == team;
+                bool teamMatch = sp.AllowAnyTeam || sp.Team == team;
 
                 if (!teamMatch)
                     continue;
@@ -188,17 +177,10 @@ public class SpawnManager : NetworkBehaviour
             return false;
 
         if (player.TryGetComponent(out AdvancedPredictedController ctrl))
-        {
-            ctrl.HardResetMovement(
-                sp.transform.position,
-                sp.transform.rotation);
-        }
+            ctrl.HardResetMovement(sp.transform.position, sp.transform.rotation);
         else
-        {
-            player.transform.SetPositionAndRotation(
-                sp.transform.position,
-                sp.transform.rotation);
-        }
+            player.transform.SetPositionAndRotation(sp.transform.position, sp.transform.rotation);
+        
 
         return true;
     }
@@ -208,8 +190,7 @@ public class SpawnManager : NetworkBehaviour
         if (!IsServerStarted || prefab == null || conn == null)
             return;
 
-        if (GameModeManager.Instance != null &&
-            !GameModeManager.Instance.ShouldSpawnPlayerImmediately())
+        if (GameModeManager.Instance != null && !GameModeManager.Instance.ShouldSpawnPlayerImmediately())
         {
             _pendingSpawnPlayers[conn] = prefab;
             return;

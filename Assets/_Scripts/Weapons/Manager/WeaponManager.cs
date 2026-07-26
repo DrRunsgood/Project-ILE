@@ -766,15 +766,18 @@ namespace _Scripts.Weapons
 
             if (!definition.groundPrefab.TryGetComponent(out WeaponPickup _))
             {
-                Server_HandleDropFailure(index, instance, terminalDrop, "Ground prefab is not assigned.");
+                Server_HandleDropFailure(index, instance, terminalDrop, "Ground prefab has no WeaponPickup component.");
 
                 return;
             }
 
-            Vector3 dropDirection = WorldDropUtil.GetSafeDirection(context.Direction, transform.forward);
+            if (!WorldDropUtil.TryResolveDrop(transform, context.Origin, context.Direction, dropOffset, dropSafetyRadius,
+                    dropBackoff, dropBlockMask, out Vector3 dropPosition, out Vector3 dropDirection))
+            {
+                Server_HandleDropFailure(index, instance, terminalDrop, "No collision-safe drop position was available.");
 
-            Vector3 dropPosition = WorldDropUtil.ResolveSafePosition(transform, context.Origin, dropDirection, 
-                dropOffset, dropSafetyRadius, dropBackoff, dropBlockMask);
+                return;
+            }
 
             NetworkObject ground = PoolUtil.TakeFromPool(definition.groundPrefab);
 
@@ -831,7 +834,7 @@ namespace _Scripts.Weapons
                 if (terminalDrop)
                     tossVelocity += Vector3.up * terminalDropUpwardSpeed;
                 
-                mover.InitVelocity(tossVelocity);
+                mover.InitVelocity(tossVelocity, transform);
             }
 
             weaponPickup.Arm(dropPickupArmDelay);

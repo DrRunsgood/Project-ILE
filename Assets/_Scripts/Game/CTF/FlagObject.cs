@@ -3,10 +3,12 @@ using FishNet.Object.Synchronizing;
 using UnityEngine;
 using _Scripts.Game.Teams;
 using _Scripts.Player;
+using _Scripts.Game;
+using _Scripts.Weapons;
 
 namespace _Scripts.Game.CTF
 {
-    [RequireComponent(typeof(Rigidbody))]
+    [RequireComponent(typeof(Rigidbody), typeof(FlagMover))]
     public sealed class FlagObject : NetworkBehaviour
     {
         [Header("Settings")]
@@ -16,6 +18,7 @@ namespace _Scripts.Game.CTF
         [SerializeField] float deathVelocityInheritance = 0.85f;
         [SerializeField] float deathDropUpBias = 4f;
         [SerializeField] float deathDropForwardBias = 2f;
+        [SerializeField] private float deathDropSpawnOffset = 0.75f;
         
         [Header("Throw")]
         [SerializeField] float throwForce = 28f;
@@ -187,52 +190,68 @@ namespace _Scripts.Game.CTF
             if (_carrier == null)
                 return;
 
-            Transform anchor = _carrier.CarryAnchor;
+            if (_mover == null)
+            {
+                Debug.LogError("[FlagObject] Cannot drop flag without FlagMover. Returning it home.",
+                    this);
+
+                Server_ReturnHome();
+                return;
+            }
+
+            FlagCarrier previousCarrier = _carrier;
+
+            Transform anchor = previousCarrier.CarryAnchor;
 
             Vector3 carrierVelocity = Vector3.zero;
 
-            if (_carrier.TryGetComponent(out Rigidbody carrierRb))
+            if (previousCarrier.TryGetComponent(out Rigidbody carrierRb))
                 carrierVelocity = carrierRb.linearVelocity;
+            
 
-            Vector3 dropPos = transform.position;
-            Quaternion dropRot = transform.rotation;
+            Vector3 preferredDirection = anchor != null ? anchor.forward : previousCarrier.transform.forward;
 
-            if (anchor != null)
+            Vector3 dropOrigin = anchor != null ? anchor.position + Vector3.up * 0.25f
+                    : previousCarrier.transform.position + Vector3.up * 0.75f;
+
+            if (!WorldDropUtil.TryResolveDrop(previousCarrier.transform, dropOrigin, preferredDirection, deathDropSpawnOffset, _mover.CollisionRadius,
+                    _mover.SkinWidth, _mover.CollisionMask, out Vector3 dropPos, out Vector3 dropDirection))
             {
-                dropPos = anchor.position + anchor.forward * 0.75f + Vector3.up * 0.25f;
-                dropRot = anchor.rotation;
+                /*
+                 * A terminal flag release may never destroy or strand
+                 * objective state. Returning home is the safe fallback.
+                 */
+                Debug.LogWarning("[FlagObject] No safe terminal flag-drop position was available. Returning the flag home.", this);
+
+                Server_ReturnHome();
+                return;
             }
 
-            Vector3 forward = anchor != null
-                ? anchor.forward
-                : transform.forward;
+            Quaternion dropRot = GetUprightReleaseRotation(dropDirection, anchor != null ? anchor.rotation : transform.rotation);
 
-            Vector3 initialVelocity =
-                carrierVelocity * deathVelocityInheritance +
-                forward * deathDropForwardBias +
-                Vector3.up * deathDropUpBias;
+            Vector3 initialVelocity = carrierVelocity * deathVelocityInheritance + dropDirection * deathDropForwardBias + Vector3.up * deathDropUpBias;
 
-            NetworkObject previousCarrierNob = _carrier.NetworkObject;
-            
-            _carrier.Server_ClearFlag(this);
+            NetworkObject previousCarrierNob = previousCarrier.NetworkObject;
+
+            previousCarrier.Server_ClearFlag(this);
+
             _carrier = null;
             _carrierNob.Value = null;
-
             _state.Value = FlagState.Dropped;
-            
-            RefreshColliderState(_state.Value);
 
+            RefreshColliderState(_state.Value);
             SetKinematicFlagBody();
 
             transform.SetPositionAndRotation(dropPos, dropRot);
 
             _returnTimer = autoReturnTime;
-            
+
             IgnorePickupFrom(previousCarrierNob, pickupLockoutAfterDrop);
-            
+
             uint startTick = TimeManager.Tick;
 
-            _mover?.Server_BeginMove(dropPos, initialVelocity);
+            _mover.Server_BeginMove(dropPos, initialVelocity);
+
             RpcBeginDropped(dropPos, initialVelocity, startTick);
         }
 
@@ -284,7 +303,7 @@ namespace _Scripts.Game.CTF
         }
         
         [Server]
-        public void Server_ThrowFromCarrier(FlagCarrier carrier, uint clientTick)
+        public void Server_ThrowFromCarrier(FlagCarrier carrier, FirePose pose)
         {
             if (carrier == null)
                 return;
@@ -292,101 +311,62 @@ namespace _Scripts.Game.CTF
             if (_carrier != carrier)
                 return;
 
-            Transform anchor = carrier.CarryAnchor;
-
-            uint serverNow = TimeManager.Tick;
-            uint target = clientTick;
-
-            if (target >= serverNow)
-                target = serverNow > 0 ? serverNow - 1 : 0;
-
-            Vector3 throwDir;
-            Vector3 inheritedVelocity;
-            Vector3 startPos;
-            Quaternion startRot;
-
-            if (TryGetCarrierSnapshot(carrier.NetworkObject, target, serverNow, out LagCompensationManager.FireSnapshot snap))
+            if (_mover == null)
             {
-                throwDir = snap.Direction.normalized;
-                inheritedVelocity = snap.Velocity * throwVelocityInheritance;
-                startPos = snap.Position + throwDir * throwSpawnOffset + Vector3.up * 0.15f;
-                Vector3 flatDir = throwDir;
-                flatDir.y = 0f;
+                Debug.LogError("[FlagObject] Cannot throw flag without FlagMover.", this);
 
-                startRot = flatDir.sqrMagnitude > 0.001f
-                    ? Quaternion.LookRotation(flatDir.normalized, Vector3.up)
-                    : Quaternion.identity;
-            }
-            else
-            {
-                throwDir = anchor != null ? anchor.forward : transform.forward;
-                inheritedVelocity = Vector3.zero;
-                startPos = anchor != null
-                    ? anchor.position + throwDir * throwSpawnOffset + Vector3.up * 0.15f
-                    : transform.position;
-
-                startRot = anchor != null
-                    ? anchor.rotation
-                    : transform.rotation;
+                return;
             }
 
-            Vector3 initialVelocity =
-                throwDir * throwForce +
-                Vector3.up * throwUpBias +
-                inheritedVelocity;
+            /*
+             * The replicated input and FirePose were processed during
+             * the same authoritative server simulation tick. Historical
+             * snapshot reconstruction is no longer required.
+             */
+            Vector3 throwOrigin = pose.Position + Vector3.up * 0.15f;
+
+            if (!WorldDropUtil.TryResolveDrop(carrier.transform, throwOrigin, pose.Direction, throwSpawnOffset, _mover.CollisionRadius,
+                    _mover.SkinWidth, _mover.CollisionMask, out Vector3 startPos, out Vector3 throwDir))
+            {
+                /*
+                 * Explicit throw semantics are transactional. If no safe
+                 * release position exists, retain the carried flag.
+                 */
+                Debug.LogWarning("[FlagObject] Flag throw cancelled because no collision-safe release position was available.",
+                    this);
+
+                return;
+            }
+
+            Vector3 inheritedVelocity = pose.Velocity * throwVelocityInheritance;
+
+            Vector3 initialVelocity = throwDir * throwForce + Vector3.up * throwUpBias + inheritedVelocity;
+
+            Quaternion startRot = GetUprightReleaseRotation(throwDir, carrier.CarryAnchor != null ? carrier.CarryAnchor.rotation
+                        : transform.rotation);
 
             NetworkObject previousCarrierNob = carrier.NetworkObject;
-            
+
             carrier.Server_ClearFlag(this);
 
             _carrier = null;
             _carrierNob.Value = null;
-
             _state.Value = FlagState.Dropped;
-            
-            RefreshColliderState(_state.Value);
 
+            RefreshColliderState(_state.Value);
             SetKinematicFlagBody();
 
             transform.SetPositionAndRotation(startPos, startRot);
 
             _returnTimer = autoReturnTime;
+
             IgnorePickupFrom(previousCarrierNob, pickupLockoutAfterDrop);
-            
+
             uint startTick = TimeManager.Tick;
 
-            _mover?.Server_BeginMove(startPos, initialVelocity);
+            _mover.Server_BeginMove(startPos, initialVelocity);
+
             RpcBeginDropped(startPos, initialVelocity, startTick);
-        }
-        
-        [Server]
-        bool TryGetCarrierSnapshot(
-            NetworkObject carrierNob,
-            uint targetTick,
-            uint serverNow,
-            out LagCompensationManager.FireSnapshot snap)
-        {
-            if (carrierNob == null || LagCompensationManager.Instance == null)
-            {
-                snap = default;
-                return false;
-            }
-
-            if (LagCompensationManager.Instance.TryGetSnapshot(carrierNob, targetTick, out snap, 0))
-                return true;
-
-            if (targetTick > 0 &&
-                LagCompensationManager.Instance.TryGetSnapshot(carrierNob, targetTick - 1, out snap, 0))
-                return true;
-
-            if (LagCompensationManager.Instance.TryGetSnapshot(carrierNob, targetTick + 1, out snap, 0))
-                return true;
-
-            if (LagCompensationManager.Instance.TryGetSnapshot(carrierNob, targetTick, out snap, 2))
-                return true;
-
-            uint last = serverNow > 0 ? serverNow - 1 : 0;
-            return LagCompensationManager.Instance.TryGetSnapshot(carrierNob, last, out snap, 2);
         }
         
         [Server]
@@ -549,20 +529,19 @@ namespace _Scripts.Game.CTF
             _rb.isKinematic = true;
         }
         
-        [Server]
-        void DebugFlagState(string source)
+        private static Quaternion GetUprightReleaseRotation(
+            Vector3 direction,
+            Quaternion fallback)
         {
-            Debug.Log(
-                $"[FlagObject:{source}] " +
-                $"team={Team}, state={_state.Value}, " +
-                $"carrier={(_carrier != null ? _carrier.name : "null")}, " +
-                $"carrierNob={(_carrierNob.Value != null ? _carrierNob.Value.name : "null")}, " +
-                $"colliderEnabled={(_pickupCollider != null && _pickupCollider.enabled)}, " +
-                $"colliderTrigger={(_pickupCollider != null && _pickupCollider.isTrigger)}, " +
-                $"layer={LayerMask.LayerToName(gameObject.layer)}, " +
-                $"pos={transform.position}, " +
-                $"moverMoving={(_mover != null && _mover.IsMoving)}, " +
-                $"moverVel={(_mover != null ? _mover.Velocity.ToString() : "null")}");
+            Vector3 flatDirection = direction;
+            flatDirection.y = 0f;
+
+            if (flatDirection.sqrMagnitude <= 0.001f)
+                return fallback;
+
+            return Quaternion.LookRotation(
+                flatDirection.normalized,
+                Vector3.up);
         }
     }
 }
