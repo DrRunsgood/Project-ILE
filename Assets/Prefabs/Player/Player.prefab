@@ -60,6 +60,7 @@ GameObject:
   - component: {fileID: 2049052762416851640}
   - component: {fileID: -3267090812201351334}
   - component: {fileID: -437381816082525447}
+  - component: {fileID: 1064360142624259617}
   m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
@@ -147,6 +148,7 @@ MonoBehaviour:
   - {fileID: 2049052762416851640}
   - {fileID: -3267090812201351334}
   - {fileID: -437381816082525447}
+  - {fileID: 1064360142624259617}
   - {fileID: 3289860153973179968}
   - {fileID: 759703639484445222}
   InitializedParentNetworkBehaviour: {fileID: 0}
@@ -159,7 +161,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584171370943553293
+  _initializedTimestamp: -8584163290732536589
 --- !u!54 &7001912800235990901
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -182,7 +184,7 @@ Rigidbody:
     m_Bits: 0
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
-  m_UseGravity: 1
+  m_UseGravity: 0
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 112
@@ -375,7 +377,7 @@ MonoBehaviour:
   gameplayWeaponAnchor: {fileID: 1024700727967286960}
   thirdPersonWeaponAnchor: {fileID: 6620601711263757876}
   thirdPersonAimPivot: {fileID: 5814732261247115637}
-  thirdPersonPitchSmoothTime: 0.035
+  thirdPersonPitchSmoothTime: 0.03
   defaultQuickItems:
   - {fileID: 11400000, guid: 44aceb61cf6796b498d775bc98420803, type: 2}
   dropOffset: 1
@@ -384,6 +386,11 @@ MonoBehaviour:
   dropBlockMask:
     serializedVersion: 2
     m_Bits: 3665
+  dropVelocityInheritance: 0.5
+  manualDropTossSpeed: 15
+  terminalDropTossSpeed: 8
+  terminalDropUpwardSpeed: 2
+  dropPickupArmDelay: 0.5
 --- !u!114 &7031928564848404723
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -408,6 +415,9 @@ MonoBehaviour:
     m_Bits: 4294967295
   dropTossForward: 15
   pickupArmDelay: 0.5
+  dropVelocityInheritance: 0.5
+  terminalDropTossForward: 7
+  terminalDropTossUpward: 2
 --- !u!114 &-6653470587612458186
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -423,6 +433,16 @@ MonoBehaviour:
   _componentIndexCache: 6
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
+  itemDropOffset: 0.65
+  itemDropSafetyRadius: 0.15
+  itemDropBackoff: 0.02
+  itemDropBlockMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  itemDropVelocityInheritance: 0.5
+  itemTerminalTossSpeed: 5
+  itemTerminalUpwardSpeed: 2.5
+  itemDropPickupArmDelay: 0.5
 --- !u!114 &-2565893807731604051
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -594,6 +614,23 @@ MonoBehaviour:
   graceSeconds: 3
   damageTickInterval: 1
   damagePerTick: 5
+--- !u!114 &1064360142624259617
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246683354149957449}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a329a6ddd65bbc8409a9a2e029e89728, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::_Scripts.Player.PlayerCarriedDropCoordinator
+  _componentIndexCache: 16
+  _addedNetworkObject: {fileID: 6832439599154668905}
+  _networkObjectCache: {fileID: 6832439599154668905}
+  dropOriginHeight: 0.75
+  angularJitter: 12
 --- !u!1 &1658271619301096103
 GameObject:
   m_ObjectHideFlags: 0
@@ -638,7 +675,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Transforming.Beta.NetworkTickSmoother
-  _componentIndexCache: 16
+  _componentIndexCache: 17
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:
@@ -1109,7 +1146,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _componentIndexCache: 17
+  _componentIndexCache: 18
   _addedNetworkObject: {fileID: 6832439599154668905}
   _networkObjectCache: {fileID: 6832439599154668905}
   _initializationSettings:

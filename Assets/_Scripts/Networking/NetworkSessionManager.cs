@@ -26,13 +26,15 @@ namespace _Scripts.Networking
         [SerializeField] private DedicatedServerGraphicsStripper graphicsStripper;
         
         [SerializeField] private string bootSceneName = "BootScene";
-        
-        [SerializeField] private float serverMapChangeUnloadDelay = 0.25f;
-        [SerializeField] private float serverMapChangeLoadDelay = 0.1f;
 
         public string CurrentGameplaySceneName => _loadedGameplaySceneName;
 
         private bool _serverMapChangeInProgress;
+        
+        private FishNet.Managing.Scened.SceneManager _fishNetSceneManager;
+
+        private string _pendingGameplaySceneName;
+        private string _pendingUnloadSceneName;
 
         private string _loadedGameplaySceneName;
         private bool _isReturningToMenu;
@@ -74,6 +76,19 @@ namespace _Scripts.Networking
                 Debug.LogWarning("[NetworkSessionManager] NetworkManager missing during event subscription.");
             }
             
+            _fishNetSceneManager = InstanceFinder.SceneManager;
+
+            if (_fishNetSceneManager != null)
+            {
+                _fishNetSceneManager.OnLoadEnd += HandleFishNetSceneLoadEnd;
+                _fishNetSceneManager.OnUnloadEnd += HandleFishNetSceneUnloadEnd;
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "[NetworkSessionManager] FishNet SceneManager missing during event subscription.");
+            }
+            
             UnitySceneManager.sceneLoaded += HandleUnitySceneLoaded;
             UnitySceneManager.sceneUnloaded += HandleUnitySceneUnloaded;
 
@@ -92,6 +107,12 @@ namespace _Scripts.Networking
             {
                 networkManager.ClientManager.OnClientConnectionState -= HandleClientConnectionState;
                 networkManager.ServerManager.OnServerConnectionState -= HandleServerConnectionState;
+            }
+            
+            if (_fishNetSceneManager != null)
+            {
+                _fishNetSceneManager.OnLoadEnd -= HandleFishNetSceneLoadEnd;
+                _fishNetSceneManager.OnUnloadEnd -= HandleFishNetSceneUnloadEnd;
             }
 
             UnitySceneManager.sceneLoaded -= HandleUnitySceneLoaded;
@@ -204,33 +225,27 @@ namespace _Scripts.Networking
             if (string.IsNullOrWhiteSpace(sceneName))
             {
                 Debug.LogError("[NetworkSessionManager] Cannot load server map. Scene name is empty.");
+
                 return;
             }
 
-            if (_serverSceneLoadRequested)
+            if (!InstanceFinder.IsServerStarted)
             {
-                Debug.LogWarning("[NetworkSessionManager] Server scene load already requested.");
+                Debug.LogWarning("[NetworkSessionManager] Cannot load server map. Server is not started.");
+
                 return;
             }
 
-            _serverSceneLoadRequested = true;
-            _loadedGameplaySceneName = sceneName;
+            if (_serverSceneLoadRequested || _serverMapChangeInProgress)
+            {
+                Debug.LogWarning("[NetworkSessionManager] A server scene transition is already in progress.");
 
-            bool serverWasRunning = CurrentState == NetworkSessionState.ServerRunning;
+                return;
+            }
 
-            if (serverWasRunning)
-                SetState(NetworkSessionState.ServerLoadingGameplay);
+            _pendingGameplaySceneName = sceneName;
 
-            Debug.Log($"[NetworkSessionManager] Loading server gameplay scene: {sceneName}");
-
-            SceneLoadData sceneLoadData = new SceneLoadData(sceneName);
-            InstanceFinder.SceneManager.LoadGlobalScenes(sceneLoadData);
-
-            _serverSceneLoadRequested = false;
-
-            // Temporary until FishNet scene completion events are wired.
-            if (serverWasRunning)
-                SetState(NetworkSessionState.ServerRunning);
+            RequestPendingServerMapLoad();
         }
 
         private IEnumerator LoadServerMapNextFrame(string sceneName)
@@ -253,7 +268,7 @@ namespace _Scripts.Networking
                 return;
             }
 
-            if (_serverMapChangeInProgress)
+            if (_serverMapChangeInProgress || _serverSceneLoadRequested)
             {
                 Debug.LogWarning("[NetworkSessionManager] Server map change already in progress.");
                 return;
@@ -265,58 +280,176 @@ namespace _Scripts.Networking
         private IEnumerator ChangeServerMapRoutine(string nextSceneName)
         {
             _serverMapChangeInProgress = true;
+            _pendingGameplaySceneName = nextSceneName;
 
             string previousSceneName = _loadedGameplaySceneName;
 
             Debug.Log($"[NetworkSessionManager] Server map change requested. Previous={previousSceneName}, Next={nextSceneName}");
 
-            bool serverWasRunning =
-                CurrentState == NetworkSessionState.ServerRunning ||
-                CurrentState == NetworkSessionState.ServerLoadingGameplay;
+            SetState(NetworkSessionState.ServerLoadingGameplay);
 
-            if (serverWasRunning)
-                SetState(NetworkSessionState.ServerLoadingGameplay);
-
-            if (!string.IsNullOrWhiteSpace(previousSceneName))
+            /*
+             * No confirmed gameplay scene exists yet. This can occur during
+             * initial setup or recovery from an interrupted transition.
+             */
+            if (string.IsNullOrWhiteSpace(previousSceneName))
             {
-                Debug.Log($"[NetworkSessionManager] Preparing old gameplay scene for unload: {previousSceneName}");
-                
-                bool clearTeams = true;
-
-                if (ServerMapFlowManager.Instance != null)
-                    clearTeams = ServerMapFlowManager.Instance.ShouldRebuildTeamsOnMapChange;
-
-                SpawnManager.Instance?.DespawnAllPlayers();
-                PlayerSessionManager.Instance?.ServerPrepareForMapChange(clearTeams);
-                RoundResetManager.Instance?.PrepareForMapUnload();
-
-                // Give FishNet a couple ticks/frames to process despawns before Unity scene unload destroys objects.
-                yield return null;
-                yield return null;
-
-                Debug.Log($"[NetworkSessionManager] Unloading previous gameplay scene globally: {previousSceneName}");
-
-                SceneUnloadData unloadData = new SceneUnloadData(previousSceneName);
-                InstanceFinder.SceneManager.UnloadGlobalScenes(unloadData);
-
-                yield return new WaitForSeconds(serverMapChangeUnloadDelay);
+                RequestPendingServerMapLoad();
+                yield break;
             }
 
-            yield return new WaitForSeconds(serverMapChangeLoadDelay);
+            Debug.Log($"[NetworkSessionManager] Preparing old gameplay scene for unload: " + $"{previousSceneName}");
 
-            Debug.Log($"[NetworkSessionManager] Loading next gameplay scene globally: {nextSceneName}");
+            bool clearTeams = true;
 
-            _loadedGameplaySceneName = nextSceneName;
+            if (ServerMapFlowManager.Instance != null)
+                clearTeams = ServerMapFlowManager.Instance.ShouldRebuildTeamsOnMapChange;
 
-            SceneLoadData loadData = new SceneLoadData(nextSceneName);
-            InstanceFinder.SceneManager.LoadGlobalScenes(loadData);
+            /*
+             * Map teardown semantics are direct:
+             * no terminal inventory scattering and no player persistence.
+             */
+            SpawnManager.Instance?.DespawnAllPlayers();
 
+            PlayerSessionManager.Instance?.ServerPrepareForMapChange(clearTeams);
+
+            RoundResetManager.Instance?.PrepareForMapUnload();
+
+            /*
+             * Preserve the existing two-frame grace period so FishNet can process
+             * player and round-object despawns before scene unloading begins.
+             *
+             * The scene transition itself is no longer time-driven after this point.
+             */
+            yield return null;
             yield return null;
 
+            if (!TryGetFishNetSceneManager(out FishNet.Managing.Scened.SceneManager sceneManager))
+            {
+                FailServerMapTransition("[NetworkSessionManager] Cannot unload gameplay scene. FishNet SceneManager is unavailable.");
+
+                yield break;
+            }
+
+            _pendingUnloadSceneName = previousSceneName;
+
+            Debug.Log($"[NetworkSessionManager] Requesting global unload: {_pendingUnloadSceneName}");
+
+            SceneUnloadData unloadData = new SceneUnloadData(_pendingUnloadSceneName);
+
+            sceneManager.UnloadGlobalScenes(unloadData);
+
+            /*
+             * Do not request the new map here.
+             * HandleFishNetSceneUnloadEnd will continue the transition.
+             */
+        }
+        
+        private void RequestPendingServerMapLoad()
+        {
+            if (_serverSceneLoadRequested)
+                return;
+
+            if (!InstanceFinder.IsServerStarted)
+            {
+                FailServerMapTransition("[NetworkSessionManager] Cannot load gameplay scene. Server is not started.");
+
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_pendingGameplaySceneName))
+            {
+                FailServerMapTransition("[NetworkSessionManager] Cannot load gameplay scene. No pending scene name exists.");
+
+                return;
+            }
+
+            if (!TryGetFishNetSceneManager(out FishNet.Managing.Scened.SceneManager sceneManager))
+            {
+                FailServerMapTransition("[NetworkSessionManager] Cannot load gameplay scene. FishNet SceneManager is unavailable.");
+
+                return;
+            }
+
+            _serverSceneLoadRequested = true;
+
+            SetState(NetworkSessionState.ServerLoadingGameplay);
+
+            Debug.Log($"[NetworkSessionManager] Requesting global gameplay scene load: " + $"{_pendingGameplaySceneName}");
+
+            SceneLoadData loadData = new SceneLoadData(_pendingGameplaySceneName);
+
+            sceneManager.LoadGlobalScenes(loadData);
+
+            /*
+             * Do not clear _serverSceneLoadRequested here.
+             * HandleFishNetSceneLoadEnd confirms completion.
+             */
+        }
+        
+        private void HandleFishNetSceneUnloadEnd(SceneUnloadEndEventArgs args)
+        {
+            if (!InstanceFinder.IsServerStarted)
+                return;
+
+            if (!_serverMapChangeInProgress)
+                return;
+
+            if (string.IsNullOrWhiteSpace(_pendingUnloadSceneName))
+                return;
+
+            /*
+             * FishNet may invoke scene events for unrelated queue entries.
+             * Only continue once our expected old scene is actually gone.
+             */
+            UnityScene oldScene = UnitySceneManager.GetSceneByName(_pendingUnloadSceneName);
+
+            if (oldScene.IsValid() && oldScene.isLoaded)
+                return;
+
+            string unloadedSceneName = _pendingUnloadSceneName;
+
+            _pendingUnloadSceneName = null;
+            _loadedGameplaySceneName = null;
+
+            Debug.Log($"[NetworkSessionManager] Confirmed gameplay scene unload: {unloadedSceneName}");
+
+            RequestPendingServerMapLoad();
+        }
+
+        private void HandleFishNetSceneLoadEnd(SceneLoadEndEventArgs args)
+        {
+            if (!InstanceFinder.IsServerStarted)
+                return;
+
+            if (!_serverSceneLoadRequested)
+                return;
+
+            if (string.IsNullOrWhiteSpace(_pendingGameplaySceneName))
+                return;
+
+            /*
+             * OnLoadEnd can also be raised for another queued operation.
+             * Confirm that our requested scene now exists and is loaded.
+             */
+            UnityScene loadedScene = UnitySceneManager.GetSceneByName(_pendingGameplaySceneName);
+
+            if (!loadedScene.IsValid() || !loadedScene.isLoaded)
+                return;
+
+            string completedSceneName = _pendingGameplaySceneName;
+
+            _loadedGameplaySceneName = completedSceneName;
+
+            _pendingGameplaySceneName = null;
+            _pendingUnloadSceneName = null;
+
+            _serverSceneLoadRequested = false;
             _serverMapChangeInProgress = false;
 
-            if (serverWasRunning)
-                SetState(NetworkSessionState.ServerRunning);
+            Debug.Log($"[NetworkSessionManager] Confirmed gameplay scene load: {completedSceneName}");
+
+            SetState(NetworkSessionState.ServerRunning);
         }
         
         public void RestartCurrentServerMap()
@@ -521,6 +654,12 @@ namespace _Scripts.Networking
                 case LocalConnectionState.Stopped:
                     _serverStartRequested = false;
                     _serverSceneLoadRequested = false;
+                    _serverMapChangeInProgress = false;
+
+                    _pendingGameplaySceneName = null;
+                    _pendingUnloadSceneName = null;
+                    _loadedGameplaySceneName = null;
+
                     SetState(NetworkSessionState.Offline);
                     break;
             }
@@ -589,6 +728,32 @@ namespace _Scripts.Networking
 
             if (graphicsStripper == null)
                 graphicsStripper = FindAnyObjectByType<DedicatedServerGraphicsStripper>();
+        }
+        
+        private bool TryGetFishNetSceneManager(out FishNet.Managing.Scened.SceneManager sceneManager)
+        {
+            sceneManager = _fishNetSceneManager;
+
+            if (sceneManager == null)
+            {
+                sceneManager = InstanceFinder.SceneManager;
+                _fishNetSceneManager = sceneManager;
+            }
+
+            return sceneManager != null;
+        }
+
+        private void FailServerMapTransition(string message)
+        {
+            Debug.LogError(message);
+
+            _serverSceneLoadRequested = false;
+            _serverMapChangeInProgress = false;
+
+            _pendingGameplaySceneName = null;
+            _pendingUnloadSceneName = null;
+
+            SetState(NetworkSessionState.Failed);
         }
         
         private void HandleUnitySceneLoaded(UnityScene scene, UnityLoadSceneMode mode)

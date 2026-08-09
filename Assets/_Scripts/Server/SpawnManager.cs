@@ -16,6 +16,7 @@ public class SpawnManager : NetworkBehaviour
     readonly HashSet<PlayerSpawnPoint> _usedSpawnPointsThisWave = new();
     readonly Dictionary<NetworkConnection, NetworkObject> _spawnedPlayers = new();
     readonly Dictionary<NetworkConnection, GameObject> _pendingSpawnPlayers = new();
+    readonly List<PlayerSpawnPoint> _validSpawnPoints = new();
 
     void Awake()
     {
@@ -93,7 +94,8 @@ public class SpawnManager : NetworkBehaviour
 
         GameModeType currentMode = GameModeManager.Instance != null ? GameModeManager.Instance.Mode : GameModeType.Deathmatch;
 
-        List<PlayerSpawnPoint> valid = new();
+        _validSpawnPoints.Clear();
+        List<PlayerSpawnPoint> valid = _validSpawnPoints;
 
         foreach (PlayerSpawnPoint sp in _spawnPoints)
         {

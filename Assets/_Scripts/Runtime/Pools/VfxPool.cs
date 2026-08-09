@@ -8,40 +8,72 @@ public static class VfxPool
     static readonly Dictionary<string, Queue<GameObject>> _pools = new();
 
     /* ––––– public API ––––– */
-    public static void Spawn(string path, Vector3 pos, Quaternion rot,
-        float ttl = 3f, Transform parent = null)
+    public static void Spawn(string path, Vector3 pos, Quaternion rot, float ttl = 3f, Transform parent = null)
     {
-        if (!_pools.TryGetValue(path, out var q))
-            _pools[path] = q = new Queue<GameObject>();
-
-        GameObject go = (q.Count > 0 && q.Peek() != null)
-            ? q.Dequeue()
-            : Resources.Load<GameObject>(path);
-
-        if (go == null)
+        if (string.IsNullOrWhiteSpace(path))
         {
-            Debug.LogWarning($"VfxPool: “{path}” not found in Resources");
+            Debug.LogWarning("VfxPool: Spawn called with an empty Resources path.");
             return;
         }
 
-        go = Object.Instantiate(go, pos, rot, parent);
-        go.SetActive(true);
+        if (!_pools.TryGetValue(path, out Queue<GameObject> queue))
+        {
+            queue = new Queue<GameObject>();
+            _pools[path] = queue;
+        }
 
-        /* start despawn coroutine on the hidden runner */
-        Runner.StartCoroutine(DespawnAfter(go, path, ttl));
+        GameObject instance = null;
+
+        while (queue.Count > 0 && instance == null)
+            instance = queue.Dequeue();
+
+        if (instance == null)
+        {
+            GameObject prefab = Resources.Load<GameObject>(path);
+
+            if (prefab == null)
+            {
+                Debug.LogWarning($"VfxPool: \"{path}\" was not found in Resources.");
+                return;
+            }
+
+            instance = Object.Instantiate(prefab);
+        }
+
+        Transform instanceTransform = instance.transform;
+
+        instanceTransform.SetParent(parent, true);
+        instanceTransform.SetPositionAndRotation(pos, rot);
+
+        instance.SetActive(true);
+
+        Runner.StartCoroutine(DespawnAfter(instance, path, ttl));
     }
 
     /* ––––– private ––––– */
-    static IEnumerator DespawnAfter(GameObject go, string path, float ttl)
+    static IEnumerator DespawnAfter(GameObject instance, string path, float ttl)
     {
-        yield return new WaitForSeconds(ttl);
+        yield return new WaitForSeconds(Mathf.Max(0f, ttl));
 
-        go.SetActive(false);
+        if (instance == null)
+            yield break;
 
-        if (!_pools.TryGetValue(path, out var q))
-            _pools[path] = q = new Queue<GameObject>();
+        instance.SetActive(false);
 
-        q.Enqueue(go);
+        Transform instanceTransform = instance.transform;
+
+        instanceTransform.SetParent(Runner.transform, false);
+
+        instanceTransform.localPosition = Vector3.zero;
+        instanceTransform.localRotation = Quaternion.identity;
+
+        if (!_pools.TryGetValue(path, out Queue<GameObject> queue))
+        {
+            queue = new Queue<GameObject>();
+            _pools[path] = queue;
+        }
+
+        queue.Enqueue(instance);
     }
 
     /* one invisible MonoBehaviour that lives forever */

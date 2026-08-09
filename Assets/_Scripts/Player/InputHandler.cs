@@ -117,6 +117,18 @@ namespace _Scripts.Player
             MouseWheelDelta = 0;
         }
         
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (!IsOwner || hasFocus)
+                return;
+
+            Move = Vector2.zero;
+            HeldButtons = InputButtons.None;
+            ZoomHeld = false;
+
+            ClearTransientBuffers();
+        }
+        
         private void CaptureHeldGameplayButtons()
         {
             InputButtons held =

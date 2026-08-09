@@ -124,7 +124,7 @@ namespace _Scripts.Items
         if (!TryGetComponent(out PlayerHealth hp))
             return;
         
-        if (hp.Current == hp.Max) // Don't use health kit if at max health
+        if (!hp.IsAlive || hp.Current >= hp.Max)
             return;
         
         if (!Server_Consume(ItemId.HealthKit))

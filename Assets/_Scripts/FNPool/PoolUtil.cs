@@ -1,29 +1,39 @@
-// _Scripts/Net/PoolUtil.cs
-
 using FishNet;
 using FishNet.Object;
 
 namespace _Scripts.FNPool
 {
-    /// <summary>
-    /// One-liner helper: fetch a pooled NetworkObject and clear its parent
-    /// so users don’t accidentally inherit transforms.
-    /// </summary>
     public static class PoolUtil
     {
-        /// <param name="prefab">Prefab registered with Fish-Net’s object pool.</param>
-        /// <returns>Pooled instance or null if pool exhausted.</returns>
         public static NetworkObject TakeFromPool(NetworkObject prefab)
         {
+            if (prefab == null || InstanceFinder.NetworkManager == null)
+                return null;
+
             NetworkObject nob = InstanceFinder.NetworkManager.GetPooledInstantiated(prefab, true);
+
             if (nob == null)
                 return null;
 
-            // Important: reset hierarchy so callers decide where to parent it.
-            nob.transform.SetParent(null, false);
+            if (nob.TryGetComponent(out PoolReset poolReset))
+                poolReset.ResetForReuse();
+            else
+            {
+                /*
+                 * Generic fallback for pooled prefabs without PoolReset.
+                 * Callers still assign the final parent or world pose.
+                 */
+                nob.transform.SetParent(null, false);
 
-            // Reasonable generic baseline.
-            nob.transform.localScale = prefab.transform.localScale;
+                nob.transform.localPosition =
+                    prefab.transform.localPosition;
+
+                nob.transform.localRotation =
+                    prefab.transform.localRotation;
+
+                nob.transform.localScale =
+                    prefab.transform.localScale;
+            }
 
             return nob;
         }

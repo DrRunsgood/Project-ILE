@@ -156,7 +156,7 @@ namespace _Scripts.Weapons
         
         private void LateUpdate()
         {
-            if (_controller == null || thirdPersonAimPivot == null)
+            if (!IsClientStarted || _controller == null || thirdPersonAimPivot == null)
                 return;
 
             float targetPitch = _controller.CurrentPitch;
@@ -243,6 +243,13 @@ namespace _Scripts.Weapons
             projectileWeapon.CachePlayerRefs(this, _ih);
 
             if (projectileWeapon.isHiddenQuickItem)
+                return;
+            
+            /*
+             * Held gameplay objects still initialize on the authoritative server,
+             * but FP/TP view construction is client presentation only.
+             */
+            if (!IsClientStarted)
                 return;
 
             SetRenderersEnabled(nob.gameObject, false);

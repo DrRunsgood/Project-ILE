@@ -63,7 +63,7 @@ namespace _Scripts.Player
             _minJumpHeight = minJumpHeight;
         }
 
-        public void RefreshGrounding(Rigidbody rb, Transform playerTransform)
+        public void RefreshGrounding(Rigidbody rb)
         {
             IsGrounded = false;
             IsOnSlope = false;

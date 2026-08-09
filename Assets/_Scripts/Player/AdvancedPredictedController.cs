@@ -271,14 +271,14 @@ namespace _Scripts.Player
             public short LookY;
             public InputButtons Held;
 
-            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool heart, bool jumpPressed, bool grenadePressed,
+            public MovementData(uint tick, Vector2 move, Vector2 look, InputButtons held, bool knockbackDirtyToggle, bool jumpPressed, bool grenadePressed,
                 bool flagThrowPressed)
             {
                 _tick = tick;
 
                 MoveAndEvents = (byte)(NetUtils.MoveCodec.Pack(move.x, move.y) & MoveMask);
 
-                if (heart) MoveAndEvents |= KnockbackDirtyToggleFlag;
+                if (knockbackDirtyToggle) MoveAndEvents |= KnockbackDirtyToggleFlag;
 
                 if (jumpPressed) MoveAndEvents |= JumpPressedEventFlag;
 
@@ -510,7 +510,7 @@ namespace _Scripts.Player
                 return;
             }
             
-            _surfaceProbe.RefreshGrounding(_rb, transform);
+            _surfaceProbe.RefreshGrounding(_rb);
             
             ApplyRotation(look.x, look.y);
             

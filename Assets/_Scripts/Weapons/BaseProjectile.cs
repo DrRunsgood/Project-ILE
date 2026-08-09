@@ -55,6 +55,11 @@ public abstract class BaseProjectile : NetworkBehaviour
     TrailRenderer[] _trailRenderers;
     ProjectileBeamLink[] _beamLinks;
     readonly List<Collider> _ignoredShooterColliders = new();
+    
+    readonly HashSet<Transform> _processedPlayerRoots = new();
+    readonly HashSet<FlagObject> _processedObjectiveTargets = new();
+
+    readonly List<Collider> _shooterColliderBuffer = new();
 
     #region Initialization
 
@@ -483,32 +488,50 @@ public abstract class BaseProjectile : NetworkBehaviour
     
     protected virtual void ApplyExplosion(Vector3 centre, Vector3 shotDir, Vector3 fallbackImpulseDir, Collider directHitCol)
     {
-        int cnt = Physics.OverlapSphereNonAlloc(
-            centre,
-            def.blastRadius,
-            _buf,
-            def.playerMask,
-            QueryTriggerInteraction.Ignore);
+        _processedPlayerRoots.Clear();
 
-        bool any = false;
+        int count = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.playerMask, QueryTriggerInteraction.Ignore);
 
-        for (int i = 0; i < cnt; ++i)
+        bool anyPlayerProcessed = false;
+
+        for (int i = 0; i < count; i++)
         {
-            Collider c = _buf[i];
+            Collider candidate = _buf[i];
 
-            if (c == null)
+            if (candidate == null)
                 continue;
 
-            if (!ClearLineOfSight(centre, c))
+            Transform candidateRoot = candidate.transform.root;
+            
+             // A player may have several non-trigger colliders. Process that player only once per explosion.
+            if (_processedPlayerRoots.Contains(candidateRoot))
                 continue;
 
-            any |= DealDamageAndKnockback(c, centre, shotDir, fallbackImpulseDir);
+            //  Do not mark the root as processed until one of its colliders actually passes the LOS test.
+             
+            if (!ClearLineOfSight(centre, candidate))
+                continue;
+
+            if (!DealDamageAndKnockback(candidate, centre, shotDir, fallbackImpulseDir))
+                continue;
+            
+            _processedPlayerRoots.Add(candidateRoot);
+            anyPlayerProcessed = true;
         }
 
-        if (!any && directHitCol != null)
-            DealDamageAndKnockback(directHitCol, centre, shotDir, fallbackImpulseDir);
+        
+        // Direct-hit fallback handles a player collider which was struck directly but was not returned by the overlap query.
+        if (!anyPlayerProcessed && directHitCol != null)
+        {
+            Transform directRoot = directHitCol.transform.root;
 
-        ClearBuffer(cnt);
+            if (!_processedPlayerRoots.Contains(directRoot) && DealDamageAndKnockback(directHitCol, centre, shotDir, fallbackImpulseDir))
+                _processedPlayerRoots.Add(directRoot);
+            
+        }
+
+        ClearBuffer(count);
+        _processedPlayerRoots.Clear();
 
         ApplyObjectiveImpulse(centre, fallbackImpulseDir, directHitCol);
     }
@@ -518,83 +541,116 @@ public abstract class BaseProjectile : NetworkBehaviour
         if (def.knockbackForce <= 0f || def.blastRadius <= 0f)
             return;
 
-        int cnt = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.objectiveMask, QueryTriggerInteraction.Collide);
+        _processedObjectiveTargets.Clear();
 
-        for (int i = 0; i < cnt; ++i)
+        int count = Physics.OverlapSphereNonAlloc(centre, def.blastRadius, _buf, def.objectiveMask, QueryTriggerInteraction.Collide);
+
+        for (int i = 0; i < count; i++)
         {
-            Collider c = _buf[i];
+            Collider candidate = _buf[i];
 
-            if (c == null)
+            if (candidate == null)
                 continue;
 
-            FlagObject flag = c.GetComponentInParent<FlagObject>();
+            FlagObject flag = candidate.GetComponentInParent<FlagObject>();
 
             if (flag == null)
                 continue;
 
-            if (!ClearLineOfSight(centre, c))
+            if (_processedObjectiveTargets.Contains(flag))
                 continue;
 
-            Vector3 impulse = CalculateExplosionImpulse(c, centre, fallbackImpulseDir, out _);
+            /*
+             * Allow another collider belonging to the same flag to be tested
+             * when this particular collider does not have clear LOS.
+             */
+            if (!ClearLineOfSight(centre, candidate))
+                continue;
+
+            _processedObjectiveTargets.Add(flag);
+
+            Vector3 impulse = CalculateExplosionImpulse(candidate, centre, fallbackImpulseDir, out _);
+
             impulse *= def.objectiveKnockbackMultiplier;
 
             flag.Server_ApplyWeaponImpulse(impulse);
         }
 
-        ClearBuffer(cnt);
+        ClearBuffer(count);
 
-        // Direct-hit fallback for cases where the flag collider is hit but not found by overlap.
+        /*
+         * Direct-hit fallback, without applying a second impulse when the
+         * overlap query already processed this flag.
+         */
         if (directHitCol != null)
         {
             FlagObject directFlag = directHitCol.GetComponentInParent<FlagObject>();
 
-            if (directFlag != null)
+            if (directFlag != null && !_processedObjectiveTargets.Contains(directFlag))
             {
                 Vector3 impulse = CalculateExplosionImpulse(directHitCol, centre, fallbackImpulseDir, out _);
+
                 impulse *= def.objectiveKnockbackMultiplier;
 
                 directFlag.Server_ApplyWeaponImpulse(impulse);
+
+                _processedObjectiveTargets.Add(directFlag);
             }
         }
+
+        _processedObjectiveTargets.Clear();
     }
 
     protected bool ClearLineOfSight(Vector3 blast, Collider target)
     {
-        Vector3[] samples =
-        {
-            target.bounds.center,
-            target.bounds.center + Vector3.up * 0.8f,
-            target.bounds.center - Vector3.up * 0.8f,
-            target.bounds.center + target.transform.right * 0.3f,
-            target.bounds.center - target.transform.right * 0.3f
-        };
+        if (target == null)
+            return false;
 
-        foreach (Vector3 origin in samples)
-        {
-            Vector3 dir = blast - origin;
-            float dist = dir.magnitude;
+        Bounds bounds = target.bounds;
 
-            if (dist <= 0.01f)
-                return true;
+        Vector3 center = bounds.center;
+        Vector3 verticalOffset = Vector3.up * 0.8f;
+        Vector3 lateralOffset = target.transform.right * 0.3f;
 
-            dir /= dist;
+        Transform targetRoot = target.transform.root;
 
-            if (Physics.Raycast(origin, dir, out RaycastHit hit, dist - 0.01f, def.hitMask, QueryTriggerInteraction.Ignore))
-            {
-                Transform root = hit.collider.transform.root;
+        return
+            HasClearLineOfSightSample(blast, center, targetRoot) || HasClearLineOfSightSample(blast, center + verticalOffset, targetRoot) ||
 
-                // Ignore all players as LOS blockers.
-                if (root.TryGetComponent<AdvancedPredictedController>(out _))
-                    return true;
+            HasClearLineOfSightSample(blast, center - verticalOffset, targetRoot) || HasClearLineOfSightSample(blast, center + lateralOffset, targetRoot) ||
 
-                if (root == target.transform.root || (_shooterRoot != null && root == _shooterRoot))
-                    return true;
-            }
-            else
-            {
-                return true;
-            }
-        }
+            HasClearLineOfSightSample(blast, center - lateralOffset, targetRoot);
+    }
+    
+    private bool HasClearLineOfSightSample(Vector3 blast, Vector3 sample, Transform targetRoot)
+    {
+        Vector3 direction = blast - sample;
+
+        float distance = direction.magnitude;
+
+        if (distance <= 0.01f)
+            return true;
+
+        direction /= distance;
+
+        bool hitSomething = Physics.Raycast(sample, direction, out RaycastHit hit, distance - 0.01f, def.hitMask, QueryTriggerInteraction.Ignore);
+
+        if (!hitSomething)
+            return true;
+
+        Transform hitRoot = hit.collider.transform.root;
+
+        
+        // Players intentionally do not block explosion LOS.
+         
+        if (hitRoot.TryGetComponent<AdvancedPredictedController>(out _))
+            return true;
+
+        if (hitRoot == targetRoot)
+            return true;
+
+        if (_shooterRoot != null && hitRoot == _shooterRoot)
+            return true;
 
         return false;
     }
@@ -632,7 +688,7 @@ public abstract class BaseProjectile : NetworkBehaviour
         if (def.knockbackForce > 0f)
             ctrl.ReceiveKnockback(impulse);
 
-        return result.Applied;
+        return true;
     }
     
     [Server]
@@ -713,16 +769,21 @@ public abstract class BaseProjectile : NetworkBehaviour
         if (_projectileCollider == null || shooter == null)
             return;
 
-        Collider[] shooterColliders = shooter.GetComponentsInChildren<Collider>();
+        _shooterColliderBuffer.Clear();
 
-        foreach (Collider c in shooterColliders)
+        shooter.GetComponentsInChildren(true, _shooterColliderBuffer);
+
+        foreach (Collider shooterCollider in _shooterColliderBuffer)
         {
-            if (!c)
+            if (!shooterCollider)
                 continue;
 
-            Physics.IgnoreCollision(_projectileCollider, c, true);
-            _ignoredShooterColliders.Add(c);
+            Physics.IgnoreCollision(_projectileCollider, shooterCollider, true);
+
+            _ignoredShooterColliders.Add(shooterCollider);
         }
+        
+        _shooterColliderBuffer.Clear();
     }
 
     void ClearIgnoredShooterCollisions()

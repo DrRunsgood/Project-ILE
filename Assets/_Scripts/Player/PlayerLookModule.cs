@@ -30,15 +30,12 @@ namespace _Scripts.Player
 
         public void ApplyRotation(float yawDeltaRaw, float pitchDeltaRaw, Rigidbody rb, Transform headAnchor)
         {
-            _yaw += yawDeltaRaw * _yawSensitivity;
+            _yaw = Mathf.Repeat(_yaw + yawDeltaRaw * _yawSensitivity, 360f);
 
             if (rb != null)
                 rb.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));
 
-            _currentPitch = Mathf.Clamp(
-                _currentPitch - pitchDeltaRaw * _pitchSensitivity,
-                _minPitch,
-                _maxPitch);
+            _currentPitch = Mathf.Clamp(_currentPitch - pitchDeltaRaw * _pitchSensitivity, _minPitch, _maxPitch);
 
             if (headAnchor != null)
                 headAnchor.localEulerAngles = new Vector3(_currentPitch, 0f, 0f);
@@ -46,7 +43,7 @@ namespace _Scripts.Player
 
         public void ApplyLookState(float yaw, float pitch, Rigidbody rb, Transform headAnchor)
         {
-            _yaw = yaw;
+            _yaw = Mathf.Repeat(yaw, 360f);
             _currentPitch = Mathf.Clamp(pitch, _minPitch, _maxPitch);
 
             if (rb != null)
